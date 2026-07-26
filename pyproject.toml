@@ -1,0 +1,58 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "m365-secure-mcp"
+version = "0.1.0"
+description = "Secure-by-default Microsoft 365 MCP server for Codex and Claude Code"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "WERIXO" }]
+dependencies = [
+  "httpx>=0.28.1,<0.29",
+  "keyring>=25.6,<26",
+  "mcp[cli]>=1.27,<2",
+  "msal>=1.32,<2",
+  "pydantic>=2.11,<3",
+  "pydantic-settings>=2.9,<3",
+]
+
+[project.scripts]
+m365-secure-mcp = "m365_secure_mcp.__main__:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.15,<2",
+  "pip-audit>=2.9,<3",
+  "pytest>=9.0.3,<10",
+  "pytest-asyncio>=1.0,<2",
+  "respx>=0.22,<1",
+  "ruff>=0.11,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/m365_secure_mcp"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "S"]
+ignore = ["S101"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+packages = ["m365_secure_mcp"]
+
+[[tool.mypy.overrides]]
+module = ["msal"]
+ignore_missing_imports = true

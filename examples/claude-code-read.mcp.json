@@ -1,0 +1,21 @@
+{
+  "mcpServers": {
+    "m365_read": {
+      "type": "stdio",
+      "command": "/absolute/path/to/m365-secure-mcp/.venv/bin/m365-secure-mcp",
+      "args": [],
+      "env": {
+        "M365_TENANT_ID": "00000000-0000-0000-0000-000000000000",
+        "M365_CLIENT_ID": "00000000-0000-0000-0000-000000000000",
+        "M365_PROFILE": "read",
+        "M365_MODULES": "profile,mail,calendar,files",
+        "M365_ALLOWED_USER_OBJECT_IDS": "00000000-0000-0000-0000-000000000000",
+        "M365_ALLOWED_UPN_DOMAINS": "example.com",
+        "M365_ALLOWED_RECIPIENT_DOMAINS": "example.com",
+        "M365_AUTH_FLOW": "interactive",
+        "M365_ALLOW_DEVICE_CODE": "false",
+        "M365_TOKEN_CACHE_MODE": "keyring"
+      }
+    }
+  }
+}

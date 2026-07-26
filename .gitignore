@@ -1,0 +1,19 @@
+.DS_Store
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.venv/
+__pycache__/
+*.py[cod]
+*.log
+dist/
+build/
+
+# Credentials and local configuration must never be committed.
+.env
+.env.*
+!.env.example
+*.pem
+*.pfx
+*.p12
+token-cache*
