@@ -68,6 +68,11 @@ assignment, Exchange Online PowerShell, and destructive operations are not
 agent tools. They remain deliberate gaps until each workflow has a safer
 contract, reversible design, evidence check, and approval boundary.
 
+The [official implementation roadmap](ROADMAP.md) defines the migration order
+for those fixed contracts and governed playbooks. Endpoint count alone is not a
+replacement criterion; operational parity requires policy, verification,
+evidence and a documented safe recovery path.
+
 ## Four deployment profiles
 
 Use separate Entra registrations and policy files when the capabilities are

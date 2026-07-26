@@ -20,6 +20,7 @@ to an identity, permission set, resource policy, and evidence trail.
 [Private policy](#private-policy-and-resource-discovery) |
 [MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
+[Roadmap](docs/ROADMAP.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
 ## Microsoft Graph control plane
@@ -78,6 +79,21 @@ The build inputs and outputs are
 pinned Ed25519 trust anchor before server construction. Editing the manifest,
 signature, or a signed tenant policy without the corresponding signer fails
 closed.
+
+### What comes next
+
+The next official vertical slice is a signed, T0 read-only **Workload Identity
+Readiness** playbook. It will correlate the existing Entra permission-drift,
+application-credential and ownership evidence without adding scopes or writes.
+The prioritized sequence after that is the reusable Change-safe operator,
+profile/scope drift for MSPs, and the first compiled T2 contract.
+
+The complete implementation order, acceptance criteria, friction matrix and
+permanent no-go rules live in the
+[official implementation roadmap](docs/ROADMAP.md). Planned work is not part of
+the active tool surface until it appears in the
+[tool catalog](docs/TOOL_CATALOG.md) and
+[compiled contract matrix](docs/CONTRACT_MATRIX.md).
 
 ## Installation
 
@@ -898,7 +914,7 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 172 passed |
+| Tests | 182 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
@@ -913,6 +929,7 @@ explicit operator consent.
 | Document | Purpose |
 |---|---|
 | [Tool catalog](docs/TOOL_CATALOG.md) | All 128 fixed tools and their boundaries |
+| [Official roadmap](docs/ROADMAP.md) | Prioritized vertical slices, acceptance criteria, friction and no-go rules |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |
 | [Entra setup](docs/ENTRA_SETUP.md) | Registration, delegated scopes, consent |

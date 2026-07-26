@@ -314,6 +314,19 @@ the blast radius of:
 - Review audit events in the organization's SIEM without ingesting M365
   content.
 
+## Security roadmap boundary
+
+The [official implementation roadmap](docs/ROADMAP.md) records planned
+playbooks, Assurance expansion and Change-safe operations. Roadmap entries are
+not active capabilities and cannot weaken the controls documented here.
+
+Every future vertical must preserve the permanent no-go rules: no arbitrary
+Graph proxy, runtime tool generation, dynamic consent, model-controlled
+approval, in-process auto-update, cross-tenant evidence reuse, Assurance-driven
+remediation or automatic retry after an uncertain write. New capabilities
+require an exact signed contract, private tenant policy, deterministic
+verification and the definition-of-done gates in the roadmap.
+
 ## Vulnerability reporting
 
 Do not include tenant data, tokens, secrets, or customer content in an issue.

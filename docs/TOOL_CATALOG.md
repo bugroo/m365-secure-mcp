@@ -11,6 +11,11 @@ Graph reads, 8 Power BI reads, plus the local security-posture tool. A write
 process exposes the two common tools, the local receipt query, and only its
 selected write actions. The default process exposes only the two common tools.
 
+This catalog and the [compiled contract matrix](CONTRACT_MATRIX.md) describe
+the active surface. Items in the [official implementation roadmap](ROADMAP.md)
+are planned only; a roadmap name is never a runtime-discovered or dynamically
+registered tool.
+
 ## Common
 
 - `m365_get_security_posture`

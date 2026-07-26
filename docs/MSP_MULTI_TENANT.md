@@ -200,3 +200,13 @@ configuration:
 Removing consent or roles takes effect at Microsoft even if a stale local
 policy remains. Existing access tokens can remain valid until expiry, so
 incident offboarding should also follow the tenant's token-revocation process.
+
+## Planned MSP operations
+
+The [official implementation roadmap](ROADMAP.md) is the canonical plan for
+Workload Identity Readiness, profile/scope drift and the multi-tenant drift
+radar. These workflows retain the topology in this document: an external
+orchestrator may schedule runs, but every customer still uses an isolated
+single-tenant MCP process, registration, private policy, token cache, baseline
+and evidence store. No planned feature creates a central token pool or allows a
+tool call to select a tenant.
