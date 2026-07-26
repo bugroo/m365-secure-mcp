@@ -143,6 +143,72 @@ class UpdatePlannerTaskInput(StrictInput):
     idempotency_key: UUID
 
 
+class PlannerChecklistAdditionInput(StrictInput):
+    title: str = Field(min_length=1, max_length=255)
+    is_checked: bool = False
+
+
+class PlannerChecklistUpdateInput(StrictInput):
+    item_id: UUID = Field(
+        description="Existing checklist item UUID returned by m365_get_planner_task."
+    )
+    title: str | None = Field(default=None, min_length=1, max_length=255)
+    is_checked: bool | None = None
+
+    @model_validator(mode="after")
+    def validate_update(self) -> PlannerChecklistUpdateInput:
+        if self.title is None and self.is_checked is None:
+            raise ValueError("at least one checklist item field must be provided")
+        return self
+
+
+class UpdatePlannerTaskDetailsInput(StrictInput):
+    task_id: str = Field(min_length=1, max_length=512)
+    plan_id: str = Field(min_length=1, max_length=512)
+    details_etag: str = Field(
+        min_length=4,
+        max_length=1_000,
+        description=(
+            "ETag from m365_get_planner_task.details_etag. "
+            "The basic Planner task ETag is a different concurrency token."
+        ),
+    )
+    description: str | None = Field(default=None, min_length=1, max_length=4_000)
+    preview_type: (
+        Literal["automatic", "noPreview", "checklist", "description", "reference"] | None
+    ) = None
+    checklist_additions: list[PlannerChecklistAdditionInput] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    checklist_updates: list[PlannerChecklistUpdateInput] = Field(
+        default_factory=list,
+        max_length=20,
+    )
+    idempotency_key: UUID
+
+    @field_validator("details_etag")
+    @classmethod
+    def validate_details_etag(cls, value: str) -> str:
+        if any(ord(character) < 32 or ord(character) == 127 for character in value):
+            raise ValueError("details_etag contains control characters")
+        return value
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdatePlannerTaskDetailsInput:
+        if (
+            self.description is None
+            and self.preview_type is None
+            and not self.checklist_additions
+            and not self.checklist_updates
+        ):
+            raise ValueError("at least one Planner task-details field must be provided")
+        update_ids = [item.item_id for item in self.checklist_updates]
+        if len(update_ids) != len(set(update_ids)):
+            raise ValueError("checklist_updates contains duplicate item IDs")
+        return self
+
+
 class CreateDraftInput(StrictInput):
     to: list[str] = Field(min_length=1, max_length=20)
     cc: list[str] = Field(default_factory=list, max_length=20)

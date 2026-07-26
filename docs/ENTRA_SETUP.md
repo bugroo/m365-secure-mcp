@@ -52,7 +52,7 @@ Start with `User.Read`. Add modules independently:
 | To Do create/update | `Tasks.ReadWrite` |
 | Send Teams channel message | `ChannelMessage.Send` |
 | Send Teams chat message | `ChatMessage.Send` |
-| Planner create/update | `Tasks.ReadWrite` |
+| Planner task and task-details create/update | `Tasks.ReadWrite` |
 
 Teams scopes are broad/admin-restricted. Keep the Teams module disabled unless
 there is a specific approved use case.

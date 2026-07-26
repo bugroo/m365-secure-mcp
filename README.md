@@ -10,10 +10,11 @@ controlled access to Microsoft 365 through fixed, reviewable tools.
 
 | Fixed tools | Read profile | Opt-in writes | Delete tools | Modules |
 |---:|---:|---:|---:|---:|
-| 71 | 60 max | 11 | 0 | 20 |
+| 72 | 60 max | 12 | 0 | 20 |
 
 [Installation](#installation) | [Security model](#security-model) |
-[Capabilities](#capabilities) | [Tool catalog](docs/TOOL_CATALOG.md) |
+[Capabilities](#capabilities) | [Planner details](#planner-task-details) |
+[Tool catalog](docs/TOOL_CATALOG.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
 ## What this server is
@@ -129,7 +130,7 @@ Additional controls:
 - M365 content treated as untrusted input and converted to bounded plain text
 - separate read and write processes
 - SQLite write reservation before Graph is called
-- ETag concurrency on updates and per-tool rate limits
+- resource-specific ETag concurrency on updates and per-tool rate limits
 - metadata-only audit events with sensitive fields redacted
 
 Read the complete threat model, assumptions, and residual risks in
@@ -153,14 +154,137 @@ untrusted external data.
 
 ### Write profile
 
-The write process exposes **11 non-delete actions**, each separately enabled.
+The write process exposes **12 non-delete actions**, each separately enabled.
 They cover mail drafts, calendar events, contacts, To Do tasks, Teams messages,
-and Planner tasks. Exact tool contracts are listed in the
+Planner tasks, and Planner task details. Exact tool contracts are listed in the
 [tool catalog](docs/TOOL_CATALOG.md).
 
 Every write requires a UUID idempotency key. The local ledger commits before
 Graph is called. An uncertain result blocks automatic retry to avoid duplicate
 external actions.
+
+<details>
+<summary><strong>Expand the complete 72-tool surface</strong></summary>
+
+The two common tools are always registered:
+`m365_get_security_posture` and `m365_get_my_profile`.
+
+| Domain | Fixed read tools | Opt-in write tools |
+|---|---:|---:|
+| Mail | 4 | 2 |
+| Calendar | 4 | 2 |
+| OneDrive, SharePoint, Excel | 13 | 0 |
+| Contacts, people, presence, directory | 6 | 1 |
+| To Do and Planner | 8 | 5 |
+| Teams and groups | 9 | 2 |
+| OneNote | 3 | 0 |
+| Security, audit, Intune, service health | 10 | 0 |
+| Organization | 1 | 0 |
+
+<h4>Mail and calendar</h4>
+
+```text
+m365_search_mail                 m365_get_mail_message
+m365_list_mail_folders           m365_list_mail_attachment_metadata
+m365_create_mail_draft           m365_send_mail_draft
+m365_list_calendar               m365_find_schedule
+m365_list_calendars              m365_get_calendar_event
+m365_create_calendar_event       m365_update_calendar_event
+```
+
+<h4>Files, sites, Excel, and OneNote</h4>
+
+```text
+m365_search_files                m365_get_file_metadata
+m365_list_onedrive_root          m365_list_recent_files
+m365_list_shared_files           m365_list_file_children
+m365_list_allowed_sites          m365_list_site_lists
+m365_list_site_list_items        m365_list_site_drives
+m365_list_site_pages             m365_list_workbook_worksheets
+m365_list_workbook_tables        m365_list_onenote_notebooks
+m365_list_onenote_sections       m365_list_onenote_pages
+```
+
+<h4>People, tasks, Planner, Teams, and groups</h4>
+
+```text
+m365_search_contacts             m365_list_contact_folders
+m365_create_contact              m365_list_relevant_people
+m365_get_my_presence             m365_list_users
+m365_get_user                    m365_list_todo_lists
+m365_list_todo_tasks             m365_get_todo_task
+m365_create_todo_task            m365_update_todo_task
+m365_list_allowed_plans          m365_list_planner_tasks
+m365_list_planner_buckets        m365_get_planner_task
+m365_list_my_planner_tasks       m365_create_planner_task
+m365_update_planner_task         m365_update_planner_task_details
+m365_get_team                    m365_list_team_channels
+m365_list_channel_members        m365_list_channel_messages
+m365_list_allowed_chats          m365_list_chat_messages
+m365_send_channel_message        m365_send_chat_message
+m365_get_group                   m365_list_group_members
+m365_list_group_owners
+```
+
+<h4>Organization, security, audit, Intune, and service health</h4>
+
+```text
+m365_get_organization
+m365_list_security_incidents     m365_list_security_alerts
+m365_list_signins                m365_list_directory_audits
+m365_list_managed_devices        m365_list_device_compliance_policies
+m365_list_device_configurations  m365_list_service_health
+m365_list_service_issues         m365_list_service_messages
+```
+
+</details>
+
+## Planner task details
+
+`m365_update_planner_task_details` closes the gap between basic Planner task
+fields and the separate Graph details resource. It can set a non-empty
+description, choose the card preview, add checklist entries, rename existing
+entries, and change their checked state.
+
+```bash
+export M365_PROFILE="write"
+export M365_WRITE_ENABLED="true"
+export M365_WRITE_ACTIONS="planner.update_task_details"
+export M365_ALLOWED_PLAN_IDS="<approved-plan-id>"
+```
+
+The tool requires the `details_etag` returned by `m365_get_planner_task`:
+
+```json
+{
+  "task_id": "task-id",
+  "plan_id": "approved-plan-id",
+  "details_etag": "W/\"details-etag\"",
+  "description": "Implementation notes",
+  "preview_type": "checklist",
+  "checklist_additions": [
+    {"title": "Validate deployment", "is_checked": false}
+  ],
+  "checklist_updates": [
+    {
+      "item_id": "95e27074-6c4a-447a-aa24-9d718a0b86fa",
+      "is_checked": true
+    }
+  ],
+  "idempotency_key": "58e0e271-06ba-4c3a-81e8-b70c1d43dc28"
+}
+```
+
+> [!CAUTION]
+> The basic task `etag` and `details_etag` are different concurrency tokens.
+> The tool re-reads both the task and its details, verifies the allowlisted
+> plan, caps the resulting checklist at 20, and refuses stale ETags or unknown
+> item UUIDs. Checklist deletion by `null`, whole-object replacement,
+> reference mutation, and description clearing are not exposed.
+
+Checklist additions use deterministic UUIDv5 identifiers derived from the
+idempotency key. A `204 No Content` response is followed by a verification
+read. The only required delegated Graph permission is `Tasks.ReadWrite`.
 
 ## Entra registration
 
@@ -222,7 +346,7 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 40 passed |
+| Tests | 49 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
@@ -236,7 +360,7 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 71 contracts and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 72 contracts and their boundaries |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |
 | [Entra setup](docs/ENTRA_SETUP.md) | Registration, delegated scopes, consent |

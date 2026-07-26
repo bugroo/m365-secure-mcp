@@ -78,7 +78,13 @@ teams.send_channel_message
 teams.send_chat_message
 planner.create_task
 planner.update_task
+planner.update_task_details
 ```
+
+`planner.update_task_details` uses the same least-privileged delegated
+`Tasks.ReadWrite` scope as the other Planner writes. It is a separate local
+action so an operator can allow basic task updates without allowing description
+or checklist changes, or vice versa.
 
 ## Bounds and audit
 

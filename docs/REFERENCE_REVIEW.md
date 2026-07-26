@@ -8,6 +8,9 @@ Useful patterns adopted:
 
 - Planner tools grouped by domain.
 - ETag/`If-Match` handling for updates.
+- Separate `plannerTaskDetails` reads and writes using the details-specific
+  ETag. This project narrows the write contract to description, preview, and
+  additive/existing checklist changes.
 - Clean MCP errors, rate limiting, structured audit/telemetry concepts.
 - Explicit per-client consent for a remote MCP OAuth proxy.
 

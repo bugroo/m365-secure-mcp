@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, TypeVar
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -39,12 +40,14 @@ from .models import (
     TeamsMessageInput,
     TodoListInput,
     UpdateEventInput,
+    UpdatePlannerTaskDetailsInput,
     UpdatePlannerTaskInput,
     UpdateTodoTaskInput,
 )
 from .security import (
     AuditLogger,
     CursorCodec,
+    SecurityError,
     SecurityPolicy,
     clean_external_text,
     html_to_plain_text,
@@ -75,6 +78,7 @@ WRITE_TOOL_ACTIONS = {
     "m365_send_chat_message": "teams.send_chat_message",
     "m365_create_planner_task": "planner.create_task",
     "m365_update_planner_task": "planner.update_task",
+    "m365_update_planner_task_details": "planner.update_task_details",
 }
 
 
@@ -88,11 +92,16 @@ def _read_annotations(title: str) -> ToolAnnotations:
     )
 
 
-def _write_annotations(title: str, *, idempotent: bool = False) -> ToolAnnotations:
+def _write_annotations(
+    title: str,
+    *,
+    destructive: bool = False,
+    idempotent: bool = False,
+) -> ToolAnnotations:
     return ToolAnnotations(
         title=title,
         readOnlyHint=False,
-        destructiveHint=False,
+        destructiveHint=destructive,
         idempotentHint=idempotent,
         openWorldHint=True,
     )
@@ -717,6 +726,79 @@ def _planner_task_summary(item: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _planner_checklist_summary(value: object) -> dict[str, dict[str, Any]]:
+    """Return only bounded, documented checklist fields from untrusted Graph data."""
+
+    if not isinstance(value, dict):
+        return {}
+    checklist: dict[str, dict[str, Any]] = {}
+    for raw_item_id, raw_item in list(value.items())[:20]:
+        if not isinstance(raw_item_id, str) or not isinstance(raw_item, dict):
+            continue
+        item_id = clean_external_text(raw_item_id, 100)
+        if not item_id:
+            continue
+        is_checked = raw_item.get("isChecked")
+        checklist[item_id] = {
+            "title": clean_external_text(raw_item.get("title"), 255),
+            "is_checked": is_checked if isinstance(is_checked, bool) else None,
+            "order_hint": clean_external_text(raw_item.get("orderHint"), 255),
+        }
+    return checklist
+
+
+def _planner_details_summary(details: dict[str, Any]) -> dict[str, Any]:
+    references = details.get("references", {})
+    reference_ids = (
+        sorted(clean_external_text(value, 2_048) for value in references)
+        if isinstance(references, dict)
+        else []
+    )
+    return {
+        "description": clean_external_text(details.get("description"), 4_000),
+        "preview_type": clean_external_text(details.get("previewType"), 32),
+        "checklist": _planner_checklist_summary(details.get("checklist", {})),
+        "references": reference_ids[:15],
+        "details_etag": details.get("@odata.etag"),
+    }
+
+
+def _planner_checklist_uuid_map(value: object) -> dict[str, dict[str, Any]]:
+    """Validate the provider checklist before it is used for authorization decisions."""
+
+    if value is None:
+        return {}
+    if not isinstance(value, dict) or len(value) > 20:
+        raise SecurityError("Planner returned an invalid or over-limit checklist")
+    checklist: dict[str, dict[str, Any]] = {}
+    for raw_item_id, raw_item in value.items():
+        if not isinstance(raw_item_id, str) or not isinstance(raw_item, dict):
+            raise SecurityError("Planner returned an unexpected checklist item shape")
+        try:
+            item_id = str(UUID(raw_item_id))
+        except ValueError as exc:
+            raise SecurityError("Planner returned a checklist item with an invalid UUID") from exc
+        if item_id in checklist:
+            raise SecurityError("Planner returned duplicate checklist item IDs")
+        checklist[item_id] = raw_item
+    return checklist
+
+
+def _planner_checklist_addition_id(
+    *,
+    task_id: str,
+    idempotency_key: UUID,
+    index: int,
+) -> str:
+    """Generate a stable Graph checklist UUID for retry-safe additions."""
+
+    name = (
+        "https://github.com/bugroo/m365-secure-mcp/"
+        f"planner/tasks/{task_id}/details/{idempotency_key}/checklist/{index}"
+    )
+    return str(uuid5(NAMESPACE_URL, name))
+
+
 def _register_planner_read(mcp: FastMCP, services: Services, runner: ToolRunner) -> None:
     @mcp.tool(
         name="m365_list_allowed_plans",
@@ -852,13 +934,9 @@ def _register_planner_read(mcp: FastMCP, services: Services, runner: ToolRunner)
                 "GET",
                 f"/planner/tasks/{task_id}/details",
             )
-            description = clean_external_text(details.get("description"), 4_000)
             record = {
                 **_planner_task_summary(task),
-                "description": description,
-                "checklist": details.get("checklist", {}),
-                "references": sorted(details.get("references", {})),
-                "details_etag": details.get("@odata.etag"),
+                **_planner_details_summary(details),
             }
             return render_record(
                 title="Microsoft Planner Task",
@@ -1082,7 +1160,11 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
 
     @mcp.tool(
         name="m365_update_calendar_event",
-        annotations=_write_annotations("Update M365 Calendar Event", idempotent=True),
+        annotations=_write_annotations(
+            "Update M365 Calendar Event",
+            destructive=True,
+            idempotent=True,
+        ),
     )
     async def update_calendar_event(params: UpdateEventInput) -> str:
         """Update selected event fields with mandatory ETag concurrency."""
@@ -1210,7 +1292,11 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
 
     @mcp.tool(
         name="m365_update_todo_task",
-        annotations=_write_annotations("Update M365 To Do Task", idempotent=True),
+        annotations=_write_annotations(
+            "Update M365 To Do Task",
+            destructive=True,
+            idempotent=True,
+        ),
     )
     async def update_todo_task(params: UpdateTodoTaskInput) -> str:
         """Update selected To Do task fields with mandatory ETag concurrency."""
@@ -1387,7 +1473,11 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
 
     @mcp.tool(
         name="m365_update_planner_task",
-        annotations=_write_annotations("Update M365 Planner Task", idempotent=True),
+        annotations=_write_annotations(
+            "Update M365 Planner Task",
+            destructive=True,
+            idempotent=True,
+        ),
     )
     async def update_planner_task(params: UpdatePlannerTaskInput) -> str:
         """Update selected fields on one Planner task using mandatory ETag concurrency.
@@ -1439,6 +1529,144 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
 
         return await runner.call(
             "m365_update_planner_task",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_update_planner_task_details",
+        annotations=_write_annotations(
+            "Update M365 Planner Task Details",
+            destructive=True,
+            idempotent=True,
+        ),
+    )
+    async def update_planner_task_details(params: UpdatePlannerTaskDetailsInput) -> str:
+        """Update a Planner description, preview, or checklist without delete semantics.
+
+        The task must belong to the declared allowlisted plan. Use only the details_etag returned
+        by m365_get_planner_task; a basic task ETag is not accepted as a concurrency substitute.
+        Checklist additions receive deterministic UUIDs, updates can target only existing UUIDs,
+        and null/removal operations are intentionally absent from this contract.
+        """
+
+        async def operation() -> str:
+            services.policy.require_write_action("planner.update_task_details")
+            plan_id = services.policy.authorize_plan(params.plan_id)
+            task_id = path_segment(params.task_id)
+
+            current_task = await services.graph.request_json("GET", f"/planner/tasks/{task_id}")
+            if current_task.get("planId") != plan_id:
+                raise SecurityError(
+                    "Planner task does not belong to the declared allowlisted plan"
+                )
+
+            current_details = await services.graph.request_json(
+                "GET",
+                f"/planner/tasks/{task_id}/details",
+            )
+            returned_task_id = current_details.get("id")
+            if returned_task_id is not None and returned_task_id != params.task_id:
+                raise SecurityError("Planner returned details for an unexpected task")
+            current_etag = current_details.get("@odata.etag")
+            if not isinstance(current_etag, str) or not current_etag:
+                raise SecurityError("Planner task details did not include a usable ETag")
+            if current_etag != params.details_etag:
+                raise SecurityError(
+                    "Planner task details changed after they were read; call "
+                    "m365_get_planner_task and review the new details_etag before updating"
+                )
+
+            existing = _planner_checklist_uuid_map(current_details.get("checklist", {}))
+            checklist_patch: dict[str, dict[str, Any]] = {}
+            new_item_count = 0
+
+            for index, addition in enumerate(params.checklist_additions):
+                item_id = _planner_checklist_addition_id(
+                    task_id=params.task_id,
+                    idempotency_key=params.idempotency_key,
+                    index=index,
+                )
+                current_item = existing.get(item_id)
+                if current_item is not None:
+                    if (
+                        current_item.get("title") != addition.title
+                        or current_item.get("isChecked") is not addition.is_checked
+                    ):
+                        raise SecurityError(
+                            "deterministic checklist item ID collided with different content"
+                        )
+                    continue
+                checklist_patch[item_id] = {
+                    "@odata.type": "microsoft.graph.plannerChecklistItem",
+                    "title": addition.title,
+                    "isChecked": addition.is_checked,
+                }
+                new_item_count += 1
+
+            if len(existing) + new_item_count > 20:
+                raise SecurityError(
+                    "Planner permits at most 20 checklist items; reduce checklist_additions"
+                )
+
+            for update in params.checklist_updates:
+                item_id = str(update.item_id)
+                if item_id not in existing:
+                    raise SecurityError(
+                        "checklist update references an item not present in the current task"
+                    )
+                item_patch: dict[str, Any] = {
+                    "@odata.type": "microsoft.graph.plannerChecklistItem"
+                }
+                if update.title is not None:
+                    item_patch["title"] = update.title
+                if update.is_checked is not None:
+                    item_patch["isChecked"] = update.is_checked
+                checklist_patch[item_id] = item_patch
+
+            body: dict[str, Any] = {}
+            if params.description is not None:
+                body["description"] = params.description
+            if params.preview_type is not None:
+                body["previewType"] = params.preview_type
+            if checklist_patch:
+                body["checklist"] = checklist_patch
+            if not body:
+                raise SecurityError("all requested Planner task-detail changes already exist")
+
+            updated_details = await services.graph.request_json(
+                "PATCH",
+                f"/planner/tasks/{task_id}/details",
+                json_body=body,
+                headers={
+                    "If-Match": params.details_etag,
+                    "Prefer": "return=representation",
+                },
+            )
+            if not updated_details or not updated_details.get("@odata.etag"):
+                updated_details = await services.graph.request_json(
+                    "GET",
+                    f"/planner/tasks/{task_id}/details",
+                )
+            updated_task_id = updated_details.get("id")
+            if updated_task_id is not None and updated_task_id != params.task_id:
+                raise SecurityError("Planner returned updated details for an unexpected task")
+
+            return render_record(
+                title="Planner Task Details Updated",
+                record={
+                    "task_id": params.task_id,
+                    "plan_id": plan_id,
+                    **_planner_details_summary(updated_details),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_update_planner_task_details",
             params.model_dump(mode="json"),
             operation,
             write=True,

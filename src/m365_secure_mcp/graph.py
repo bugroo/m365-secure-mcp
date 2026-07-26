@@ -59,7 +59,7 @@ class GraphClient:
             transport=transport,
             headers={
                 "Accept": "application/json",
-                "User-Agent": "m365-secure-mcp/0.1.0",
+                "User-Agent": "m365-secure-mcp/0.2.0",
             },
         )
 

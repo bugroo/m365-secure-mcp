@@ -81,7 +81,13 @@ the blast radius of:
 - Mail recipients and calendar/Planner assignees are locally restricted.
 - Sending is separate from creating a draft.
 - Calendar uses Graph `transactionId` for retry idempotency.
-- Planner updates require `If-Match`; stale writes fail with 412.
+- Planner task and task-details updates require their distinct `If-Match`
+  values; stale writes fail before mutation or with Graph 412.
+- Planner task-details writes verify the task's plan, re-read current details,
+  accept only known fields, cap the checklist at 20, and reject unknown item
+  UUIDs. Additions use deterministic UUIDv5 identifiers.
+- Checklist deletion by `null`, whole-checklist replacement, and description
+  clearing are absent from the tool contract.
 - Every write is reserved in a mode-`0600` local SQLite ledger before Graph is
   called. Reused keys with changed payloads are rejected.
 - A lost/uncertain response leaves its key pending and blocks automatic retry.

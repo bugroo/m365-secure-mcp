@@ -89,6 +89,16 @@ def test_planner_read_is_least_privileged() -> None:
     assert settings.scopes == ("Tasks.Read", "User.Read")
 
 
+def test_planner_details_write_uses_only_tasks_readwrite() -> None:
+    settings = make_settings(
+        profile="write",
+        write_enabled=True,
+        write_actions="planner.update_task_details",
+        allowed_plan_ids="plan-1",
+    )
+    assert settings.scopes == ("Tasks.ReadWrite", "User.Read")
+
+
 def test_domains_are_bare_lowercase_dns_names() -> None:
     with pytest.raises(ValidationError, match="lowercase bare DNS"):
         make_settings(allowed_upn_domains="HTTPS://Example.com")

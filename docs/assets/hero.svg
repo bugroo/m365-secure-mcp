@@ -64,9 +64,9 @@
   </g>
 
   <g class="mono" font-size="13">
-    <text class="ink" x="66" y="461" font-weight="700">71 FIXED TOOLS</text>
+    <text class="ink" x="66" y="461" font-weight="700">72 FIXED TOOLS</text>
     <text class="muted" x="232" y="461">60 READ</text>
-    <text class="muted" x="348" y="461">11 OPT-IN WRITE</text>
+    <text class="muted" x="348" y="461">12 OPT-IN WRITE</text>
     <text class="accent-text" x="530" y="461" font-weight="700">0 DELETE</text>
     <text class="muted" x="66" y="490">LOCAL STDIO</text>
     <text class="muted" x="232" y="490">OAUTH + PKCE</text>

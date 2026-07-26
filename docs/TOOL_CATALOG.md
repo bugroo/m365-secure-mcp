@@ -1,6 +1,6 @@
 # Tool catalog and exposure model
 
-The source defines 71 fixed-contract tools. A maximally enabled read process
+The source defines 72 fixed-contract tools. A maximally enabled read process
 exposes 60; a write process exposes the two common tools plus only its selected
 write actions. The default process exposes only the two common tools.
 
@@ -73,11 +73,16 @@ Directory tools use the constrained `User.ReadBasic.All` permission instead of
 - `m365_list_my_planner_tasks`
 - `m365_create_planner_task` (write)
 - `m365_update_planner_task` (write)
+- `m365_update_planner_task_details` (write)
 - `m365_create_todo_task` (write)
 - `m365_update_todo_task` (write)
 
 Planner results are restricted to locally allowlisted plans. Updates require an
-ETag.
+ETag. Task-details writes use their separate `details_etag`, accept description
+and preview changes, add checklist items with deterministic UUIDs, and update
+only checklist UUIDs verified against the current task. Checklist removal,
+arbitrary `null` values, references, and whole-object replacement are not
+exposed.
 
 ## Teams and groups
 

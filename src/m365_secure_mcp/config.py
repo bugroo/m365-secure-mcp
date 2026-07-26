@@ -94,6 +94,7 @@ WRITE_ACTION_SCOPES: dict[str, frozenset[str]] = {
     "teams.send_chat_message": frozenset({"ChatMessage.Send"}),
     "planner.create_task": frozenset({"Tasks.ReadWrite"}),
     "planner.update_task": frozenset({"Tasks.ReadWrite"}),
+    "planner.update_task_details": frozenset({"Tasks.ReadWrite"}),
 }
 
 KNOWN_WRITE_ACTIONS = frozenset(WRITE_ACTION_SCOPES)
@@ -235,7 +236,11 @@ class Settings(BaseSettings):
         } & actions
         if recipient_actions and not self.recipient_domains:
             raise ValueError("recipient-bearing writes require M365_ALLOWED_RECIPIENT_DOMAINS")
-        planner_actions = {"planner.create_task", "planner.update_task"} & actions
+        planner_actions = {
+            "planner.create_task",
+            "planner.update_task",
+            "planner.update_task_details",
+        } & actions
         if planner_actions and not self.plan_ids:
             raise ValueError("Planner write actions require M365_ALLOWED_PLAN_IDS")
         if "teams.send_channel_message" in actions and not self.team_ids:

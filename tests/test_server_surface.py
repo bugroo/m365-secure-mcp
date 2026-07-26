@@ -121,8 +121,35 @@ async def test_all_write_actions_are_independently_discoverable() -> None:
         )
     )
     names = {tool.name for tool in await server.list_tools()}
-    assert len(names) == 13
+    assert len(names) == 14
     assert set(WRITE_TOOL_ACTIONS) <= names
+
+
+@pytest.mark.asyncio
+async def test_update_tools_are_annotated_as_destructive_and_idempotent() -> None:
+    server = create_server(
+        make_settings(
+            profile="write",
+            write_enabled=True,
+            write_actions=(
+                "calendar.update_event,todo.update_task,planner.update_task,"
+                "planner.update_task_details"
+            ),
+            allowed_plan_ids="plan-1",
+        )
+    )
+    tools = {tool.name: tool for tool in await server.list_tools()}
+    for name in (
+        "m365_update_calendar_event",
+        "m365_update_todo_task",
+        "m365_update_planner_task",
+        "m365_update_planner_task_details",
+    ):
+        annotations = tools[name].annotations
+        assert annotations is not None
+        assert annotations.readOnlyHint is False
+        assert annotations.destructiveHint is True
+        assert annotations.idempotentHint is True
 
 
 def test_out_of_profile_tool_filter_fails_startup() -> None:
