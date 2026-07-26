@@ -1,12 +1,13 @@
 <p align="center">
-  <img src="docs/assets/hero.svg" alt="M365 Secure MCP. Policy-bound Microsoft 365 access for local AI clients." width="100%">
+  <img src="docs/assets/hero.svg" alt="M365 Secure MCP. Policy-bound Microsoft Graph operations for local AI clients." width="100%">
 </p>
 
 [![CI](https://img.shields.io/github/actions/workflow/status/bugroo/m365-secure-mcp/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/bugroo/m365-secure-mcp/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-555b61?style=flat-square)](LICENSE)
 
-A local-first MCP server that gives Codex, Claude Code, and compatible clients
-controlled access to Microsoft 365 through fixed, reviewable tools.
+A local-first Microsoft Graph control plane for Codex, Claude Code, and
+compatible MCP clients. Every operation is a fixed, reviewable contract bound
+to an identity, permission set, resource policy, and evidence trail.
 
 | Fixed contracts | Read profile | Opt-in writes | Delete tools | Modules |
 |---:|---:|---:|---:|---:|
@@ -14,16 +15,23 @@ controlled access to Microsoft 365 through fixed, reviewable tools.
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
-[Capabilities](#capabilities) | [Planner details](#planner-task-details) |
+[Graph control plane](#microsoft-graph-control-plane) |
+[Capabilities](#capabilities) |
 [Private policy](#private-policy-and-resource-discovery) |
 [MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
-## What this server is
+## Microsoft Graph control plane
 
 `m365-secure-mcp` is not a generic Microsoft Graph proxy. The model cannot
 choose a URL, HTTP method, permission scope, or request header.
+
+Microsoft Graph is the product surface. Microsoft 365 workloads are the
+catalog behind it: Entra, Exchange-backed user data, Teams, SharePoint,
+OneDrive, Planner, Intune, Windows 365, Defender, governance, licensing, and
+Purview. Planner is one workload and its task-details implementation is one
+example of the safe-write pattern; it is not the boundary of the project.
 
 The operator starts with a broad catalog, then reduces each deployment by
 identity, module, tool, resource, and action. Unknown or out-of-policy
@@ -263,10 +271,11 @@ untrusted external data.
 ### Write profile
 
 The write process exposes **27 non-delete actions**, each separately enabled.
-They cover routine work, Planner details, bounded Entra user/group controls,
-Intune sync, Windows 365 reboot, Office/OneNote/Excel edits, Power BI
-refresh/rebind, application metadata, service-principal controls, and
-allowlisted Conditional Access state. Exact tool contracts are listed in the
+Across the Graph-backed workloads they cover bounded Entra user/group and
+application controls, Conditional Access state, mail/calendar/contact work,
+Teams and Planner operations, Intune sync, Windows 365 reboot, and selected
+Office/OneNote/Excel edits. Power BI refresh/rebind uses its separate API
+audience under the same policy model. Exact tool contracts are listed in the
 [tool catalog](docs/TOOL_CATALOG.md).
 
 Every write requires a UUID idempotency key. The local ledger commits before
@@ -394,7 +403,7 @@ owners, redirect URIs, app roles, or consent grants. Conditional Access updates
 can change only `state` and `displayName`; conditions and controls are
 read-only. No delete operation exists.
 
-## Planner task details
+## Workload example: Planner task details
 
 `m365_update_planner_task_details` closes the gap between basic Planner task
 fields and the separate Graph details resource. It can set a non-empty

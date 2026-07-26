@@ -1,5 +1,9 @@
 # Tool catalog and exposure model
 
+Microsoft Graph is the primary product surface. Planner is one workload in the
+catalog, not a separate architectural boundary or the project's central use
+case.
+
 The source defines 125 fixed contracts. A maximally enabled read process exposes
 96; a write process exposes the two common tools, the local receipt query, and
 only its selected write actions. The default process exposes only the two

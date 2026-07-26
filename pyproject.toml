@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "m365-secure-mcp"
 version = "0.5.0"
-description = "Secure-by-default Microsoft 365 MCP server for Codex and Claude Code"
+description = "Policy-bound Microsoft Graph MCP server for Codex and Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "Apache-2.0" }
