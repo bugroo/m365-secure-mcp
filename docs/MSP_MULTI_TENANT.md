@@ -173,9 +173,12 @@ remain private.
    signed allowlists, map each one to exact compiled contract IDs, then sign the
    private baseline. Use a separate privileged-read app and manual
    `Directory.Read.All` consent.
-10. Discover candidates and manually place approved IDs in the policy.
-11. Run offline doctor again and compare the policy digest.
-12. Connect named MCP entries. Allow prompt-free execution only for exact T1
+10. For application credential posture, select application object IDs in both
+    the local and signed allowlists, define owner/expiry/secret/count limits,
+    and sign the private baseline. Consent only `Application.Read.All`.
+11. Discover candidates and manually place approved IDs in the policy.
+12. Run offline doctor again and compare the policy digest.
+13. Connect named MCP entries. Allow prompt-free execution only for exact T1
     tools covered by signed `standing_policy`; keep host approval for all
     higher-risk or not-yet-compiled write contracts.
 

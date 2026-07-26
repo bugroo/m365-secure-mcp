@@ -417,6 +417,87 @@
       "verification": "resource_observed"
     },
     {
+      "authorization_mode": "automatic_read",
+      "compensation": "not_applicable",
+      "description": "Assess credential expiry, ownership, secret use, and redundant credentials for signed and locally allowlisted Entra application objects.",
+      "graph": {
+        "api_version": "v1.0",
+        "endpoint": "/applications/{application_id}",
+        "method": "GET"
+      },
+      "id": "entra.app_credentials.posture.snapshot",
+      "idempotency": {
+        "key_required": false,
+        "retry": "bounded_read_retry"
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "assurance",
+      "output_fields": [
+        "status",
+        "contract_digest",
+        "policy_digest",
+        "snapshot_reference",
+        "coverage_status",
+        "baseline_id",
+        "baseline_version",
+        "targets",
+        "findings",
+        "writes_performed"
+      ],
+      "permissions": {
+        "admin_consent_required": true,
+        "delegated_scopes": [
+          "Application.Read.All"
+        ],
+        "operator_roles": [
+          "Directory Readers",
+          "Global Reader"
+        ]
+      },
+      "plan_ttl_seconds": 0,
+      "postconditions": [
+        "complete_for_signed_targets_or_fail_closed",
+        "credential_metadata_only",
+        "no_key_secret_hint_or_thumbprint_in_snapshot",
+        "metadata_only_mcp_output",
+        "encrypted_tenant_local_snapshot",
+        "no_graph_write",
+        "no_automatic_remediation"
+      ],
+      "preconditions": [
+        "tenant_bound_identity",
+        "signed_governance_policy",
+        "privileged_read_profile",
+        "scope_claims_exact",
+        "signed_application_targets",
+        "local_application_allowlist",
+        "bounded_complete_collections"
+      ],
+      "preflight_graph_calls": [
+        {
+          "endpoint": "/applications/{application_id}/owners",
+          "method": "GET"
+        }
+      ],
+      "resource_fences": [
+        "session_tenant_only",
+        "signed_policy_tenant_only",
+        "signed_application_targets",
+        "local_application_allowlist",
+        "bounded_complete_collections",
+        "keyed_deployment_local_references",
+        "no_raw_resource_ids_in_mcp_output",
+        "no_credential_material_in_mcp_output"
+      ],
+      "risk_tier": "T0",
+      "tool_name": "m365_get_entra_app_credential_posture",
+      "verification": "resource_observed"
+    },
+    {
       "authorization_mode": "standing_policy",
       "compensation": "conditional_restore",
       "description": "Update only department, jobTitle, and officeLocation on one allowlisted, cloud-managed, non-privileged member user.",

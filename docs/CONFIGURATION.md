@@ -72,6 +72,14 @@ allowlisted service principals to exact compiled contract IDs and optional
 expiring permission exceptions. Runtime derives expected delegated scopes from
 those contracts; it cannot add arbitrary expected scopes or alter Entra grants.
 
+`application_credential_baseline` binds exact application object IDs to
+administrator-approved ownership, expiry, password-secret and active-credential
+limits. Its targets must also exist under `resources.applications` and in
+`M365_ALLOWED_APPLICATION_IDS`. Credential exceptions require an exact
+credential kind/key ID; application-level controls use separate exceptions.
+All exceptions are signed, justified and expiring. Runtime cannot promote a
+baseline, rotate credentials, assign owners or grant consent.
+
 ## Surface selection
 
 | Variable | Default | Meaning |
@@ -124,7 +132,7 @@ baseline or exception once, without a prompt on each snapshot.
 | `M365_ALLOWED_POWERBI_REPORT_IDS` | Power BI report boundary |
 | `M365_ALLOWED_POWERBI_DATASET_IDS` | Power BI dataset boundary |
 | `M365_ALLOWED_POWERBI_DASHBOARD_IDS` | Power BI dashboard boundary |
-| `M365_ALLOWED_APPLICATION_IDS` | Entra application registration reads/writes |
+| `M365_ALLOWED_APPLICATION_IDS` | Entra application registration reads/writes and signed credential-posture targets |
 | `M365_ALLOWED_SERVICE_PRINCIPAL_IDS` | Entra enterprise application reads/writes and signed permission-drift targets |
 | `M365_ALLOWED_CONDITIONAL_ACCESS_POLICY_IDS` | Conditional Access writes |
 | `M365_ALLOWED_EDISCOVERY_CASE_IDS` | Purview eDiscovery case metadata |
@@ -256,6 +264,14 @@ digests. Permission-grant drift additionally requires
 `M365_ALLOWED_SERVICE_PRINCIPAL_IDS`, the same IDs under signed
 `resources.service_principals`, and a signed `permission_grant_baseline`.
 Runtime has no consent, revocation, baseline-promotion or snapshot-read tool.
+
+Application credential posture requires `M365_ALLOWED_APPLICATION_IDS`, the
+same IDs in signed `resources.applications`, and a signed
+`application_credential_baseline`. It reads each exact application and its
+complete owner collection with `Application.Read.All`; it never lists all
+applications. Names, hints, thumbprints, public keys and secret values are
+neither persisted nor returned. An unexpected `key` or `secretText` value from
+Graph rejects the operation before an encrypted snapshot is written.
 
 ## Diagnostic commands
 

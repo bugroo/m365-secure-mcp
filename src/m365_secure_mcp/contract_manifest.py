@@ -100,6 +100,7 @@ class GraphCall(StrictModel):
             if segment.startswith("{") and segment.endswith("}")
         }
         if placeholders - {
+            "application_id",
             "resource_service_principal_id",
             "service_principal_id",
             "user_id",

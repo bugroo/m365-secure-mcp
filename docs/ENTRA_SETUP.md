@@ -62,6 +62,7 @@ Start with `User.Read`. Add modules independently:
 | Directory role definitions/assignments | `RoleManagement.Read.Directory` |
 | Compiled Entra governance posture snapshot | `Policy.Read.All`, `RoleManagement.Read.Directory` |
 | Compiled Entra permission-grant drift | `Directory.Read.All` |
+| Compiled Entra application credential posture | `Application.Read.All` |
 | Access reviews | `AccessReview.Read.All` |
 | Entitlement catalogs | `EntitlementManagement.Read.All` |
 | License inventory | `LicenseAssignment.Read.All` |
@@ -128,6 +129,16 @@ only `m365_get_entra_permission_grant_drift`, place every approved target
 service-principal object ID in both the local allowlist and signed Governance,
 and sign a contract-derived `permission_grant_baseline`. The MCP never creates,
 updates, revokes or consents a grant.
+
+The application credential posture process requests only
+`Application.Read.All` and should use `Directory Readers` or `Global Reader`.
+Configure only `m365_get_entra_app_credential_posture`, place every approved
+application object ID in both `M365_ALLOWED_APPLICATION_IDS` and signed
+`resources.applications`, and sign an `application_credential_baseline`.
+Runtime reads those exact applications and their owner collections; it does
+not enumerate the tenant. It never returns or persists application names,
+secret hints, thumbprints, public keys or secret values, and has no credential
+rotation or owner-assignment action.
 
 For `Sites.Selected`, an administrator must additionally grant the application
 access to each approved site. Configure the same site IDs and hostnames in the

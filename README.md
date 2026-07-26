@@ -11,7 +11,7 @@ to an identity, permission set, resource policy, and evidence trail.
 
 | Fixed tools | Compiled governance contracts | Read profile | Opt-in writes | Delete tools |
 |---:|---:|---:|---:|---:|
-| 127 | 7 Entra contracts | 99 max | 27 | 0 |
+| 128 | 8 Entra contracts | 100 max | 27 | 0 |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
@@ -61,7 +61,7 @@ flowchart TB
 | Assurance | posture, findings, audit, receipts, drift and release checks | produces evidence; does not remediate autonomously |
 
 The first compiled vertical slices are Entra Identity & Governance. Their
-signed manifest contains six bounded reads and one T1 write. The wider pre-existing
+signed manifest contains seven bounded reads and one T1 write. The wider pre-existing
 catalog remains statically coded while it is migrated contract by contract;
 the runtime never translates tenant metadata into a new tool.
 
@@ -319,9 +319,9 @@ because a stdio server cannot prove the host's approval policy.
 
 ### Read profile
 
-Up to **98 API read tools** (90 Microsoft Graph and 8 Power BI) are selected by
+Up to **99 API read tools** (91 Microsoft Graph and 8 Power BI) are selected by
 module and can be reduced to an exact allowlist. The local security-posture
-tool remains visible, for a maximum read process of 99 tools. Content-bearing
+tool remains visible, for a maximum read process of 100 tools. Content-bearing
 responses are normalized, bounded, and marked as untrusted external data.
 
 ### Write profile
@@ -342,7 +342,7 @@ exact tool/idempotency-key pair; it cannot enumerate the ledger and never calls
 Graph.
 
 <details>
-<summary><strong>Expand the 127-contract capability map</strong></summary>
+<summary><strong>Expand the 128-contract capability map</strong></summary>
 
 | Domain | Fixed reads | Opt-in writes |
 |---|---:|---:|
@@ -352,7 +352,7 @@ Graph.
 | Word, PowerPoint, Excel and OneNote | 9 | 4 |
 | People, groups, Entra users and devices | 11 | 4 |
 | Defender, audit, Intune, Windows 365, health | 12 | 2 |
-| Entra apps, governance, assurance, licensing, compliance | 21 | 3 |
+| Entra apps, governance, assurance, licensing, compliance | 22 | 3 |
 | Power BI | 8 | 2 |
 | Profile and organization | 2 | 0 |
 
@@ -598,7 +598,78 @@ as `complete_for_signed_targets`: this first slice intentionally evaluates only
 service principals whose expected capabilities are already represented by the
 compiled global manifest.
 
-Upgrading to `0.7.0` changes the signed global-manifest digest. Existing tenant
+### Application credential posture
+
+`m365_get_entra_app_credential_posture` adds a third compiled T0 Assurance
+workflow for app registrations selected by the tenant administrator. It
+detects expiring or expired credentials, password-secret use, insufficient
+ownership and redundant active credentials against a signed private baseline.
+It does not enumerate the tenant and accepts no application ID, Graph path,
+query, credential value or remediation command.
+
+```bash
+export M365_PROFILE="read"
+export M365_MODULES="profile,assurance"
+export M365_ENABLED_TOOLS="m365_get_entra_app_credential_posture"
+export M365_PRIVILEGED_MODULES_ENABLED="true"
+export M365_ALLOWED_APPLICATION_IDS="<approved object ID[,object ID...]>"
+export M365_GOVERNANCE_POLICY_PATH="/private/m365/governance-policy.signed.json"
+export M365_GOVERNANCE_PUBLIC_KEY_PATH="/private/m365/governance-signing.pub"
+```
+
+The tenant administrator manually adds and consents only
+`Application.Read.All`; a supported operator role is `Directory Readers` or
+`Global Reader`. The exact application object IDs must appear in both
+`M365_ALLOWED_APPLICATION_IDS` and signed `resources.applications`.
+
+```json
+{
+  "application_credential_baseline": {
+    "baseline_id": "approved-msp-application-posture",
+    "version": 1,
+    "targets": [
+      {
+        "application_id": "<approved application object ID>",
+        "minimum_owner_count": 2,
+        "expiry_warning_days": 30,
+        "password_credentials_allowed": false,
+        "maximum_active_password_credentials": 0,
+        "maximum_active_key_credentials": 2
+      }
+    ],
+    "exceptions": []
+  },
+  "resources": {
+    "applications": [
+      "<same approved application object ID>"
+    ]
+  }
+}
+```
+
+Graph documents that explicitly selecting `keyCredentials` can return public
+key values. This workflow deliberately avoids that query, immediately reduces
+the default application response, fails closed if Graph unexpectedly returns
+key or password material, and never persists names, secret hints, thumbprints,
+`secretText` or `key`. Raw object IDs and normalized validity metadata are
+encrypted in the owner-only tenant-local Assurance store; MCP receives only
+counts, deterministic findings, opaque HMAC references and a snapshot
+reference.
+
+Exceptions are signed and expiring. Credential findings additionally require
+the exact credential kind and key ID inside the private policy; an application
+level exception cannot silently suppress all credential findings. The tool
+never rotates, adds or removes credentials and never changes application
+owners.
+
+The control defaults follow Microsoft's guidance to prefer managed identity,
+federation or certificates over client secrets, review credential expiry, keep
+few credentials, and maintain accountable application owners:
+[app-registration security](https://learn.microsoft.com/en-us/entra/identity-platform/security-best-practices-for-app-registration),
+[credential management](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials),
+and [application ownership](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/what-is-application-management).
+
+Upgrading to `0.8.0` changes the signed global-manifest digest. Existing tenant
 policies remain fail-closed until the Governance owner reviews the new contract
 matrix, updates `contract_manifest_digest`, and explicitly signs a new private
 policy version. Runtime never migrates or re-signs tenant policy.
@@ -841,7 +912,7 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 127 fixed tools and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 128 fixed tools and their boundaries |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |
 | [Entra setup](docs/ENTRA_SETUP.md) | Registration, delegated scopes, consent |

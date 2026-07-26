@@ -4,9 +4,9 @@ Microsoft Graph is the primary product surface. Planner is one workload in the
 catalog, not a separate architectural boundary or the project's central use
 case.
 
-The source defines 127 fixed tools; the build-plane manifest compiles seven Entra
+The source defines 128 fixed tools; the build-plane manifest compiles eight Entra
 Governance/Assurance contracts while the remaining static catalog is migrated
-incrementally. A maximally enabled read process exposes 99 tools: 90 Microsoft
+incrementally. A maximally enabled read process exposes 100 tools: 91 Microsoft
 Graph reads, 8 Power BI reads, plus the local security-posture tool. A write
 process exposes the two common tools, the local receipt query, and only its
 selected write actions. The default process exposes only the two common tools.
@@ -202,6 +202,7 @@ principal results are narrowed by separate local UUID allowlists.
 
 - `m365_get_entra_identity_governance_posture`
 - `m365_get_entra_permission_grant_drift`
+- `m365_get_entra_app_credential_posture`
 
 This compiled T0 tool is a fixed, read-only workflow over Conditional Access,
 permanent directory-role assignments, active PIM assignments and PIM
@@ -240,6 +241,27 @@ tenant, service-principal, grant, resource or principal IDs. Complete raw
 evidence is encrypted in the same owner-only tenant-local Assurance store.
 Coverage is explicitly limited to the signed target set and fails closed on
 pagination, shape, size, policy or resource-fence ambiguity.
+
+Application credential posture is a third fixed T0 workflow. It uses
+`Application.Read.All` to read only application object IDs present in both a
+signed `application_credential_baseline` and the local
+`M365_ALLOWED_APPLICATION_IDS` fence, plus each target's complete owner
+collection. It never lists the tenant and accepts no target ID from MCP.
+
+The signed baseline sets the minimum owner count, expiry warning window,
+whether password credentials are allowed, and maximum active password/key
+credential counts per application. Findings cover owner shortage, expired,
+expiring or unbounded credentials, invalid validity windows, prohibited
+secrets and redundant active credentials. Exceptions are signed and expiring;
+credential exceptions bind the exact kind and credential key ID.
+
+Graph's opt-in `$select=keyCredentials` path can include public key data, so
+this workflow deliberately does not use it. Runtime discards names, hints,
+thumbprints and credential material, and fails closed if Graph unexpectedly
+returns `key` or `secretText`. MCP output contains only counts, findings and
+opaque HMAC references. The encrypted snapshot contains normalized IDs and
+validity metadata only. Credential rotation, removal and owner changes are
+absent.
 
 ## Microsoft Purview compliance
 

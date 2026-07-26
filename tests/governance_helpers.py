@@ -13,6 +13,7 @@ from m365_secure_mcp.contract_manifest import (
     sha256_digest,
 )
 from m365_secure_mcp.governance import (
+    ApplicationCredentialBaseline,
     GovernancePolicy,
     GovernanceProfile,
     GovernanceProfileName,
@@ -39,6 +40,8 @@ def write_signed_governance(
     identity_governance_baseline: IdentityGovernanceBaseline | None = None,
     permission_grant_baseline: PermissionGrantBaseline | None = None,
     service_principal_id: str | None = None,
+    application_credential_baseline: ApplicationCredentialBaseline | None = None,
+    application_id: str | None = None,
 ) -> tuple[Path, Path]:
     """Create owner-only test policy material outside the repository."""
 
@@ -59,6 +62,7 @@ def write_signed_governance(
         ),
         GovernanceProfileName.PRIVILEGED_READ: GovernanceProfile(
             enabled_contracts=[
+                "entra.app_credentials.posture.snapshot",
                 "entra.conditional_access.policies.read",
                 "entra.identity_governance.posture.snapshot",
                 "entra.permission_grants.drift.snapshot",
@@ -77,6 +81,11 @@ def write_signed_governance(
         resources=GovernanceResources(
             tenants=[UUID(tenant_id)],
             users=[UUID(user_id)],
+            applications=(
+                [UUID(application_id)]
+                if application_id is not None
+                else []
+            ),
             service_principals=(
                 [UUID(service_principal_id)]
                 if service_principal_id is not None
@@ -91,6 +100,7 @@ def write_signed_governance(
         ),
         identity_governance_baseline=identity_governance_baseline,
         permission_grant_baseline=permission_grant_baseline,
+        application_credential_baseline=application_credential_baseline,
         contract_manifest_digest=sha256_digest(manifest),
         issued_at=datetime.now(UTC),
         expires_at=datetime.now(UTC) + timedelta(hours=1),

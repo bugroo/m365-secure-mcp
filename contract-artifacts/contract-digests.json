@@ -1,5 +1,6 @@
 {
   "contracts": {
+    "entra.app_credentials.posture.snapshot": "sha256:89edc3a3df07795fbbeaa4f65749c21cd82a5c298342f836a8212c16978fcb6f",
     "entra.conditional_access.policies.read": "sha256:0dc20ec6035bb035bccc0ca6ac5702736730cef4c3a36a28a38fca5c8dc9c773",
     "entra.identity_governance.posture.snapshot": "sha256:1d5e1afcd5c313ef1f975f3c22d8cc480fbf5a37d4eae071ec3a1f8dd9b5aca2",
     "entra.organization.summary.read": "sha256:4ea3998c3aed55120671f4d81ad9a5637f76fb4a0854434cdea45b2420bfcae6",
@@ -8,6 +9,6 @@
     "entra.user.operational_profile.read": "sha256:cb10aea6c1691ea8401c80b4a61f7624f9b2e38abddd883bc698260e430cc13e",
     "entra.user.operational_profile.update": "sha256:329d50ad7cf61b0d707742611d3b9090bab7cfeecca82a9da0f77b2136a08a15"
   },
-  "manifest_digest": "sha256:f97d7c081cbdd98331e57832dd1dddaf0d3694da2293c59e7fcc1f574f81d91f",
+  "manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
   "schema_version": "1.0"
 }

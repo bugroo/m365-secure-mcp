@@ -109,6 +109,9 @@ ENTRA_SERVICE_PRINCIPAL_TOOLS = frozenset(
 ASSURANCE_SERVICE_PRINCIPAL_TOOLS = frozenset(
     {"m365_get_entra_permission_grant_drift"}
 )
+ASSURANCE_APPLICATION_TOOLS = frozenset(
+    {"m365_get_entra_app_credential_posture"}
+)
 USERS_ADMIN_TOOLS = frozenset(
     {"m365_list_allowed_users", "m365_get_allowed_user"}
 )
@@ -527,11 +530,24 @@ class Settings(BaseSettings):
                     "M365_ALLOWED_SERVICE_PRINCIPAL_IDS"
                 )
         if Module.ASSURANCE.value in module_names:
+            selected_application_posture_tools = (
+                ASSURANCE_APPLICATION_TOOLS
+                if not enabled_tools
+                else ASSURANCE_APPLICATION_TOOLS & enabled_tools
+            ) - disabled_tools
             selected_permission_drift_tools = (
                 ASSURANCE_SERVICE_PRINCIPAL_TOOLS
                 if not enabled_tools
                 else ASSURANCE_SERVICE_PRINCIPAL_TOOLS & enabled_tools
             ) - disabled_tools
+            if (
+                selected_application_posture_tools
+                and not self.application_ids
+            ):
+                raise ValueError(
+                    "Entra application credential posture requires "
+                    "M365_ALLOWED_APPLICATION_IDS"
+                )
             if (
                 selected_permission_drift_tools
                 and not self.service_principal_ids

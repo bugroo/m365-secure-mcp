@@ -62,6 +62,13 @@ class PermissionGrantKind(StrEnum):
     APPLICATION = "application"
 
 
+class ApplicationCredentialKind(StrEnum):
+    """Credential metadata classes evaluated by the application baseline."""
+
+    PASSWORD = "password"  # noqa: S105
+    KEY = "key"
+
+
 class DriftSeverity(StrEnum):
     """Administrator-governed severity for a mismatch with a signed baseline."""
 
@@ -100,12 +107,13 @@ class GovernanceResources(StrictModel):
     tenants: list[UUID] = Field(min_length=1, max_length=1)
     users: list[UUID] = Field(default_factory=list, max_length=10_000)
     groups: list[UUID] = Field(default_factory=list, max_length=10_000)
+    applications: list[UUID] = Field(default_factory=list, max_length=100)
     service_principals: list[UUID] = Field(default_factory=list, max_length=100)
     protected_user_ids: list[UUID] = Field(default_factory=list, max_length=1_000)
 
-    @field_validator("service_principals")
+    @field_validator("applications", "service_principals")
     @classmethod
-    def service_principals_are_unique_and_sorted(
+    def directory_resources_are_unique_and_sorted(
         cls,
         value: list[UUID],
     ) -> list[UUID]:
@@ -113,7 +121,7 @@ class GovernanceResources(StrictModel):
             {str(item) for item in value}
         ):
             raise ValueError(
-                "service-principal resources must be unique and sorted"
+                "application and service-principal resources must be unique and sorted"
             )
         return value
 
@@ -289,6 +297,128 @@ class PermissionGrantBaseline(StrictModel):
         return self
 
 
+class ApplicationCredentialTarget(StrictModel):
+    """Signed credential and ownership posture for one application object."""
+
+    application_id: UUID
+    minimum_owner_count: int = Field(default=2, ge=1, le=20)
+    expiry_warning_days: int = Field(default=30, ge=1, le=365)
+    password_credentials_allowed: bool = False
+    maximum_active_password_credentials: int = Field(default=0, ge=0, le=20)
+    maximum_active_key_credentials: int = Field(default=2, ge=0, le=20)
+
+    @model_validator(mode="after")
+    def password_limit_matches_policy(self) -> ApplicationCredentialTarget:
+        if (
+            not self.password_credentials_allowed
+            and self.maximum_active_password_credentials != 0
+        ):
+            raise ValueError(
+                "prohibited password credentials require a zero active limit"
+            )
+        return self
+
+
+class ApplicationCredentialException(StrictModel):
+    """Exact, expiring exception for one application posture control."""
+
+    exception_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
+    application_id: UUID
+    control_id: str = Field(pattern=r"^APP_[A-Z0-9_]{3,100}$")
+    credential_kind: ApplicationCredentialKind | None = None
+    credential_key_id: UUID | None = None
+    rationale: str = Field(min_length=8, max_length=500)
+    expires_at: datetime
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_has_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(
+                "application-credential exception expiry must include a UTC offset"
+            )
+        return value
+
+    @model_validator(mode="after")
+    def credential_selector_is_complete(
+        self,
+    ) -> ApplicationCredentialException:
+        credential_controls = {
+            "APP_CREDENTIAL_INVALID_WINDOW",
+            "APP_CREDENTIAL_NO_EXPIRY",
+            "APP_CREDENTIAL_EXPIRED",
+            "APP_CREDENTIAL_EXPIRING",
+            "APP_PASSWORD_CREDENTIAL_PROHIBITED",
+        }
+        application_controls = {
+            "APP_OWNER_COUNT_BELOW_MINIMUM",
+            "APP_ACTIVE_PASSWORD_CREDENTIALS_EXCEED_MAXIMUM",
+            "APP_ACTIVE_KEY_CREDENTIALS_EXCEED_MAXIMUM",
+        }
+        if self.control_id not in credential_controls | application_controls:
+            raise ValueError(
+                "application-credential exception references an unknown control"
+            )
+        if (self.credential_kind is None) != (self.credential_key_id is None):
+            raise ValueError(
+                "credential exceptions require both kind and key ID"
+            )
+        if (
+            self.control_id in credential_controls
+            and self.credential_key_id is None
+        ):
+            raise ValueError(
+                "credential-specific controls require an exact credential selector"
+            )
+        if (
+            self.control_id in application_controls
+            and self.credential_key_id is not None
+        ):
+            raise ValueError(
+                "application-level controls cannot select one credential"
+            )
+        return self
+
+
+class ApplicationCredentialBaseline(StrictModel):
+    """Signed posture expectations for an exact application allowlist."""
+
+    baseline_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
+    version: int = Field(ge=1, le=1_000_000)
+    targets: list[ApplicationCredentialTarget] = Field(
+        min_length=1,
+        max_length=100,
+    )
+    exceptions: list[ApplicationCredentialException] = Field(
+        default_factory=list,
+        max_length=500,
+    )
+
+    @model_validator(mode="after")
+    def targets_and_exceptions_are_bounded(
+        self,
+    ) -> ApplicationCredentialBaseline:
+        target_ids = [str(item.application_id) for item in self.targets]
+        if target_ids != sorted(set(target_ids)):
+            raise ValueError(
+                "application-credential targets must be unique and sorted"
+            )
+        exception_ids = [item.exception_id for item in self.exceptions]
+        if exception_ids != sorted(set(exception_ids)):
+            raise ValueError(
+                "application-credential exceptions must be unique and sorted"
+            )
+        if {
+            item.application_id for item in self.exceptions
+        } - {
+            item.application_id for item in self.targets
+        }:
+            raise ValueError(
+                "application-credential exceptions must reference baseline targets"
+            )
+        return self
+
+
 class GovernancePolicy(StrictModel):
     """Unsigned governance policy body; signatures wrap this exact object."""
 
@@ -300,6 +430,7 @@ class GovernancePolicy(StrictModel):
     authorization_overrides: dict[str, AuthorizationMode] = Field(default_factory=dict)
     identity_governance_baseline: IdentityGovernanceBaseline | None = None
     permission_grant_baseline: PermissionGrantBaseline | None = None
+    application_credential_baseline: ApplicationCredentialBaseline | None = None
     contract_manifest_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     issued_at: datetime
     expires_at: datetime | None = None
@@ -342,6 +473,15 @@ class GovernancePolicy(StrictModel):
             if target_ids - set(self.resources.service_principals):
                 raise ValueError(
                     "permission-grant baseline targets must be service-principal resources"
+                )
+        if self.application_credential_baseline is not None:
+            target_ids = {
+                item.application_id
+                for item in self.application_credential_baseline.targets
+            }
+            if target_ids - set(self.resources.applications):
+                raise ValueError(
+                    "application-credential targets must be application resources"
                 )
         if self.expires_at is not None:
             if self.expires_at.tzinfo is None:
@@ -522,6 +662,41 @@ class VerifiedGovernancePolicy:
         if not target_ids.issubset(local_service_principal_ids):
             raise GovernancePolicyError(
                 "permission-grant targets are not all allowlisted by runtime policy",
+                reason_code="RESOURCE_FENCE_MISMATCH",
+            )
+        return decision, baseline
+
+    def authorize_application_credential_read(
+        self,
+        contract: ContractSpec,
+        *,
+        tenant_id: str,
+        local_application_ids: frozenset[str],
+    ) -> tuple[ReadAuthorizationDecision, ApplicationCredentialBaseline]:
+        """Authorize posture collection for the exact signed/local app set."""
+
+        decision = self.authorize_read(contract, tenant_id=tenant_id)
+        baseline = self.policy.application_credential_baseline
+        if baseline is None:
+            raise GovernancePolicyError(
+                "application credential posture requires a signed target baseline",
+                reason_code="BASELINE_NOT_CONFIGURED",
+            )
+        maximum_targets = self.policy.profiles[
+            decision.profile
+        ].maximum_targets_per_operation
+        if len(baseline.targets) > maximum_targets:
+            raise GovernancePolicyError(
+                "application target count exceeds the signed profile limit",
+                reason_code="TARGET_LIMIT_EXCEEDED",
+            )
+        target_ids = {
+            str(item.application_id)
+            for item in baseline.targets
+        }
+        if not target_ids.issubset(local_application_ids):
+            raise GovernancePolicyError(
+                "application targets are not all allowlisted by runtime policy",
                 reason_code="RESOURCE_FENCE_MISMATCH",
             )
         return decision, baseline

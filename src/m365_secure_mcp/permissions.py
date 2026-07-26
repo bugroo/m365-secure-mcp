@@ -400,6 +400,12 @@ _register(
 )
 _register(
     _permissions,
+    module="assurance",
+    scopes=frozenset({"Application.Read.All"}),
+    tools=("m365_get_entra_app_credential_posture",),
+)
+_register(
+    _permissions,
     module="licensing",
     scopes=frozenset({"LicenseAssignment.Read.All"}),
     tools=("m365_list_subscribed_skus",),

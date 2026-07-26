@@ -210,6 +210,32 @@ def test_permission_grant_drift_requires_exact_targets_and_scope() -> None:
     )
 
 
+def test_application_credential_posture_requires_exact_targets_and_scope() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="M365_ALLOWED_APPLICATION_IDS",
+    ):
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_app_credential_posture",
+            governance_policy_path="/private/governance-policy.signed.json",
+            governance_public_key_path="/private/governance-policy.pub",
+        )
+    settings = make_settings(
+        modules="profile,assurance",
+        privileged_modules_enabled=True,
+        enabled_tools="m365_get_entra_app_credential_posture",
+        allowed_application_ids=APPLICATION_ID,
+        governance_policy_path="/private/governance-policy.signed.json",
+        governance_public_key_path="/private/governance-policy.pub",
+    )
+    assert settings.scopes == (
+        "Application.Read.All",
+        "User.Read",
+    )
+
+
 def test_compliance_reads_require_exact_resource_allowlists() -> None:
     with pytest.raises(
         ValidationError,

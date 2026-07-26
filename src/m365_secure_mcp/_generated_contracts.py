@@ -4,10 +4,54 @@ import json
 from typing import Any, Final
 
 CONTRACT_MANIFEST_DIGEST: Final = (
-    'sha256:f97d7c081cbdd98331e57832dd1dddaf0d3694da2293c59e7fcc1f574f81d91f'
+    'sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907'
 )
 CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     r'''{
+  "entra.app_credentials.posture.snapshot": {
+    "authorization_mode": "automatic_read",
+    "compensation": "not_applicable",
+    "delegated_scopes": [
+      "Application.Read.All"
+    ],
+    "endpoint": "/applications/{application_id}",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "method": "GET",
+    "module": "assurance",
+    "operator_roles": [
+      "Directory Readers",
+      "Global Reader"
+    ],
+    "output_fields": [
+      "status",
+      "contract_digest",
+      "policy_digest",
+      "snapshot_reference",
+      "coverage_status",
+      "baseline_id",
+      "baseline_version",
+      "targets",
+      "findings",
+      "writes_performed"
+    ],
+    "resource_fences": [
+      "session_tenant_only",
+      "signed_policy_tenant_only",
+      "signed_application_targets",
+      "local_application_allowlist",
+      "bounded_complete_collections",
+      "keyed_deployment_local_references",
+      "no_raw_resource_ids_in_mcp_output",
+      "no_credential_material_in_mcp_output"
+    ],
+    "risk_tier": "T0",
+    "tool_name": "m365_get_entra_app_credential_posture",
+    "verification": "resource_observed"
+  },
   "entra.conditional_access.policies.read": {
     "authorization_mode": "automatic_read",
     "compensation": "not_applicable",

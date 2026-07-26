@@ -14,6 +14,7 @@
     "privileged-read": {
       "break_glass_ttl_seconds": null,
       "enabled_contracts": [
+        "entra.app_credentials.posture.snapshot",
         "entra.conditional_access.policies.read",
         "entra.identity_governance.posture.snapshot",
         "entra.permission_grants.drift.snapshot",
@@ -48,9 +49,11 @@
       "write_window_utc": null
     }
   },
+  "application_credential_baseline": null,
   "identity_governance_baseline": null,
   "permission_grant_baseline": null,
   "resources": {
+    "applications": [],
     "groups": [],
     "protected_user_ids": [],
     "service_principals": [],

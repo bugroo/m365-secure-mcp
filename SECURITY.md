@@ -31,11 +31,12 @@ the blast radius of:
 6. **Build/Governance → runtime.** A pinned signed global manifest defines
    contract floors. A separate signed tenant policy can select resources and
    harden authorization, but runtime cannot edit or sign either authority.
-7. **Assurance evidence → operator.** Conditional Access, directory roles and
-   application permission grants are sensitive. Runtime returns only metrics,
-   deterministic findings, public permission values and deployment-keyed
-   references/digests; full normalized snapshots are encrypted in a
-   tenant-local owner-only file with no MCP read/decrypt surface.
+7. **Assurance evidence → operator.** Conditional Access, directory roles,
+   application permission grants, credentials and ownership are sensitive.
+   Runtime returns only metrics, deterministic findings, public permission
+   values and deployment-keyed references/digests; full minimized snapshots
+   are encrypted in a tenant-local owner-only file with no MCP read/decrypt
+   surface.
 
 ## Implemented controls
 
@@ -88,6 +89,11 @@ the blast radius of:
   baseline and a separate local UUID allowlist. It accepts no target/filter,
   treats app-only grants as critical unless exactly excepted, and has no
   consent, revocation or remediation tool.
+- Application credential posture is a separate fixed T0 contract using only
+  `Application.Read.All`. Targets must appear in a signed baseline and the
+  local application allowlist. It never lists all applications, accepts no
+  target input, returns no raw IDs or credential material, and has no
+  credential/owner write path.
 - Purview eDiscovery cases and retention labels use independent UUID
   allowlists. Only metadata/definition reads exist; case content, searches,
   holds, exports, label assignment, mutation, close, and delete are absent.
@@ -131,6 +137,10 @@ the blast radius of:
 - The permission-grant baseline is independently signed and maps allowlisted
   targets to exact compiled contract IDs. Expected scopes are derived
   deterministically; runtime cannot accept arbitrary permission expectations.
+- The application-credential baseline independently signs exact application
+  targets, owner minimums, expiry windows, secret policy and active-credential
+  limits. Credential exceptions bind an exact kind/key ID; application-level
+  exceptions cannot suppress arbitrary credential findings.
 - HMAC keys are deployment/tenant-profile local, kept in OS Keychain and
   cryptographically separated from the Fernet encryption operation. Digests
   cannot be compared across customer deployments.
@@ -141,6 +151,10 @@ the blast radius of:
   control/domain; permission exceptions bind target, kind, resource app,
   permission value and consent type. Expired exceptions stop affecting
   classification automatically.
+- Application credential evidence never stores names, secret hints,
+  thumbprints, `secretText`, public key values or certificate material. The
+  fixed Graph request avoids the `$select=keyCredentials` opt-in and rejects an
+  unexpected non-empty `key` or `secretText` before snapshot persistence.
 - A policy change during collection invalidates the result. A missing baseline
   is `not_evaluated`, never silently `aligned`.
 - The encrypted append-only snapshot contains raw normalized IDs/conditions

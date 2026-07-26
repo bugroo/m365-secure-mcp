@@ -24,6 +24,10 @@ from .contract_manifest import (
     load_global_manifest,
     sha256_digest,
 )
+from .entra_app_credentials import (
+    TOOL_NAME as ENTRA_APP_CREDENTIAL_POSTURE_TOOL_NAME,
+)
+from .entra_app_credentials import EntraApplicationCredentialPostureService
 from .entra_operations import (
     CONTRACT_ID as ENTRA_OPERATIONAL_PROFILE_CONTRACT_ID,
 )
@@ -551,6 +555,13 @@ def _register_assurance_read(
         governance=services.governance,
         snapshots=services.assurance_snapshots,
     )
+    application_credentials = EntraApplicationCredentialPostureService(
+        graph=services.graph,
+        settings=services.settings,
+        manifest=manifest,
+        governance=services.governance,
+        snapshots=services.assurance_snapshots,
+    )
 
     @mcp.tool(
         name=ENTRA_POSTURE_TOOL_NAME,
@@ -613,6 +624,38 @@ def _register_assurance_read(
 
         return await runner.call(
             ENTRA_PERMISSION_DRIFT_TOOL_NAME,
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name=ENTRA_APP_CREDENTIAL_POSTURE_TOOL_NAME,
+        annotations=_read_annotations(
+            "Get Entra Application Credential Posture"
+        ),
+    )
+    async def get_entra_app_credential_posture(
+        params: BasicInput,
+    ) -> ToolResponse:
+        """Assess signed application credential and ownership posture.
+
+        Target applications come only from signed Governance and the local
+        runtime allowlist. The tool lists no tenant-wide applications, accepts
+        no IDs, performs no writes, and never returns credential material.
+        """
+
+        async def operation() -> str:
+            report = await application_credentials.collect()
+            return render_record(
+                title="Entra Application Credential Posture",
+                record=report.model_dump(mode="json"),
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+                external_content=False,
+            )
+
+        return await runner.call(
+            ENTRA_APP_CREDENTIAL_POSTURE_TOOL_NAME,
             params.model_dump(mode="json"),
             operation,
         )

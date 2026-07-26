@@ -191,6 +191,51 @@ async def test_permission_drift_tool_accepts_no_target_or_graph_arguments(
 
 
 @pytest.mark.asyncio
+async def test_app_credential_posture_accepts_no_target_or_graph_arguments(
+    tmp_path,
+) -> None:
+    governance_policy, governance_key = write_signed_governance(
+        tmp_path,
+        tenant_id=TENANT_ID,
+        user_id=RESOURCE_ID,
+        application_id=APPLICATION_ID,
+    )
+    server = create_server(
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_app_credential_posture",
+            allowed_application_ids=APPLICATION_ID,
+            governance_policy_path=governance_policy,
+            governance_public_key_path=governance_key,
+        )
+    )
+    tool = next(
+        item
+        for item in await server.list_tools()
+        if item.name == "m365_get_entra_app_credential_posture"
+    )
+    annotations = tool.annotations
+    assert annotations is not None
+    assert annotations.readOnlyHint is True
+    assert annotations.destructiveHint is False
+    params_schema = tool.inputSchema["properties"]["params"]
+    schema_name = params_schema["$ref"].removeprefix("#/$defs/")
+    fields = set(tool.inputSchema["$defs"][schema_name]["properties"])
+    assert fields == {"response_format"}
+    assert fields.isdisjoint(
+        {
+            "application_id",
+            "endpoint",
+            "method",
+            "select",
+            "credential",
+            "secret",
+        }
+    )
+
+
+@pytest.mark.asyncio
 async def test_catalog_is_broad_and_module_scoped() -> None:
     server = create_server(
         make_settings(

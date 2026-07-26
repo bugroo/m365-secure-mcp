@@ -76,6 +76,17 @@
       "risk_tier": "T0"
     },
     {
+      "authorization_mode": "automatic_read",
+      "contract_id": "entra.app_credentials.posture.snapshot",
+      "delegated_scopes": [
+        "Application.Read.All"
+      ],
+      "endpoint": "/applications/{application_id}",
+      "input_fields": [],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
       "authorization_mode": "standing_policy",
       "contract_id": "entra.user.operational_profile.update",
       "delegated_scopes": [
@@ -95,6 +106,6 @@
       "risk_tier": "T1"
     }
   ],
-  "manifest_digest": "sha256:f97d7c081cbdd98331e57832dd1dddaf0d3694da2293c59e7fcc1f574f81d91f",
+  "manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
   "schema_version": "1.0"
 }
