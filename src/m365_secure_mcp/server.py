@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Awaitable, Callable
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, TypeVar
-from uuid import NAMESPACE_URL, UUID, uuid5
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -16,7 +18,7 @@ from .auth import TokenProvider
 from .catalog import register_catalog_tools
 from .config import Module, Profile, Settings
 from .formatting import addresses, render_collection, render_record
-from .graph import GraphClient, agent_safe_error
+from .graph import GraphClient, classify_agent_error
 from .models import (
     BasicInput,
     CalendarInput,
@@ -43,7 +45,9 @@ from .models import (
     UpdatePlannerTaskDetailsInput,
     UpdatePlannerTaskInput,
     UpdateTodoTaskInput,
+    WriteOperationQueryInput,
 )
+from .protocol import ToolResponse, error_response, success_response
 from .security import (
     AuditLogger,
     CursorCodec,
@@ -55,7 +59,7 @@ from .security import (
     path_segment,
     validate_timezone,
 )
-from .state import IdempotencyStore, WriteRateLimiter
+from .state import IdempotencyStore, WriteRateLimiter, WriteStateError
 
 T = TypeVar("T")
 
@@ -131,12 +135,23 @@ class ToolRunner:
         operation: Callable[[], Awaitable[str]],
         *,
         write: bool = False,
-    ) -> str:
-        if write:
+    ) -> ToolResponse:
+        operation_id = uuid4()
+        started = time.monotonic()
+        receipt = None
+        try:
             self.services.audit.record(
                 tool=tool,
                 outcome="attempt",
                 parameters=parameters,
+                operation_id=str(operation_id),
+            )
+        except Exception as exc:
+            return error_response(
+                tool=tool,
+                operation_id=operation_id,
+                exc=exc,
+                audit_recorded=False,
             )
         try:
             if write:
@@ -144,27 +159,85 @@ class ToolRunner:
                 idempotency_key = parameters.get("idempotency_key")
                 if not idempotency_key:
                     raise ValueError("write tools require an idempotency key")
-                result = await self.services.idempotency.execute(
+                graph_writes_before = getattr(
+                    self.services.graph,
+                    "write_attempt_count",
+                    0,
+                )
+                execution = await self.services.idempotency.execute(
                     tool,
                     str(idempotency_key),
                     parameters,
                     operation,
+                    operation_id=operation_id,
+                    write_attempted=lambda: (
+                        getattr(
+                            self.services.graph,
+                            "write_attempt_count",
+                            graph_writes_before,
+                        )
+                        > graph_writes_before
+                    ),
                 )
+                result = execution.result
+                receipt = execution.receipt
+                operation_id = receipt.operation_id
             else:
                 result = await operation()
-            self.services.audit.record(
+            audit_recorded = True
+            try:
+                self.services.audit.record(
+                    tool=tool,
+                    outcome="success",
+                    parameters=parameters,
+                    operation_id=str(operation_id),
+                    duration_ms=round((time.monotonic() - started) * 1_000),
+                )
+            except Exception:
+                audit_recorded = False
+            return success_response(
                 tool=tool,
-                outcome="success",
-                parameters=parameters,
+                operation_id=operation_id,
+                text=result,
+                receipt=receipt,
+                audit_recorded=audit_recorded,
             )
-            return result
         except Exception as exc:
-            self.services.audit.record(
+            if isinstance(exc, WriteStateError):
+                receipt = exc.receipt
+                operation_id = receipt.operation_id
+            elif write:
+                idempotency_key = parameters.get("idempotency_key")
+                if idempotency_key:
+                    try:
+                        receipt = await self.services.idempotency.get_receipt(
+                            tool=tool,
+                            idempotency_key=str(idempotency_key),
+                        )
+                    except Exception:
+                        receipt = None
+                    if receipt is not None:
+                        operation_id = receipt.operation_id
+            details = classify_agent_error(exc)
+            audit_recorded = True
+            try:
+                self.services.audit.record(
+                    tool=tool,
+                    outcome=f"error:{details.code}",
+                    parameters=parameters,
+                    request_id=details.graph_request_id,
+                    operation_id=str(operation_id),
+                    duration_ms=round((time.monotonic() - started) * 1_000),
+                )
+            except Exception:
+                audit_recorded = False
+            return error_response(
                 tool=tool,
-                outcome=f"rejected:{type(exc).__name__}",
-                parameters=parameters,
+                operation_id=operation_id,
+                exc=exc,
+                receipt=receipt,
+                audit_recorded=audit_recorded,
             )
-            return agent_safe_error(exc)
 
 
 def _next_cursor(
@@ -250,12 +323,13 @@ def _register_common_tools(mcp: FastMCP, services: Services, runner: ToolRunner)
         name="m365_get_security_posture",
         annotations=_read_annotations("Get M365 MCP Security Posture"),
     )
-    async def security_posture(params: BasicInput) -> str:
+    async def security_posture(params: BasicInput) -> ToolResponse:
         """Inspect the effective local security profile without exposing credentials."""
 
         async def operation() -> str:
             principal = services.graph.principal
             record = services.settings.public_summary()
+            record["policy_digest"] = services.settings.policy_digest
             record["authenticated_principal"] = (
                 {
                     "object_id": principal.object_id,
@@ -282,7 +356,7 @@ def _register_common_tools(mcp: FastMCP, services: Services, runner: ToolRunner)
         name="m365_get_my_profile",
         annotations=_read_annotations("Get Signed-in M365 Profile"),
     )
-    async def get_my_profile(params: BasicInput) -> str:
+    async def get_my_profile(params: BasicInput) -> ToolResponse:
         """Get and policy-check the signed-in Microsoft 365 principal."""
 
         async def operation() -> str:
@@ -311,7 +385,7 @@ def _register_mail_read(mcp: FastMCP, services: Services, runner: ToolRunner) ->
         name="m365_search_mail",
         annotations=_read_annotations("Search M365 Mail"),
     )
-    async def search_mail(params: MailSearchInput) -> str:
+    async def search_mail(params: MailSearchInput) -> ToolResponse:
         """Search one mailbox folder and return bounded message summaries.
 
         This read-only tool returns a signed cursor for subsequent pages. Message content is
@@ -367,7 +441,7 @@ def _register_mail_read(mcp: FastMCP, services: Services, runner: ToolRunner) ->
         name="m365_get_mail_message",
         annotations=_read_annotations("Get M365 Mail Message"),
     )
-    async def get_mail_message(params: MailMessageInput) -> str:
+    async def get_mail_message(params: MailMessageInput) -> ToolResponse:
         """Get one mail message by an ID returned from m365_search_mail.
 
         HTML is converted to plain text and scripts, styles, and hidden SVG are discarded.
@@ -412,7 +486,7 @@ def _register_calendar_read(mcp: FastMCP, services: Services, runner: ToolRunner
         name="m365_list_calendar",
         annotations=_read_annotations("List M365 Calendar"),
     )
-    async def list_calendar(params: CalendarInput) -> str:
+    async def list_calendar(params: CalendarInput) -> ToolResponse:
         """List calendar events in an explicit time window with signed pagination."""
 
         async def operation() -> str:
@@ -451,7 +525,7 @@ def _register_calendar_read(mcp: FastMCP, services: Services, runner: ToolRunner
         name="m365_find_schedule",
         annotations=_read_annotations("Find M365 Schedule Availability"),
     )
-    async def find_schedule(params: ScheduleInput) -> str:
+    async def find_schedule(params: ScheduleInput) -> ToolResponse:
         """Read free/busy schedules for explicitly named attendees.
 
         Although Graph implements this as POST, this operation is read-only and creates no event.
@@ -498,7 +572,7 @@ def _register_files_read(mcp: FastMCP, services: Services, runner: ToolRunner) -
         name="m365_search_files",
         annotations=_read_annotations("Search M365 OneDrive Files"),
     )
-    async def search_files(params: FileSearchInput) -> str:
+    async def search_files(params: FileSearchInput) -> ToolResponse:
         """Search the signed-in user's OneDrive and return metadata only.
 
         The server never follows pre-authenticated download redirects and never executes file
@@ -540,7 +614,7 @@ def _register_files_read(mcp: FastMCP, services: Services, runner: ToolRunner) -
         name="m365_get_file_metadata",
         annotations=_read_annotations("Get M365 File Metadata"),
     )
-    async def get_file_metadata(params: FileMetadataInput) -> str:
+    async def get_file_metadata(params: FileMetadataInput) -> ToolResponse:
         """Get metadata for one OneDrive item; does not download its content."""
 
         async def operation() -> str:
@@ -573,7 +647,7 @@ def _register_sites_read(mcp: FastMCP, services: Services, runner: ToolRunner) -
         name="m365_list_allowed_sites",
         annotations=_read_annotations("List Allowlisted SharePoint Sites"),
     )
-    async def list_allowed_sites(params: BasicInput) -> str:
+    async def list_allowed_sites(params: BasicInput) -> ToolResponse:
         """Get only SharePoint sites named in the local site-ID allowlist.
 
         No tenant-wide site search is exposed, avoiding a broad Sites.Read.All permission.
@@ -616,7 +690,7 @@ def _register_contacts_read(mcp: FastMCP, services: Services, runner: ToolRunner
         name="m365_search_contacts",
         annotations=_read_annotations("Search M365 Contacts"),
     )
-    async def search_contacts(params: ContactSearchInput) -> str:
+    async def search_contacts(params: ContactSearchInput) -> ToolResponse:
         """Search personal Outlook contacts by display name."""
 
         async def operation() -> str:
@@ -668,7 +742,7 @@ def _register_todo_read(mcp: FastMCP, services: Services, runner: ToolRunner) ->
         name="m365_list_todo_tasks",
         annotations=_read_annotations("List M365 To Do Tasks"),
     )
-    async def list_todo_tasks(params: TodoListInput) -> str:
+    async def list_todo_tasks(params: TodoListInput) -> ToolResponse:
         """List tasks from an explicit Microsoft To Do list ID."""
 
         async def operation() -> str:
@@ -804,7 +878,7 @@ def _register_planner_read(mcp: FastMCP, services: Services, runner: ToolRunner)
         name="m365_list_allowed_plans",
         annotations=_read_annotations("List Allowlisted M365 Planner Plans"),
     )
-    async def list_allowed_plans(params: BasicInput) -> str:
+    async def list_allowed_plans(params: BasicInput) -> ToolResponse:
         """List only Planner plans present in the local plan-ID allowlist."""
 
         async def operation() -> str:
@@ -844,7 +918,7 @@ def _register_planner_read(mcp: FastMCP, services: Services, runner: ToolRunner)
         name="m365_list_planner_tasks",
         annotations=_read_annotations("List M365 Planner Tasks"),
     )
-    async def list_planner_tasks(params: PlannerPlanInput) -> str:
+    async def list_planner_tasks(params: PlannerPlanInput) -> ToolResponse:
         """List tasks in one explicitly allowlisted Planner plan."""
 
         async def operation() -> str:
@@ -881,7 +955,7 @@ def _register_planner_read(mcp: FastMCP, services: Services, runner: ToolRunner)
         name="m365_list_planner_buckets",
         annotations=_read_annotations("List M365 Planner Buckets"),
     )
-    async def list_planner_buckets(params: PlannerPlanInput) -> str:
+    async def list_planner_buckets(params: PlannerPlanInput) -> ToolResponse:
         """List buckets in one explicitly allowlisted Planner plan."""
 
         async def operation() -> str:
@@ -923,7 +997,7 @@ def _register_planner_read(mcp: FastMCP, services: Services, runner: ToolRunner)
         name="m365_get_planner_task",
         annotations=_read_annotations("Get M365 Planner Task"),
     )
-    async def get_planner_task(params: PlannerTaskInput) -> str:
+    async def get_planner_task(params: PlannerTaskInput) -> ToolResponse:
         """Get one Planner task plus bounded details, after enforcing its plan allowlist."""
 
         async def operation() -> str:
@@ -953,7 +1027,7 @@ def _register_teams_read(mcp: FastMCP, services: Services, runner: ToolRunner) -
         name="m365_list_channel_messages",
         annotations=_read_annotations("List M365 Teams Channel Messages"),
     )
-    async def list_channel_messages(params: TeamsMessageInput) -> str:
+    async def list_channel_messages(params: TeamsMessageInput) -> ToolResponse:
         """List messages from one explicit Teams team/channel pair.
 
         Teams permissions are broad and admin-restricted, so this module is never enabled by
@@ -1011,10 +1085,53 @@ def _register_teams_read(mcp: FastMCP, services: Services, runner: ToolRunner) -
 
 def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) -> None:
     @mcp.tool(
+        name="m365_get_write_operation",
+        annotations=_read_annotations("Get M365 Write Operation Receipt"),
+    )
+    async def get_write_operation(params: WriteOperationQueryInput) -> ToolResponse:
+        """Get one metadata-only local receipt without listing write history.
+
+        This tool never calls Microsoft Graph. It accepts either the public operation ID
+        returned by a write or the exact write-tool/idempotency-key pair.
+        """
+
+        async def operation() -> str:
+            if params.tool is not None:
+                action = WRITE_TOOL_ACTIONS.get(params.tool)
+                if action is None or action not in services.settings.enabled_write_actions:
+                    raise SecurityError("write receipt tool is outside the active action policy")
+            receipt = await services.idempotency.get_receipt(
+                operation_id=params.operation_id,
+                tool=params.tool,
+                idempotency_key=(
+                    str(params.idempotency_key)
+                    if params.idempotency_key is not None
+                    else None
+                ),
+            )
+            if receipt is None:
+                raise SecurityError("write operation receipt was not found")
+            action = WRITE_TOOL_ACTIONS.get(receipt.tool)
+            if action is None or action not in services.settings.enabled_write_actions:
+                raise SecurityError("write receipt is outside the active action policy")
+            return render_record(
+                title="M365 Write Operation Receipt",
+                record=receipt.model_dump(mode="json", exclude_none=True),
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_get_write_operation",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
         name="m365_create_mail_draft",
         annotations=_write_annotations("Create M365 Mail Draft"),
     )
-    async def create_mail_draft(params: CreateDraftInput) -> str:
+    async def create_mail_draft(params: CreateDraftInput) -> ToolResponse:
         """Create, but never send, a plain-text mail draft.
 
         Requires the separate write profile, an action allowlist, recipient-domain allowlists,
@@ -1067,7 +1184,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         name="m365_send_mail_draft",
         annotations=_write_annotations("Send Existing M365 Mail Draft"),
     )
-    async def send_mail_draft(params: SendDraftInput) -> str:
+    async def send_mail_draft(params: SendDraftInput) -> ToolResponse:
         """Send one existing draft by ID; cannot compose or alter its content.
 
         The mail.send_draft action must be explicitly enabled. Configure the MCP client to
@@ -1111,7 +1228,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         name="m365_create_calendar_event",
         annotations=_write_annotations("Create M365 Calendar Event"),
     )
-    async def create_calendar_event(params: CreateEventInput) -> str:
+    async def create_calendar_event(params: CreateEventInput) -> ToolResponse:
         """Create a calendar event with Graph transaction-id idempotency.
 
         Requires the separate write profile, calendar.create_event action allowlist, attendee
@@ -1166,7 +1283,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
             idempotent=True,
         ),
     )
-    async def update_calendar_event(params: UpdateEventInput) -> str:
+    async def update_calendar_event(params: UpdateEventInput) -> ToolResponse:
         """Update selected event fields with mandatory ETag concurrency."""
 
         async def operation() -> str:
@@ -1208,7 +1325,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         name="m365_create_contact",
         annotations=_write_annotations("Create M365 Contact"),
     )
-    async def create_contact(params: CreateContactInput) -> str:
+    async def create_contact(params: CreateContactInput) -> ToolResponse:
         """Create a personal Outlook contact with allowlisted email domains."""
 
         async def operation() -> str:
@@ -1252,7 +1369,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         name="m365_create_todo_task",
         annotations=_write_annotations("Create M365 To Do Task"),
     )
-    async def create_todo_task(params: CreateTodoTaskInput) -> str:
+    async def create_todo_task(params: CreateTodoTaskInput) -> ToolResponse:
         """Create a task in one explicit Microsoft To Do list."""
 
         async def operation() -> str:
@@ -1298,7 +1415,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
             idempotent=True,
         ),
     )
-    async def update_todo_task(params: UpdateTodoTaskInput) -> str:
+    async def update_todo_task(params: UpdateTodoTaskInput) -> ToolResponse:
         """Update selected To Do task fields with mandatory ETag concurrency."""
 
         async def operation() -> str:
@@ -1347,7 +1464,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         name="m365_send_channel_message",
         annotations=_write_annotations("Send M365 Teams Channel Message"),
     )
-    async def send_channel_message(params: SendChannelMessageInput) -> str:
+    async def send_channel_message(params: SendChannelMessageInput) -> ToolResponse:
         """Send plain text to one channel inside a locally allowlisted Team."""
 
         async def operation() -> str:
@@ -1384,7 +1501,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         name="m365_send_chat_message",
         annotations=_write_annotations("Send M365 Teams Chat Message"),
     )
-    async def send_chat_message(params: SendChatMessageInput) -> str:
+    async def send_chat_message(params: SendChatMessageInput) -> ToolResponse:
         """Send plain text to one locally allowlisted Teams chat."""
 
         async def operation() -> str:
@@ -1416,7 +1533,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         name="m365_create_planner_task",
         annotations=_write_annotations("Create M365 Planner Task"),
     )
-    async def create_planner_task(params: CreatePlannerTaskInput) -> str:
+    async def create_planner_task(params: CreatePlannerTaskInput) -> ToolResponse:
         """Create a task only inside an allowlisted Planner plan.
 
         Assignees must also be present in the object-ID allowlist. No Planner delete tools are
@@ -1479,7 +1596,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
             idempotent=True,
         ),
     )
-    async def update_planner_task(params: UpdatePlannerTaskInput) -> str:
+    async def update_planner_task(params: UpdatePlannerTaskInput) -> ToolResponse:
         """Update selected fields on one Planner task using mandatory ETag concurrency.
 
         The tool first verifies that the task belongs to the declared allowlisted plan. A stale
@@ -1542,7 +1659,9 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
             idempotent=True,
         ),
     )
-    async def update_planner_task_details(params: UpdatePlannerTaskDetailsInput) -> str:
+    async def update_planner_task_details(
+        params: UpdatePlannerTaskDetailsInput,
+    ) -> ToolResponse:
         """Update a Planner description, preview, or checklist without delete semantics.
 
         The task must belong to the declared allowlisted plan. Use only the details_etag returned
@@ -1692,9 +1811,18 @@ def create_server(settings: Settings) -> FastMCP:
         write_limiter=WriteRateLimiter(settings.write_rate_limit_per_minute),
     )
     runner = ToolRunner(services)
+
+    @asynccontextmanager
+    async def lifespan(_: FastMCP) -> AsyncIterator[None]:
+        try:
+            yield
+        finally:
+            await graph.close()
+
     mcp = FastMCP(
         "m365_secure_mcp",
         instructions=SERVER_INSTRUCTIONS,
+        lifespan=lifespan,
     )
     _register_common_tools(mcp, services, runner)
 

@@ -61,7 +61,7 @@ required allowlist. Chat tools return or accept only allowlisted chat IDs.
 | `M365_WRITE_ENABLED` | `false` | Independent write-profile gate |
 | `M365_WRITE_ACTIONS` | blank | Exact action allowlist |
 | `M365_WRITE_RATE_LIMIT_PER_MINUTE` | `10` | Per-tool local rate limit |
-| `M365_IDEMPOTENCY_PENDING_SECONDS` | `86400` | Pending-key fail-closed period |
+| `M365_IDEMPOTENCY_PENDING_SECONDS` | `86400` | Age at which an orphaned pending reservation is classified as uncertain; neither state auto-retries |
 | `M365_IDEMPOTENCY_DB_PATH` | platform path | Optional ledger override |
 
 Known write actions:
@@ -98,4 +98,15 @@ or checklist changes, or vice versa.
 | `M365_AUDIT_LOG_PATH` | platform log directory |
 
 Audit records contain tool/outcome metadata and keyed parameter fingerprints,
-not raw Microsoft 365 content.
+not raw Microsoft 365 content. Each event also includes the public operation ID
+and elapsed time so attempts can be correlated with structured MCP results and
+write receipts.
+
+## Diagnostic commands
+
+| Command | Network | Purpose |
+|---|---:|---|
+| `m365-secure-mcp --doctor` | no | Tool/result surface, delete check, private state, egress, identity, cache, write gates |
+| `m365-secure-mcp --doctor live` | read-only Graph | Delegated scope claims plus policy-checked `/me` |
+| `m365-secure-mcp --explain-permissions` | no | Tool-by-tool module/action reason for every requested scope |
+| `m365-secure-mcp --print-policy` | no | Secret-free policy and stable SHA-256 digest |

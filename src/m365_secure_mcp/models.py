@@ -120,6 +120,30 @@ class PlannerTaskInput(StrictInput):
     response_format: ResponseFormat = ResponseFormat.MARKDOWN
 
 
+class WriteOperationQueryInput(StrictInput):
+    """Select one metadata-only write receipt without enumerating the ledger."""
+
+    operation_id: UUID | None = None
+    tool: str | None = Field(
+        default=None,
+        pattern=r"^m365_[a-z0-9_]{3,96}$",
+        max_length=128,
+    )
+    idempotency_key: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_selector(self) -> WriteOperationQueryInput:
+        by_operation = self.operation_id is not None
+        by_pair = self.tool is not None or self.idempotency_key is not None
+        if by_operation == by_pair:
+            raise ValueError(
+                "provide either operation_id or the tool and idempotency_key pair"
+            )
+        if not by_operation and (self.tool is None or self.idempotency_key is None):
+            raise ValueError("tool and idempotency_key must be supplied together")
+        return self
+
+
 class CreatePlannerTaskInput(StrictInput):
     plan_id: str = Field(min_length=1, max_length=512)
     bucket_id: str = Field(min_length=1, max_length=512)

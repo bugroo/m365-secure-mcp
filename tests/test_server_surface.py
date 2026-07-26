@@ -121,8 +121,9 @@ async def test_all_write_actions_are_independently_discoverable() -> None:
         )
     )
     names = {tool.name for tool in await server.list_tools()}
-    assert len(names) == 14
+    assert len(names) == 15
     assert set(WRITE_TOOL_ACTIONS) <= names
+    assert "m365_get_write_operation" in names
 
 
 @pytest.mark.asyncio
@@ -158,4 +159,22 @@ def test_out_of_profile_tool_filter_fails_startup() -> None:
             make_settings(
                 enabled_tools="m365_list_security_incidents",
             )
+        )
+
+
+@pytest.mark.asyncio
+async def test_every_tool_advertises_the_versioned_result_schema() -> None:
+    server = create_server(
+        make_settings(
+            modules="profile,directory",
+        )
+    )
+    tools = await server.list_tools()
+    assert tools
+    for tool in tools:
+        assert tool.outputSchema is not None
+        properties = tool.outputSchema["properties"]
+        assert properties["schema_version"]["const"] == "1.0"
+        assert {"ok", "tool", "operation_id", "error", "retry", "evidence"} <= set(
+            properties
         )

@@ -9,6 +9,7 @@ import json
 import os
 import re
 import secrets
+import stat
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -28,6 +29,51 @@ SAFE_TIMEZONE = re.compile(r"^[A-Za-z0-9_+\-/ ]{1,80}$")
 
 class SecurityError(RuntimeError):
     """A request was rejected by a local security policy."""
+
+
+class PrivateStateError(SecurityError):
+    """A local audit or ledger path failed owner-only storage requirements."""
+
+    private_state_error = True
+
+
+def open_private_file(path: Path, flags: int) -> int:
+    """Open a regular local file without following symlinks or broad access."""
+
+    parent = path.parent
+    parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    parent_stat = parent.lstat()
+    if not stat.S_ISDIR(parent_stat.st_mode) or parent.is_symlink():
+        raise PrivateStateError("private state parent must be a real directory")
+    if hasattr(os, "getuid") and parent_stat.st_uid != os.getuid():
+        raise PrivateStateError(
+            "private state directory must be owned by the current user"
+        )
+    if stat.S_IMODE(parent_stat.st_mode) & 0o077:
+        raise PrivateStateError("private state directory permissions must be 0700")
+
+    try:
+        descriptor = os.open(
+            path,
+            flags | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+        )
+    except OSError as exc:
+        raise PrivateStateError("private state file could not be opened safely") from exc
+    try:
+        file_stat = os.fstat(descriptor)
+        if not stat.S_ISREG(file_stat.st_mode):
+            raise PrivateStateError("private state path must be a regular file")
+        if hasattr(os, "getuid") and file_stat.st_uid != os.getuid():
+            raise PrivateStateError(
+                "private state file must be owned by the current user"
+            )
+        if hasattr(os, "fchmod"):
+            os.fchmod(descriptor, 0o600)
+    except Exception:
+        os.close(descriptor)
+        raise
+    return descriptor
 
 
 class _PlainTextExtractor(HTMLParser):
@@ -241,8 +287,9 @@ class AuditLogger:
         outcome: str,
         parameters: Mapping[str, Any] | None = None,
         request_id: str | None = None,
+        operation_id: str | None = None,
+        duration_ms: int | None = None,
     ) -> None:
-        self.path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         payload_hash = None
         if parameters is not None:
             canonical = json.dumps(parameters, default=str, sort_keys=True, separators=(",", ":"))
@@ -257,9 +304,10 @@ class AuditLogger:
             "outcome": outcome,
             "parameter_sha256": payload_hash,
             "request_id": request_id,
+            "operation_id": operation_id,
+            "duration_ms": duration_ms,
         }
-        flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
-        descriptor = os.open(self.path, flags, 0o600)
+        descriptor = open_private_file(self.path, os.O_APPEND | os.O_WRONLY)
         try:
             os.write(descriptor, (json.dumps(record, separators=(",", ":")) + "\n").encode())
         finally:

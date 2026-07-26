@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import re
 from enum import StrEnum
 from pathlib import Path
@@ -378,4 +380,80 @@ class Settings(BaseSettings):
             "token_cache_mode": self.token_cache_mode,
             "auth_flow": self.auth_flow,
             "write_rate_limit_per_minute": self.write_rate_limit_per_minute,
+        }
+
+    @property
+    def policy_digest(self) -> str:
+        """Return a stable digest of the effective, secret-free local policy."""
+
+        canonical = json.dumps(
+            self._policy_material(),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        return f"sha256:{hashlib.sha256(canonical).hexdigest()}"
+
+    def _policy_material(self) -> dict[str, object]:
+        """Return complete policy material for hashing, never for direct output."""
+
+        return {
+            "tenant_id": self.tenant_id,
+            "client_id": self.client_id,
+            "profile": self.profile.value,
+            "modules": sorted(module.value for module in self.enabled_modules),
+            "scopes": list(self.scopes),
+            "allowed_user_ids": sorted(self.allowed_user_ids),
+            "upn_domains": sorted(self.upn_domains),
+            "site_ids": sorted(self.site_ids),
+            "sharepoint_hosts": sorted(self.sharepoint_hosts),
+            "team_ids": sorted(self.team_ids),
+            "chat_ids": sorted(self.chat_ids),
+            "group_ids": sorted(self.group_ids),
+            "plan_ids": sorted(self.plan_ids),
+            "recipient_domains": sorted(self.recipient_domains),
+            "auth_flow": self.auth_flow,
+            "allow_device_code": self.allow_device_code,
+            "token_cache_mode": self.token_cache_mode,
+            "write_enabled": self.write_enabled,
+            "write_actions": sorted(self.enabled_write_actions),
+            "privileged_modules_enabled": self.privileged_modules_enabled,
+            "tool_allowlist": sorted(self.tool_allowlist),
+            "tool_denylist": sorted(self.tool_denylist),
+            "graph_timeout_seconds": self.graph_timeout_seconds,
+            "graph_max_retries": self.graph_max_retries,
+            "max_items": self.max_items,
+            "max_response_bytes": self.max_response_bytes,
+            "max_tool_characters": self.max_tool_characters,
+            "max_text_file_bytes": self.max_text_file_bytes,
+            "write_rate_limit_per_minute": self.write_rate_limit_per_minute,
+            "idempotency_pending_seconds": self.idempotency_pending_seconds,
+            "audit_log_path": str(self.effective_audit_log_path),
+            "idempotency_db_path": str(self.effective_idempotency_db_path),
+        }
+
+    def permission_explanation(self) -> dict[str, object]:
+        """Explain exactly why each effective delegated scope is requested."""
+
+        modules = [
+            {
+                "module": module.value,
+                "scopes": sorted(READ_SCOPES[module]),
+            }
+            for module in sorted(self.enabled_modules, key=lambda item: item.value)
+        ]
+        actions = [
+            {
+                "action": action,
+                "scopes": sorted(WRITE_ACTION_SCOPES[action]),
+            }
+            for action in sorted(self.enabled_write_actions)
+        ]
+        return {
+            "profile": self.profile.value,
+            "effective_scopes": list(self.scopes),
+            "module_scope_reasons": modules if self.profile is Profile.READ else [],
+            "write_action_scope_reasons": actions if self.profile is Profile.WRITE else [],
+            "resource_api": "https://graph.microsoft.com",
+            "private_api_scope_required": False,
+            "policy_digest": self.policy_digest,
         }

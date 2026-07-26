@@ -98,3 +98,20 @@ def test_audit_log_contains_no_raw_parameters(tmp_path: Path) -> None:
     assert record["tool"] == "m365_search_mail"
     assert len(record["parameter_sha256"]) == 64
     assert path.stat().st_mode & 0o077 == 0
+
+
+def test_private_state_rejects_symlinks_and_broad_directories(tmp_path: Path) -> None:
+    target = tmp_path / "target.jsonl"
+    target.write_text("unchanged")
+    link = tmp_path / "linked.jsonl"
+    link.symlink_to(target)
+
+    with pytest.raises(SecurityError, match="could not be opened safely"):
+        AuditLogger(link).record(tool="tool", outcome="attempt")
+    assert target.read_text() == "unchanged"
+
+    broad = tmp_path / "broad"
+    broad.mkdir()
+    broad.chmod(0o755)
+    with pytest.raises(SecurityError, match="permissions must be 0700"):
+        AuditLogger(broad / "audit.jsonl").record(tool="tool", outcome="attempt")

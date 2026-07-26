@@ -8,7 +8,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urljoin
 
 import httpx
@@ -19,6 +19,15 @@ from .security import Principal, SecurityPolicy, validate_graph_url
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0/"
 RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
+ErrorCategory = Literal[
+    "authentication",
+    "authorization",
+    "validation",
+    "conflict",
+    "rate_limit",
+    "upstream",
+    "internal",
+]
 
 
 @dataclass(frozen=True)
@@ -34,6 +43,19 @@ class GraphError(RuntimeError):
     def __init__(self, message: str, failure: GraphFailure | None = None) -> None:
         super().__init__(message)
         self.failure = failure
+
+
+@dataclass(frozen=True)
+class AgentSafeError:
+    """Stable error classification safe to expose through MCP."""
+
+    code: str
+    category: ErrorCategory
+    message: str
+    action: str
+    safe_to_retry: bool = False
+    retry_after_seconds: float | None = None
+    graph_request_id: str | None = None
 
 
 class GraphClient:
@@ -52,6 +74,7 @@ class GraphClient:
         self.policy = policy
         self._principal: Principal | None = None
         self._principal_lock = asyncio.Lock()
+        self._write_attempt_count = 0
         self._client = httpx.AsyncClient(
             base_url=GRAPH_BASE_URL,
             timeout=httpx.Timeout(settings.graph_timeout_seconds),
@@ -59,7 +82,7 @@ class GraphClient:
             transport=transport,
             headers={
                 "Accept": "application/json",
-                "User-Agent": "m365-secure-mcp/0.2.0",
+                "User-Agent": "m365-secure-mcp/0.3.0",
             },
         )
 
@@ -69,6 +92,12 @@ class GraphClient:
     @property
     def principal(self) -> Principal | None:
         return self._principal
+
+    @property
+    def write_attempt_count(self) -> int:
+        """Monotonic count used only to classify ambiguous local write outcomes."""
+
+        return self._write_attempt_count
 
     async def ensure_principal(self) -> Principal:
         if self._principal is not None:
@@ -139,6 +168,8 @@ class GraphClient:
         refreshed = False
         for attempt in range(self.settings.graph_max_retries + 1):
             try:
+                if method in {"POST", "PATCH"}:
+                    self._write_attempt_count += 1
                 response = await self._client.request(
                     method,
                     url,
@@ -223,11 +254,116 @@ class GraphClient:
         return GraphError(f"{guidance}{suffix}", failure)
 
 
-def agent_safe_error(exc: Exception) -> str:
-    """Map internal failures to actionable messages without sensitive details."""
+def classify_agent_error(exc: Exception) -> AgentSafeError:
+    """Map internal failures to stable, actionable details without secrets."""
 
     from .security import SecurityError
 
-    if isinstance(exc, (GraphError, AuthenticationError, SecurityError)):
-        return f"Error: {exc}"
-    return f"Error: operation failed safely ({type(exc).__name__})"
+    if isinstance(exc, AuthenticationError):
+        return AgentSafeError(
+            code="AUTHENTICATION_FAILED",
+            category="authentication",
+            message=str(exc),
+            action="Re-authenticate with the configured tenant and delegated Graph scopes.",
+        )
+    if isinstance(exc, SecurityError):
+        if getattr(exc, "private_state_error", False):
+            return AgentSafeError(
+                code="PRIVATE_STATE_REJECTED",
+                category="internal",
+                message=str(exc),
+                action=(
+                    "Use a current-user-owned regular file inside a mode-0700 "
+                    "directory, then retry."
+                ),
+            )
+        if getattr(exc, "local_rate_limit", False):
+            return AgentSafeError(
+                code="LOCAL_RATE_LIMITED",
+                category="rate_limit",
+                message=str(exc),
+                action="Wait for the local per-tool window before retrying.",
+                safe_to_retry=True,
+                retry_after_seconds=float(
+                    getattr(exc, "retry_after_seconds", 60.0)
+                ),
+            )
+        if getattr(exc, "write_state_conflict", False):
+            return AgentSafeError(
+                code="WRITE_STATE_UNCERTAIN",
+                category="conflict",
+                message=str(exc),
+                action=(
+                    "Query the operation receipt and verify the external resource; "
+                    "do not retry with a new key blindly."
+                ),
+            )
+        return AgentSafeError(
+            code="POLICY_REJECTED",
+            category="authorization",
+            message=str(exc),
+            action="Change the request or the operator-controlled allowlist; do not bypass policy.",
+        )
+    if isinstance(exc, GraphError):
+        failure = exc.failure
+        status = failure.status_code if failure is not None else None
+        category: ErrorCategory = "upstream"
+        code = "GRAPH_REQUEST_FAILED"
+        action = "Inspect the message and retry only when the result explicitly permits it."
+        safe_to_retry = failure is None
+        if status == 400:
+            code, category = "GRAPH_INVALID_REQUEST", "validation"
+            action = "Correct the identifiers or reduce the query."
+            safe_to_retry = False
+        elif status == 401:
+            code, category = "GRAPH_AUTHENTICATION_FAILED", "authentication"
+            action = "Re-authenticate and verify the tenant-bound public client."
+            safe_to_retry = False
+        elif status == 403:
+            code, category = "GRAPH_PERMISSION_DENIED", "authorization"
+            action = "Verify delegated consent and the enabled local module or action."
+            safe_to_retry = False
+        elif status == 404:
+            code, category = "GRAPH_RESOURCE_NOT_FOUND", "validation"
+            action = "Refresh the resource identifier within the active allowlist."
+            safe_to_retry = False
+        elif status in {409, 412}:
+            code, category = "GRAPH_CONCURRENCY_CONFLICT", "conflict"
+            action = "Re-read the resource and retry with its current ETag."
+            safe_to_retry = True
+        elif status == 429:
+            code, category = "GRAPH_RATE_LIMITED", "rate_limit"
+            action = "Wait for the specified interval before retrying."
+            safe_to_retry = True
+        elif status is not None and status >= 500:
+            code = "GRAPH_UNAVAILABLE"
+            action = "Retry after a delay; preserve the same idempotency key for writes."
+            safe_to_retry = True
+        return AgentSafeError(
+            code=code,
+            category=category,
+            message=str(exc),
+            action=action,
+            safe_to_retry=safe_to_retry,
+            retry_after_seconds=failure.retry_after_seconds if failure is not None else None,
+            graph_request_id=failure.request_id if failure is not None else None,
+        )
+    if isinstance(exc, ValueError):
+        return AgentSafeError(
+            code="LOCAL_VALIDATION_FAILED",
+            category="validation",
+            message="request failed a local validation check",
+            action="Correct the tool arguments and retry.",
+        )
+    return AgentSafeError(
+        code="SAFE_INTERNAL_FAILURE",
+        category="internal",
+        message=f"operation failed safely ({type(exc).__name__})",
+        action="Inspect local metadata-only logs; do not retry a write with a new key blindly.",
+    )
+
+
+def agent_safe_error(exc: Exception) -> str:
+    """Backward-compatible safe error text."""
+
+    return f"Error: {classify_agent_error(exc).message}"

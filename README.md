@@ -8,11 +8,12 @@
 A local-first MCP server that gives Codex, Claude Code, and compatible clients
 controlled access to Microsoft 365 through fixed, reviewable tools.
 
-| Fixed tools | Read profile | Opt-in writes | Delete tools | Modules |
+| Fixed contracts | Read profile | Opt-in writes | Delete tools | Modules |
 |---:|---:|---:|---:|---:|
-| 72 | 60 max | 12 | 0 | 20 |
+| 73 | 60 max | 12 | 0 | 20 |
 
 [Installation](#installation) | [Security model](#security-model) |
+[Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
 [Capabilities](#capabilities) | [Planner details](#planner-task-details) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
@@ -33,7 +34,8 @@ flowchart TB
     B --> C["Identity + tool surface + resource + action"]
     C -->|"HTTPS only"| G["Microsoft Graph v1.0"]
     B --> I["Metadata audit log"]
-    B --> J["Write idempotency ledger"]
+    B --> J["Write receipt ledger"]
+    B --> K["Versioned result envelope"]
 ```
 
 ## Installation
@@ -59,6 +61,8 @@ export M365_ALLOWED_USER_OBJECT_IDS="<user-object-guid>"
 export M365_ALLOWED_UPN_DOMAINS="example.com"
 
 uv run m365-secure-mcp --check-config
+uv run m365-secure-mcp --explain-permissions
+uv run m365-secure-mcp --doctor
 uv run m365-secure-mcp --list-tools
 uv run m365-secure-mcp
 ```
@@ -118,23 +122,99 @@ does not need before granting Graph consent.
 | Identity | tenant, user object IDs, UPN domains | `/me` is verified before data access |
 | Surface | modules, exact tool allowlist and denylist | unknown or unavailable names stop startup |
 | Resources | sites, teams, chats, groups, plans | non-allowlisted identifiers are rejected locally |
-| Writes | individual non-delete actions | separate process, two gates, approval, idempotency |
+| Writes | individual non-delete actions | separate process, two gates, approval, receipts |
 | Egress | Microsoft Graph target | HTTPS `graph.microsoft.com/v1.0` only |
+| Evidence | every tool result | versioned schema, operation ID, explicit retry state |
 
 Additional controls:
 
 - delegated OAuth authorization code flow with PKCE
 - OS Keychain token cache, with no plaintext token file
+- no-follow, owner-only local audit and receipt files
 - Graph `v1.0` only, redirects disabled, bounded retries and responses
 - signed pagination cursors bound to tool, principal, resource, and query
 - M365 content treated as untrusted input and converted to bounded plain text
 - separate read and write processes
-- SQLite write reservation before Graph is called
+- SQLite write reservation and durable metadata-only receipt before Graph is called
 - resource-specific ETag concurrency on updates and per-tool rate limits
-- metadata-only audit events with sensitive fields redacted
+- metadata-only audit events correlated by operation ID
 
 Read the complete threat model, assumptions, and residual risks in
 [SECURITY.md](SECURITY.md).
+
+## Evidence contract
+
+Every tool returns two synchronized representations:
+
+- the existing text content, for MCP clients that consume plain text
+- `structuredContent`, validated against the advertised `outputSchema`
+
+Failures are returned with MCP `isError=true`, a stable error code, a recovery
+action, and explicit retry guidance. Agents no longer have to infer failure
+from a string beginning with `Error:`.
+
+```json
+{
+  "schema_version": "1.0",
+  "ok": false,
+  "tool": "m365_update_planner_task_details",
+  "operation_id": "9dcf6f91-f3c7-4fbe-9a52-f34fd315a2ea",
+  "content_type": "text/plain",
+  "error": {
+    "code": "GRAPH_CONCURRENCY_CONFLICT",
+    "category": "conflict",
+    "message": "resource changed since it was read",
+    "action": "Re-read the resource and retry with its current ETag."
+  },
+  "retry": {
+    "safe_to_retry": true,
+    "reuse_idempotency_key": true
+  },
+  "evidence": {
+    "policy_enforced": true,
+    "audit_recorded": true,
+    "write_receipt": {
+      "operation_id": "9dcf6f91-f3c7-4fbe-9a52-f34fd315a2ea",
+      "tool": "m365_update_planner_task_details",
+      "idempotency_key": "58e0e271-06ba-4c3a-81e8-b70c1d43dc28",
+      "status": "rejected",
+      "created_at": "2026-07-26T12:00:00+00:00",
+      "updated_at": "2026-07-26T12:00:01+00:00",
+      "duplicate_suppressed": false,
+      "uncertain_commit": false,
+      "last_error_code": "GRAPH_CONCURRENCY_CONFLICT"
+    }
+  }
+}
+```
+
+Successful writes additionally carry a metadata-only receipt with the same
+operation ID, tool, idempotency key, status, timestamps, duplicate-suppression
+flag, and uncertainty state. It contains no M365 body, subject, address,
+filename, task text, or token.
+
+## Diagnose before serving
+
+The CLI can explain the effective deployment without starting MCP stdio:
+
+```bash
+# Tool/result surface, delete check, private state, cache mode, and egress
+uv run m365-secure-mcp --doctor
+
+# Adds delegated-token scope comparison and a read-only Graph /me policy check
+uv run m365-secure-mcp --doctor live
+
+# Tool-by-tool reason for every Graph scope
+uv run m365-secure-mcp --explain-permissions
+
+# Secret-free effective policy plus a stable sha256 digest
+uv run m365-secure-mcp --print-policy
+```
+
+The offline doctor never signs in or calls Graph. Live mode may open the normal
+interactive Microsoft sign-in, but prints neither the token nor M365 content.
+Client-side approval configuration remains an explicit informational check
+because a stdio server cannot prove the host's approval policy.
 
 ## Capabilities
 
@@ -160,16 +240,21 @@ Planner tasks, and Planner task details. Exact tool contracts are listed in the
 [tool catalog](docs/TOOL_CATALOG.md).
 
 Every write requires a UUID idempotency key. The local ledger commits before
-Graph is called. An uncertain result blocks automatic retry to avoid duplicate
-external actions.
+Graph is called and returns a durable operation receipt. An uncertain result
+blocks automatic retry indefinitely to avoid duplicate external actions.
+`m365_get_write_operation` retrieves one receipt by operation ID or by the
+exact tool/idempotency-key pair; it cannot enumerate the ledger and never calls
+Graph.
 
 <details>
-<summary><strong>Expand the complete 72-tool surface</strong></summary>
+<summary><strong>Expand the complete 73-contract surface</strong></summary>
 
 The two common tools are always registered:
 `m365_get_security_posture` and `m365_get_my_profile`.
+The write profile also registers the local read-only
+`m365_get_write_operation` receipt tool.
 
-| Domain | Fixed read tools | Opt-in write tools |
+| Domain | Fixed read tools | State-changing tools |
 |---|---:|---:|
 | Mail | 4 | 2 |
 | Calendar | 4 | 2 |
@@ -180,6 +265,7 @@ The two common tools are always registered:
 | OneNote | 3 | 0 |
 | Security, audit, Intune, service health | 10 | 0 |
 | Organization | 1 | 0 |
+| Local write evidence | 0 | 0 + 1 receipt query |
 
 <h4>Mail and calendar</h4>
 
@@ -284,7 +370,9 @@ The tool requires the `details_etag` returned by `m365_get_planner_task`:
 
 Checklist additions use deterministic UUIDv5 identifiers derived from the
 idempotency key. A `204 No Content` response is followed by a verification
-read. The only required delegated Graph permission is `Tasks.ReadWrite`.
+read. The result includes a durable receipt; it can be queried later with
+`m365_get_write_operation`. The only required delegated Graph permission is
+`Tasks.ReadWrite`.
 
 ## Entra registration
 
@@ -346,7 +434,7 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 49 passed |
+| Tests | 57 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
@@ -360,7 +448,7 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 72 contracts and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 73 contracts and their boundaries |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |
 | [Entra setup](docs/ENTRA_SETUP.md) | Registration, delegated scopes, consent |

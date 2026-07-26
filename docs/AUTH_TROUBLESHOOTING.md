@@ -27,7 +27,7 @@ OAuth configuration.
 ## AADSTS65001: consent required
 
 The configured Entra app does not have consent for one or more scopes derived
-from the enabled modules. Run `m365-secure-mcp --check-config`, compare the
+from the enabled modules. Run `m365-secure-mcp --explain-permissions`, compare the
 reported scopes with Entra API permissions, and consent only to the missing
 scope that maps to an approved tool.
 

@@ -90,10 +90,16 @@ the blast radius of:
   clearing are absent from the tool contract.
 - Every write is reserved in a mode-`0600` local SQLite ledger before Graph is
   called. Reused keys with changed payloads are rejected.
-- A lost/uncertain response leaves its key pending and blocks automatic retry.
+- The ledger issues a metadata-only UUID receipt and records `pending`,
+  `completed`, `rejected`, or `uncertain`. It never stores M365 content.
+- A lost/uncertain response blocks automatic retry indefinitely. A locally
+  rejected request can safely reuse its original idempotency key.
+- `m365_get_write_operation` reads one receipt by exact selector, cannot list
+  history, is limited to actions active in the current policy, and never calls
+  Graph.
 - Each write tool has an independent process-local per-minute rate limit.
 - No delete tools are implemented.
-- Every write logs an attempt and result metadata.
+- Every tool logs an attempt and result metadata correlated by operation ID.
 
 ### Network and response handling
 
@@ -109,8 +115,10 @@ the blast radius of:
 ### Audit
 
 - Append-only JSONL with mode `0600` in a directory created with mode `0700`.
-- Records time, tool, outcome, request ID, and a process-keyed HMAC of
-  parameters.
+- Audit and receipt paths reject symlinks, non-regular files, foreign owners,
+  and parent directories broader than mode `0700`.
+- Records time, tool, outcome, request ID, public operation ID, duration, and a
+  process-keyed HMAC of parameters.
 - It does not record message bodies, subjects, addresses, filenames, event
   content, Teams messages, Planner content, tokens, or raw parameters.
 
@@ -121,8 +129,9 @@ the blast radius of:
 - Tool annotations alone do not stop a malicious client.
 - A local process with the user's OS privileges may access Keychain subject to
   OS policy.
-- A pending idempotency record can require manual verification after a process
-  crash. This deliberately prefers a blocked retry over a duplicate write.
+- A pending or uncertain idempotency record requires manual verification after
+  a crash, timeout, or ambiguous transport failure. This deliberately prefers
+  a blocked retry over a duplicate write.
 - Metadata can itself contain sensitive business information.
 - This local profile is single-user. Multi-user remote deployment requires a
   separate OAuth 2.1 resource-server design, per-client consent, token audience

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
@@ -11,6 +11,7 @@ from mcp.types import ToolAnnotations
 from .config import Module
 from .formatting import render_collection, render_record
 from .models import CatalogReadInput
+from .protocol import ToolResponse
 from .security import SecurityError, clean_external_text, path_segment
 
 
@@ -492,7 +493,7 @@ def _filter_items(
 
 
 def _handler(spec: ReadSpec, services: Any, runner: Any) -> Any:
-    async def catalog_read(params: CatalogReadInput) -> str:
+    async def catalog_read(params: CatalogReadInput) -> ToolResponse:
         async def operation() -> str:
             _apply_policies(spec, params, services)
             endpoint = _endpoint(spec, params)
@@ -532,8 +533,10 @@ def _handler(spec: ReadSpec, services: Any, runner: Any) -> Any:
                 cursor=cursor,
             )
 
-        result = await runner.call(spec.name, params.model_dump(mode="json"), operation)
-        return str(result)
+        return cast(
+            ToolResponse,
+            await runner.call(spec.name, params.model_dump(mode="json"), operation),
+        )
 
     catalog_read.__name__ = spec.name
     catalog_read.__doc__ = (

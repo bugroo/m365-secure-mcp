@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title description">
   <title id="title">M365 Secure MCP</title>
-  <desc id="description">Policy-bound Microsoft 365 access for local AI clients.</desc>
+  <desc id="description">Policy-bound Microsoft 365 access with structured evidence for local AI clients.</desc>
   <style>
     .surface { fill: #f2f3f1; }
     .ink { fill: #191b1f; }
@@ -64,12 +64,13 @@
   </g>
 
   <g class="mono" font-size="13">
-    <text class="ink" x="66" y="461" font-weight="700">72 FIXED TOOLS</text>
+    <text class="ink" x="66" y="461" font-weight="700">73 FIXED CONTRACTS</text>
     <text class="muted" x="232" y="461">60 READ</text>
     <text class="muted" x="348" y="461">12 OPT-IN WRITE</text>
     <text class="accent-text" x="530" y="461" font-weight="700">0 DELETE</text>
     <text class="muted" x="66" y="490">LOCAL STDIO</text>
     <text class="muted" x="232" y="490">OAUTH + PKCE</text>
     <text class="muted" x="394" y="490">OS KEYCHAIN</text>
+    <text class="muted" x="530" y="490">RESULT EVIDENCE</text>
   </g>
 </svg>

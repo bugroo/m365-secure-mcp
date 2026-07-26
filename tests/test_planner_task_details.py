@@ -66,7 +66,7 @@ def make_settings(tmp_path: Path, **overrides: object) -> Settings:
     return Settings(**values)  # type: ignore[arg-type]
 
 
-def make_tool(tmp_path: Path, graph: FakeGraph) -> Any:
+def make_server(tmp_path: Path, graph: FakeGraph) -> tuple[FastMCP, Services]:
     settings = make_settings(tmp_path)
     services = Services(
         settings=settings,
@@ -82,6 +82,11 @@ def make_tool(tmp_path: Path, graph: FakeGraph) -> Any:
     )
     server = FastMCP("planner-details-test")
     _register_write_tools(server, services, ToolRunner(services))
+    return server, services
+
+
+def make_tool(tmp_path: Path, graph: FakeGraph) -> Any:
+    server, _ = make_server(tmp_path, graph)
     return server._tool_manager.get_tool("m365_update_planner_task_details")  # noqa: SLF001
 
 
@@ -217,13 +222,23 @@ async def test_details_update_sends_a_closed_patch_and_verifies_204_response(
     }
     assert all(value is not None for value in body["checklist"].values())
     assert details_reads == 2
-    assert '"task_id": "task-1"' in result
-    assert 'W/\\"details-etag-2\\"' in result
+    assert result.isError is False
+    assert '"task_id": "task-1"' in result.content[0].text
+    assert 'W/\\"details-etag-2\\"' in result.content[0].text
+    assert result.structuredContent is not None
+    assert result.structuredContent["ok"] is True
+    receipt = result.structuredContent["evidence"]["write_receipt"]
+    assert receipt["tool"] == "m365_update_planner_task_details"
+    assert receipt["status"] == "completed"
 
     call_count = len(graph.calls)
     duplicate_result = await tool.run({"params": payload})
     assert len(graph.calls) == call_count
-    assert "no duplicate Microsoft Graph call was made" in duplicate_result
+    assert "no duplicate Microsoft Graph call was made" in duplicate_result.content[0].text
+    assert duplicate_result.structuredContent is not None
+    duplicate_receipt = duplicate_result.structuredContent["evidence"]["write_receipt"]
+    assert duplicate_receipt["duplicate_suppressed"] is True
+    assert duplicate_receipt["operation_id"] == receipt["operation_id"]
 
 
 @pytest.mark.asyncio
@@ -291,7 +306,10 @@ async def test_details_update_fails_closed_before_patch(
         }
     )
 
-    assert message in result
+    assert result.isError is True
+    assert message in result.content[0].text
+    assert result.structuredContent is not None
+    assert result.structuredContent["error"]["code"] == "POLICY_REJECTED"
     assert not any(call["method"] == "PATCH" for call in graph.calls)
 
 
@@ -305,5 +323,60 @@ async def test_details_update_rejects_task_outside_declared_plan(tmp_path: Path)
     tool = make_tool(tmp_path, graph)
     result = await tool.run({"params": base_payload()})
 
-    assert "does not belong to the declared allowlisted plan" in result
+    assert result.isError is True
+    assert "does not belong to the declared allowlisted plan" in result.content[0].text
     assert len(graph.calls) == 1
+
+
+@pytest.mark.asyncio
+async def test_write_receipt_tool_queries_one_exact_local_operation(tmp_path: Path) -> None:
+    graph = FakeGraph(lambda call: pytest.fail(f"unexpected Graph call: {call}"))
+    server, services = make_server(tmp_path, graph)
+    idempotency_key = str(uuid4())
+
+    async def operation() -> str:
+        return "completed"
+
+    execution = await services.idempotency.execute(
+        "m365_update_planner_task_details",
+        idempotency_key,
+        {"idempotency_key": idempotency_key},
+        operation,
+    )
+    tool = server._tool_manager.get_tool("m365_get_write_operation")  # noqa: SLF001
+    result = await tool.run(
+        {
+            "params": {
+                "operation_id": str(execution.receipt.operation_id),
+            }
+        }
+    )
+
+    assert result.isError is False
+    assert result.structuredContent is not None
+    data = result.structuredContent["data"]
+    assert data["operation_id"] == str(execution.receipt.operation_id)
+    assert data["status"] == "completed"
+    assert graph.calls == []
+
+
+@pytest.mark.asyncio
+async def test_write_is_blocked_when_attempt_audit_cannot_be_recorded(
+    tmp_path: Path,
+) -> None:
+    graph = FakeGraph(lambda call: pytest.fail(f"unexpected Graph call: {call}"))
+    server, services = make_server(tmp_path, graph)
+    broad = tmp_path / "broad-audit"
+    broad.mkdir()
+    broad.chmod(0o755)
+    services.audit = AuditLogger(broad / "audit.jsonl")
+    tool = server._tool_manager.get_tool(  # noqa: SLF001
+        "m365_update_planner_task_details"
+    )
+
+    result = await tool.run({"params": base_payload()})
+
+    assert result.isError is True
+    assert result.structuredContent is not None
+    assert result.structuredContent["evidence"]["audit_recorded"] is False
+    assert graph.calls == []

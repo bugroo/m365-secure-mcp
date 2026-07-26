@@ -1,13 +1,22 @@
 # Tool catalog and exposure model
 
-The source defines 72 fixed-contract tools. A maximally enabled read process
-exposes 60; a write process exposes the two common tools plus only its selected
-write actions. The default process exposes only the two common tools.
+The source defines 73 fixed contracts. A maximally enabled read process exposes
+60; a write process exposes the two common tools, the local receipt query, and
+only its selected write actions. The default process exposes only the two
+common tools.
 
 ## Common
 
 - `m365_get_security_posture`
 - `m365_get_my_profile`
+
+## Local write evidence
+
+- `m365_get_write_operation` (read-only, write profile)
+
+This tool retrieves one metadata-only receipt by operation ID or by the exact
+write-tool/idempotency-key pair. It cannot enumerate the ledger and never calls
+Microsoft Graph.
 
 ## Mail
 
@@ -137,3 +146,10 @@ M365_ENABLED_TOOLS=m365_search_mail,m365_list_calendar,m365_search_files
 
 `m365_get_security_posture` always remains visible. An allowlisted tool outside
 the active profile causes a startup error.
+
+## Result contract
+
+All tools advertise the same versioned output schema. Text content remains
+available for compatibility; structured content includes `ok`, `tool`,
+`operation_id`, `error`, `retry`, and `evidence`. Execution failures set MCP
+`isError=true`. Successful writes attach their durable receipt.
