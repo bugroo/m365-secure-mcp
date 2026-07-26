@@ -41,9 +41,12 @@ from .models import (
     SendDraftInput,
     TeamsMessageInput,
     TodoListInput,
+    UpdateApplicationInput,
+    UpdateConditionalAccessPolicyInput,
     UpdateEventInput,
     UpdatePlannerTaskDetailsInput,
     UpdatePlannerTaskInput,
+    UpdateServicePrincipalInput,
     UpdateTodoTaskInput,
     WriteOperationQueryInput,
 )
@@ -53,6 +56,7 @@ from .security import (
     CursorCodec,
     SecurityError,
     SecurityPolicy,
+    WriteVerificationError,
     clean_external_text,
     html_to_plain_text,
     odata_string,
@@ -83,6 +87,11 @@ WRITE_TOOL_ACTIONS = {
     "m365_create_planner_task": "planner.create_task",
     "m365_update_planner_task": "planner.update_task",
     "m365_update_planner_task_details": "planner.update_task_details",
+    "m365_update_entra_application": "entra.update_application",
+    "m365_update_entra_service_principal": "entra.update_service_principal",
+    "m365_update_conditional_access_policy": (
+        "governance.update_conditional_access_policy"
+    ),
 }
 
 
@@ -100,7 +109,7 @@ def _write_annotations(
     title: str,
     *,
     destructive: bool = False,
-    idempotent: bool = False,
+    idempotent: bool = True,
 ) -> ToolAnnotations:
     return ToolAnnotations(
         title=title,
@@ -164,6 +173,16 @@ class ToolRunner:
                     "write_attempt_count",
                     0,
                 )
+                graph_confirmed_before = getattr(
+                    self.services.graph,
+                    "write_confirmed_count",
+                    0,
+                )
+                graph_ambiguous_before = getattr(
+                    self.services.graph,
+                    "write_ambiguous_count",
+                    0,
+                )
                 execution = await self.services.idempotency.execute(
                     tool,
                     str(idempotency_key),
@@ -177,6 +196,22 @@ class ToolRunner:
                             graph_writes_before,
                         )
                         > graph_writes_before
+                    ),
+                    write_confirmed=lambda: (
+                        getattr(
+                            self.services.graph,
+                            "write_confirmed_count",
+                            graph_confirmed_before,
+                        )
+                        > graph_confirmed_before
+                    ),
+                    write_ambiguous=lambda: (
+                        getattr(
+                            self.services.graph,
+                            "write_ambiguous_count",
+                            graph_ambiguous_before,
+                        )
+                        > graph_ambiguous_before
                     ),
                 )
                 result = execution.result
@@ -328,12 +363,21 @@ def _register_common_tools(mcp: FastMCP, services: Services, runner: ToolRunner)
 
         async def operation() -> str:
             principal = services.graph.principal
-            record = services.settings.public_summary()
+            record = services.settings.agent_summary()
             record["policy_digest"] = services.settings.policy_digest
             record["authenticated_principal"] = (
                 {
-                    "object_id": principal.object_id,
-                    "user_principal_name": principal.user_principal_name,
+                    "verified": True,
+                    "object_id_allowlisted": (
+                        not services.settings.allowed_user_ids
+                        or principal.object_id
+                        in services.settings.allowed_user_ids
+                    ),
+                    "upn_domain_allowlisted": (
+                        not services.settings.upn_domains
+                        or principal.user_principal_name.rsplit("@", 1)[-1].lower()
+                        in services.settings.upn_domains
+                    ),
                 }
                 if principal
                 else None
@@ -873,6 +917,65 @@ def _planner_checklist_addition_id(
     return str(uuid5(NAMESPACE_URL, name))
 
 
+def _require_created_id(data: dict[str, Any], resource: str) -> str:
+    identifier = data.get("id")
+    if not isinstance(identifier, str) or not identifier:
+        raise WriteVerificationError(
+            f"Graph accepted the {resource} write but returned no verifiable resource ID"
+        )
+    return identifier
+
+
+def _verify_exact_field(
+    data: dict[str, Any],
+    *,
+    field: str,
+    expected: object,
+    resource: str,
+) -> None:
+    if data.get(field) != expected:
+        raise WriteVerificationError(
+            f"Graph accepted the {resource} write but field '{field}' "
+            "did not match the requested postcondition"
+        )
+
+
+def _verify_planner_details_patch(
+    details: dict[str, Any],
+    patch: dict[str, Any],
+) -> None:
+    for field in ("description", "previewType"):
+        if field in patch:
+            _verify_exact_field(
+                details,
+                field=field,
+                expected=patch[field],
+                resource="Planner task-details",
+            )
+
+    checklist_patch = patch.get("checklist")
+    if not isinstance(checklist_patch, dict):
+        return
+    checklist = details.get("checklist")
+    if not isinstance(checklist, dict):
+        raise WriteVerificationError(
+            "Graph accepted the Planner task-details write but returned no checklist"
+        )
+    for item_id, expected_item in checklist_patch.items():
+        actual_item = checklist.get(item_id)
+        if not isinstance(actual_item, dict):
+            raise WriteVerificationError(
+                "Graph accepted the Planner task-details write but a requested "
+                "checklist item was absent"
+            )
+        for field in ("title", "isChecked"):
+            if field in expected_item and actual_item.get(field) != expected_item[field]:
+                raise WriteVerificationError(
+                    "Graph accepted the Planner task-details write but a checklist "
+                    f"field '{field}' did not match"
+                )
+
+
 def _register_planner_read(mcp: FastMCP, services: Services, runner: ToolRunner) -> None:
     @mcp.tool(
         name="m365_list_allowed_plans",
@@ -1158,6 +1261,11 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                     ],
                 },
             )
+            _require_created_id(data, "mail draft")
+            if data.get("isDraft") is not True:
+                raise WriteVerificationError(
+                    "Graph accepted the mail draft write but did not confirm draft state"
+                )
             return render_record(
                 title="Mail Draft Created",
                 record={
@@ -1258,6 +1366,13 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                     "transactionId": str(params.idempotency_key),
                 },
             )
+            _require_created_id(data, "calendar event")
+            _verify_exact_field(
+                data,
+                field="subject",
+                expected=params.subject,
+                resource="calendar event",
+            )
             return render_record(
                 title="Calendar Event Created",
                 record={
@@ -1304,6 +1419,34 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                 json_body=body,
                 headers={"If-Match": params.etag, "Prefer": "return=representation"},
             )
+            if not data:
+                data = await services.graph.request_json(
+                    "GET",
+                    f"/me/events/{event_id}",
+                    params={
+                        "$select": (
+                            "id,subject,start,end,location,isOnlineMeeting,showAs,webLink"
+                        )
+                    },
+                )
+            _require_created_id(data, "calendar event update")
+            if params.subject is not None:
+                _verify_exact_field(
+                    data,
+                    field="subject",
+                    expected=params.subject,
+                    resource="calendar event",
+                )
+            if params.location is not None:
+                location = data.get("location")
+                if (
+                    not isinstance(location, dict)
+                    or location.get("displayName") != params.location
+                ):
+                    raise WriteVerificationError(
+                        "Graph accepted the calendar event write but the location "
+                        "did not match"
+                    )
             return render_record(
                 title="Calendar Event Updated",
                 record={
@@ -1346,6 +1489,13 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                     ],
                 },
             )
+            _require_created_id(data, "contact")
+            _verify_exact_field(
+                data,
+                field="displayName",
+                expected=params.display_name,
+                resource="contact",
+            )
             return render_record(
                 title="Contact Created",
                 record={
@@ -1386,6 +1536,13 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                 "POST",
                 f"/me/todo/lists/{path_segment(params.list_id)}/tasks",
                 json_body=body,
+            )
+            _require_created_id(data, "To Do task")
+            _verify_exact_field(
+                data,
+                field="title",
+                expected=params.title,
+                resource="To Do task",
             )
             return render_record(
                 title="To Do Task Created",
@@ -1440,6 +1597,21 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                 json_body=body,
                 headers={"If-Match": params.etag, "Prefer": "return=representation"},
             )
+            if not data:
+                data = await services.graph.request_json("GET", endpoint)
+            _require_created_id(data, "To Do task update")
+            for field, expected in (
+                ("title", params.title),
+                ("status", params.status),
+                ("importance", params.importance),
+            ):
+                if expected is not None:
+                    _verify_exact_field(
+                        data,
+                        field=field,
+                        expected=expected,
+                        resource="To Do task",
+                    )
             return render_record(
                 title="To Do Task Updated",
                 record={
@@ -1479,6 +1651,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                 endpoint,
                 json_body={"body": {"contentType": "text", "content": params.body_text}},
             )
+            _require_created_id(data, "Teams channel message")
             return json.dumps(
                 {
                     "status": "sent",
@@ -1512,6 +1685,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                 f"/chats/{path_segment(chat_id)}/messages",
                 json_body={"body": {"contentType": "text", "content": params.body_text}},
             )
+            _require_created_id(data, "Teams chat message")
             return json.dumps(
                 {
                     "status": "sent",
@@ -1569,8 +1743,23 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                 "/planner/tasks",
                 json_body=body,
             )
+            _require_created_id(data, "Planner task")
             if data.get("planId") != plan_id:
-                raise ValueError("Graph returned a task outside the allowlisted plan")
+                raise WriteVerificationError(
+                    "Graph accepted the Planner task write but returned a task "
+                    "outside the allowlisted plan"
+                )
+            for field, expected in (
+                ("title", params.title),
+                ("bucketId", params.bucket_id),
+                ("priority", params.priority),
+            ):
+                _verify_exact_field(
+                    data,
+                    field=field,
+                    expected=expected,
+                    resource="Planner task",
+                )
             return render_record(
                 title="Planner Task Created",
                 record={
@@ -1632,8 +1821,30 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
                     "Prefer": "return=representation",
                 },
             )
+            if not data:
+                data = await services.graph.request_json(
+                    "GET",
+                    f"/planner/tasks/{task_id}",
+                )
+            _require_created_id(data, "Planner task update")
             if data.get("planId") != plan_id:
-                raise ValueError("Graph returned a task outside the allowlisted plan")
+                raise WriteVerificationError(
+                    "Graph accepted the Planner task write but returned a task "
+                    "outside the allowlisted plan"
+                )
+            for field, expected in (
+                ("title", params.title),
+                ("percentComplete", params.percent_complete),
+                ("priority", params.priority),
+                ("bucketId", params.bucket_id),
+            ):
+                if expected is not None:
+                    _verify_exact_field(
+                        data,
+                        field=field,
+                        expected=expected,
+                        resource="Planner task",
+                    )
             return render_record(
                 title="Planner Task Updated",
                 record={
@@ -1771,6 +1982,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
             updated_task_id = updated_details.get("id")
             if updated_task_id is not None and updated_task_id != params.task_id:
                 raise SecurityError("Planner returned updated details for an unexpected task")
+            _verify_planner_details_patch(updated_details, body)
 
             return render_record(
                 title="Planner Task Details Updated",
@@ -1786,6 +1998,274 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
 
         return await runner.call(
             "m365_update_planner_task_details",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_update_entra_application",
+        annotations=_write_annotations(
+            "Update Microsoft Entra Application",
+            destructive=True,
+        ),
+    )
+    async def update_entra_application(
+        params: UpdateApplicationInput,
+    ) -> ToolResponse:
+        """Update selected metadata on one allowlisted Entra application.
+
+        This tool cannot alter secrets, certificates, redirect URIs, API permissions,
+        owners, or consent grants. It requires the privileged-write gate and a separate
+        Entra application allowlist.
+        """
+
+        async def operation() -> str:
+            services.policy.require_write_action("entra.update_application")
+            application_id = services.policy.authorize_application(
+                str(params.application_id)
+            )
+            body: dict[str, Any] = {}
+            if params.display_name is not None:
+                body["displayName"] = params.display_name
+            if params.group_membership_claims is not None:
+                body["groupMembershipClaims"] = params.group_membership_claims
+            endpoint = f"/applications/{path_segment(application_id)}"
+            await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body=body,
+            )
+            current = await services.graph.request_json(
+                "GET",
+                endpoint,
+                params={
+                    "$select": (
+                        "id,appId,displayName,groupMembershipClaims,"
+                        "signInAudience,publisherDomain"
+                    )
+                },
+            )
+            _verify_exact_field(
+                current,
+                field="id",
+                expected=application_id,
+                resource="Entra application",
+            )
+            for field, expected in (
+                ("displayName", params.display_name),
+                ("groupMembershipClaims", params.group_membership_claims),
+            ):
+                if expected is not None:
+                    _verify_exact_field(
+                        current,
+                        field=field,
+                        expected=expected,
+                        resource="Entra application",
+                    )
+            return render_record(
+                title="Microsoft Entra Application Updated",
+                record={
+                    "id": current.get("id"),
+                    "app_id": current.get("appId"),
+                    "display_name": clean_external_text(
+                        current.get("displayName"),
+                        500,
+                    ),
+                    "group_membership_claims": current.get(
+                        "groupMembershipClaims"
+                    ),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_update_entra_application",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_update_entra_service_principal",
+        annotations=_write_annotations(
+            "Update Microsoft Entra Service Principal",
+            destructive=True,
+        ),
+    )
+    async def update_entra_service_principal(
+        params: UpdateServicePrincipalInput,
+    ) -> ToolResponse:
+        """Update selected controls on one allowlisted Entra service principal.
+
+        This tool cannot alter secrets, certificates, owners, roles, or consent grants.
+        Disabling an account or changing assignment requirements is operationally
+        disruptive and should always require an MCP-client human approval.
+        """
+
+        async def operation() -> str:
+            services.policy.require_write_action(
+                "entra.update_service_principal"
+            )
+            service_principal_id = (
+                services.policy.authorize_service_principal(
+                    str(params.service_principal_id)
+                )
+            )
+            body: dict[str, Any] = {}
+            if params.display_name is not None:
+                body["displayName"] = params.display_name
+            if params.account_enabled is not None:
+                body["accountEnabled"] = params.account_enabled
+            if params.app_role_assignment_required is not None:
+                body["appRoleAssignmentRequired"] = (
+                    params.app_role_assignment_required
+                )
+            endpoint = (
+                f"/servicePrincipals/{path_segment(service_principal_id)}"
+            )
+            await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body=body,
+            )
+            current = await services.graph.request_json(
+                "GET",
+                endpoint,
+                params={
+                    "$select": (
+                        "id,appId,displayName,accountEnabled,"
+                        "appRoleAssignmentRequired,servicePrincipalType"
+                    )
+                },
+            )
+            _verify_exact_field(
+                current,
+                field="id",
+                expected=service_principal_id,
+                resource="Entra service principal",
+            )
+            for field, expected in (
+                ("displayName", params.display_name),
+                ("accountEnabled", params.account_enabled),
+                (
+                    "appRoleAssignmentRequired",
+                    params.app_role_assignment_required,
+                ),
+            ):
+                if expected is not None:
+                    _verify_exact_field(
+                        current,
+                        field=field,
+                        expected=expected,
+                        resource="Entra service principal",
+                    )
+            return render_record(
+                title="Microsoft Entra Service Principal Updated",
+                record={
+                    "id": current.get("id"),
+                    "app_id": current.get("appId"),
+                    "display_name": clean_external_text(
+                        current.get("displayName"),
+                        500,
+                    ),
+                    "account_enabled": current.get("accountEnabled"),
+                    "app_role_assignment_required": current.get(
+                        "appRoleAssignmentRequired"
+                    ),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_update_entra_service_principal",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_update_conditional_access_policy",
+        annotations=_write_annotations(
+            "Update Conditional Access Policy",
+            destructive=True,
+        ),
+    )
+    async def update_conditional_access_policy(
+        params: UpdateConditionalAccessPolicyInput,
+    ) -> ToolResponse:
+        """Update only state and display name on one allowlisted CA policy.
+
+        Conditions and grant/session controls cannot be changed through this tool.
+        Enabling or disabling Conditional Access can affect tenant access and must
+        always require a human approval in the MCP client.
+        """
+
+        async def operation() -> str:
+            services.policy.require_write_action(
+                "governance.update_conditional_access_policy"
+            )
+            policy_id = services.policy.authorize_conditional_access_policy(
+                str(params.policy_id)
+            )
+            body: dict[str, Any] = {"state": params.state}
+            if params.display_name is not None:
+                body["displayName"] = params.display_name
+            endpoint = (
+                "/identity/conditionalAccess/policies/"
+                f"{path_segment(policy_id)}"
+            )
+            await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body=body,
+            )
+            current = await services.graph.request_json(
+                "GET",
+                endpoint,
+                params={"$select": "id,displayName,state,modifiedDateTime"},
+            )
+            _verify_exact_field(
+                current,
+                field="id",
+                expected=policy_id,
+                resource="Conditional Access policy",
+            )
+            _verify_exact_field(
+                current,
+                field="state",
+                expected=params.state,
+                resource="Conditional Access policy",
+            )
+            if params.display_name is not None:
+                _verify_exact_field(
+                    current,
+                    field="displayName",
+                    expected=params.display_name,
+                    resource="Conditional Access policy",
+                )
+            return render_record(
+                title="Conditional Access Policy Updated",
+                record={
+                    "id": current.get("id"),
+                    "display_name": clean_external_text(
+                        current.get("displayName"),
+                        500,
+                    ),
+                    "state": current.get("state"),
+                    "modified": current.get("modifiedDateTime"),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_update_conditional_access_policy",
             params.model_dump(mode="json"),
             operation,
             write=True,

@@ -1,21 +1,11 @@
 # Intentionally disabled. Enable only for a short, approved write session.
 [mcp_servers.m365_write]
 command = "/absolute/path/to/m365-secure-mcp/.venv/bin/m365-secure-mcp"
+args = ["--policy-file", "/absolute/private/path/write-policy.json"]
 cwd = "/absolute/path/to/m365-secure-mcp"
 enabled = false
 required = false
 default_tools_approval_mode = "prompt"
-
-[mcp_servers.m365_write.env]
-M365_TENANT_ID = "00000000-0000-0000-0000-000000000000"
-M365_CLIENT_ID = "00000000-0000-0000-0000-000000000000"
-M365_PROFILE = "write"
-M365_WRITE_ENABLED = "true"
-M365_WRITE_ACTIONS = "mail.create_draft"
-M365_ALLOWED_USER_OBJECT_IDS = "00000000-0000-0000-0000-000000000000"
-M365_ALLOWED_UPN_DOMAINS = "example.com"
-M365_ALLOWED_RECIPIENT_DOMAINS = "example.com"
-M365_TOKEN_CACHE_MODE = "keyring"
 
 [mcp_servers.m365_write.tools.m365_create_mail_draft]
 approval_mode = "prompt"

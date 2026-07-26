@@ -10,11 +10,12 @@ controlled access to Microsoft 365 through fixed, reviewable tools.
 
 | Fixed contracts | Read profile | Opt-in writes | Delete tools | Modules |
 |---:|---:|---:|---:|---:|
-| 73 | 60 max | 12 | 0 | 20 |
+| 91 | 75 max | 15 | 0 | 23 |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
 [Capabilities](#capabilities) | [Planner details](#planner-task-details) |
+[Private policy](#private-policy-and-resource-discovery) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
@@ -52,7 +53,7 @@ uv sync --frozen --python python3.13
 The committed `uv.lock` pins the resolved dependency graph. This project has no
 Node.js runtime, postinstall script, or client secret.
 
-### Configure the smallest profile
+### Configure and seal the smallest profile
 
 ```bash
 export M365_TENANT_ID="<tenant-guid>"
@@ -64,8 +65,16 @@ uv run m365-secure-mcp --check-config
 uv run m365-secure-mcp --explain-permissions
 uv run m365-secure-mcp --doctor
 uv run m365-secure-mcp --list-tools
-uv run m365-secure-mcp
+uv run m365-secure-mcp --export-policy \
+  "$HOME/Library/Application Support/m365-secure-mcp/read-policy.json"
+uv run m365-secure-mcp --policy-file \
+  "$HOME/Library/Application Support/m365-secure-mcp/read-policy.json"
 ```
+
+The export is a new owner-only `0600` file inside an owner-only `0700`
+directory. Existing paths, symlinks, unknown settings, and broad permissions
+are rejected. The private policy contains tenant/resource identifiers but no
+token or client secret; keep it out of Git and client configuration.
 
 The default configuration exposes only:
 
@@ -87,7 +96,7 @@ export M365_ENABLED_TOOLS="m365_search_mail,m365_list_calendar,m365_search_files
 <summary><strong>Codex</strong></summary>
 
 Merge [examples/codex-read.toml](examples/codex-read.toml) into a trusted
-project's `.codex/config.toml`, replace the placeholders, and keep:
+project's `.codex/config.toml`, point it at the private policy file, and keep:
 
 ```toml
 default_tools_approval_mode = "prompt"
@@ -101,8 +110,8 @@ Do not combine a write profile with automatic tool approval.
 <summary><strong>Claude Code</strong></summary>
 
 Use [examples/claude-code-read.mcp.json](examples/claude-code-read.mcp.json) as
-the local stdio definition. Keep tenant and user identifiers out of shared
-repositories.
+the local stdio definition. It references the private policy by path; tenant
+and user identifiers stay outside shared repositories.
 
 </details>
 
@@ -121,8 +130,8 @@ does not need before granting Graph consent.
 |---|---|---|
 | Identity | tenant, user object IDs, UPN domains | `/me` is verified before data access |
 | Surface | modules, exact tool allowlist and denylist | unknown or unavailable names stop startup |
-| Resources | sites, teams, chats, groups, plans | non-allowlisted identifiers are rejected locally |
-| Writes | individual non-delete actions | separate process, two gates, approval, receipts |
+| Resources | sites, teams, chats, groups, plans, Entra apps and CA policies | non-allowlisted identifiers are rejected locally |
+| Writes | individual non-delete actions | separate process, explicit action, approval, receipts |
 | Egress | Microsoft Graph target | HTTPS `graph.microsoft.com/v1.0` only |
 | Evidence | every tool result | versioned schema, operation ID, explicit retry state |
 
@@ -131,12 +140,14 @@ Additional controls:
 - delegated OAuth authorization code flow with PKCE
 - OS Keychain token cache, with no plaintext token file
 - no-follow, owner-only local audit and receipt files
-- Graph `v1.0` only, redirects disabled, bounded retries and responses
+- Graph `v1.0` only, redirects disabled, bounded read retries and responses
 - signed pagination cursors bound to tool, principal, resource, and query
 - M365 content treated as untrusted input and converted to bounded plain text
 - separate read and write processes
 - SQLite write reservation and durable metadata-only receipt before Graph is called
 - resource-specific ETag concurrency on updates and per-tool rate limits
+- no automatic retry after an ambiguous write response or transport failure
+- post-write reads verify the exact requested fields before success is reported
 - metadata-only audit events correlated by operation ID
 
 Read the complete threat model, assumptions, and residual risks in
@@ -207,8 +218,12 @@ uv run m365-secure-mcp --doctor live
 # Tool-by-tool reason for every Graph scope
 uv run m365-secure-mcp --explain-permissions
 
-# Secret-free effective policy plus a stable sha256 digest
+# Operator-only policy summary plus a stable sha256 digest
 uv run m365-secure-mcp --print-policy
+
+# Read-only candidate discovery; never changes allowlists or exposes an MCP tool
+uv run m365-secure-mcp --discover-resources \
+  planner applications service_principals conditional_access
 ```
 
 The offline doctor never signs in or calls Graph. Live mode may open the normal
@@ -225,18 +240,21 @@ because a stdio server cannot prove the host's approval policy.
 | Contacts | Channels | Excel structure | Entra audit |
 | To Do | Groups | OneNote metadata | Intune |
 | Planner | People and presence | Directory profiles | Service Health |
+| Entra applications | Conditional Access | Directory roles | Licenses and domains |
 
 ### Read profile
 
-Up to **60 read tools** are selected by module and can be reduced to an exact
+Up to **75 read tools** are selected by module and can be reduced to an exact
 allowlist. Content-bearing responses are normalized, bounded, and marked as
 untrusted external data.
 
 ### Write profile
 
-The write process exposes **12 non-delete actions**, each separately enabled.
+The write process exposes **15 non-delete actions**, each separately enabled.
 They cover mail drafts, calendar events, contacts, To Do tasks, Teams messages,
-Planner tasks, and Planner task details. Exact tool contracts are listed in the
+Planner tasks/details, allowlisted Entra application metadata, allowlisted
+service-principal controls, and the state/name of allowlisted Conditional
+Access policies. Exact tool contracts are listed in the
 [tool catalog](docs/TOOL_CATALOG.md).
 
 Every write requires a UUID idempotency key. The local ledger commits before
@@ -247,7 +265,7 @@ exact tool/idempotency-key pair; it cannot enumerate the ledger and never calls
 Graph.
 
 <details>
-<summary><strong>Expand the complete 73-contract surface</strong></summary>
+<summary><strong>Expand the complete 91-contract surface</strong></summary>
 
 The two common tools are always registered:
 `m365_get_security_posture` and `m365_get_my_profile`.
@@ -265,6 +283,9 @@ The write profile also registers the local read-only
 | OneNote | 3 | 0 |
 | Security, audit, Intune, service health | 10 | 0 |
 | Organization | 1 | 0 |
+| Entra applications and service principals | 8 | 2 |
+| Identity governance | 5 | 1 |
+| Licensing and domains | 2 | 0 |
 | Local write evidence | 0 | 0 + 1 receipt query |
 
 <h4>Mail and calendar</h4>
@@ -323,7 +344,72 @@ m365_list_device_configurations  m365_list_service_health
 m365_list_service_issues         m365_list_service_messages
 ```
 
+<h4>Entra applications, governance, licensing, and domains</h4>
+
+```text
+m365_list_allowed_applications
+m365_get_application
+m365_list_application_owners
+m365_list_allowed_service_principals
+m365_get_service_principal
+m365_list_service_principal_owners
+m365_list_service_principal_app_role_assignments
+m365_list_service_principal_delegated_grants
+m365_update_entra_application
+m365_update_entra_service_principal
+m365_list_conditional_access_policies
+m365_list_directory_role_definitions
+m365_list_directory_role_assignments
+m365_list_access_review_definitions
+m365_list_entitlement_catalogs
+m365_update_conditional_access_policy
+m365_list_subscribed_skus
+m365_list_domains
+```
+
 </details>
+
+## Private policy and resource discovery
+
+Resource IDs belong in one local owner-only policy, not in a public repository
+or repeated across client configs. The operator can discover candidates through
+fixed read-only Graph calls:
+
+```bash
+uv run m365-secure-mcp --policy-file "/private/read-policy.json" \
+  --discover-resources planner teams chats groups
+
+uv run m365-secure-mcp --policy-file "/private/admin-read-policy.json" \
+  --discover-resources applications service_principals conditional_access
+```
+
+Discovery is deliberately outside the MCP tool surface. It prints untrusted
+metadata and whether each ID is already allowed, but it never edits the policy
+or selects resources on the operator's behalf.
+
+Use separate private policy files and app registrations for routine read,
+routine write, privileged read, and privileged write. See
+[Ownership and migration](docs/OWNERSHIP_AND_MIGRATION.md) for the staged
+replacement of third-party Graph proxies without losing break-glass coverage.
+
+## Privileged Entra writes
+
+Administrative writes remain invisible until every layer agrees:
+
+```bash
+export M365_PROFILE=write
+export M365_WRITE_ENABLED=true
+export M365_PRIVILEGED_WRITES_ENABLED=true
+export M365_WRITE_ACTIONS=entra.update_service_principal
+export M365_ALLOWED_SERVICE_PRINCIPAL_IDS="<approved-object-guid>"
+```
+
+The corresponding Entra registration must also have the delegated Graph
+permission and the signed-in operator must hold a supported Entra role.
+Application and service-principal updates cannot touch secrets, certificates,
+owners, redirect URIs, app roles, or consent grants. Conditional Access updates
+can change only `state` and `displayName`; conditions and controls are
+read-only. No delete operation exists.
 
 ## Planner task details
 
@@ -412,10 +498,16 @@ modules
 ```
 
 Administrative domains such as Defender, Entra audit, Intune, and Service
-Health also require:
+Health, Entra applications, governance, licensing, and domains also require:
 
 ```bash
 export M365_PRIVILEGED_MODULES_ENABLED=true
+```
+
+Privileged write actions additionally require:
+
+```bash
+export M365_PRIVILEGED_WRITES_ENABLED=true
 ```
 
 See the [full configuration reference](docs/CONFIGURATION.md).
@@ -434,12 +526,12 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 57 passed |
+| Tests | 89 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
 | Package | wheel and source distribution |
-| Full read-profile smoke test | exactly 60 tools |
+| Full read-profile smoke test | exactly 75 tools |
 
 Live Graph integration tests require a dedicated non-production tenant and
 explicit operator consent.
@@ -448,12 +540,13 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 73 contracts and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 91 contracts and their boundaries |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |
 | [Entra setup](docs/ENTRA_SETUP.md) | Registration, delegated scopes, consent |
 | [Authentication troubleshooting](docs/AUTH_TROUBLESHOOTING.md) | AADSTS diagnosis |
 | [Reference review](docs/REFERENCE_REVIEW.md) | Comparative engineering decisions |
+| [Ownership and migration](docs/OWNERSHIP_AND_MIGRATION.md) | Public core, private deployment, and Lokka transition |
 
 ## Engineering references
 

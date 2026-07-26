@@ -13,6 +13,8 @@ from uuid import UUID
 from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .permissions import READ_TOOL_PERMISSIONS
+
 
 class Profile(StrEnum):
     """Security profile controlling which tool surface is exposed."""
@@ -44,34 +46,19 @@ class Module(StrEnum):
     AUDIT = "audit"
     INTUNE = "intune"
     SERVICE_HEALTH = "service_health"
+    ENTRA_APPS = "entra_apps"
+    GOVERNANCE = "governance"
+    LICENSING = "licensing"
 
 
 READ_SCOPES: dict[Module, frozenset[str]] = {
-    Module.PROFILE: frozenset({"User.Read"}),
-    Module.MAIL: frozenset({"Mail.Read"}),
-    Module.CALENDAR: frozenset({"Calendars.Read"}),
-    Module.FILES: frozenset({"Files.Read"}),
-    Module.SITES: frozenset({"Sites.Selected"}),
-    Module.CONTACTS: frozenset({"Contacts.Read"}),
-    Module.TODO: frozenset({"Tasks.Read"}),
-    Module.PLANNER: frozenset({"Tasks.Read"}),
-    Module.TEAMS: frozenset({"ChannelMessage.Read.All", "Chat.Read"}),
-    Module.DIRECTORY: frozenset({"User.ReadBasic.All"}),
-    Module.GROUPS: frozenset({"GroupMember.Read.All"}),
-    Module.ORGANIZATION: frozenset({"Organization.Read.All"}),
-    Module.ONENOTE: frozenset({"Notes.Read"}),
-    Module.EXCEL: frozenset({"Files.Read"}),
-    Module.PEOPLE: frozenset({"People.Read"}),
-    Module.PRESENCE: frozenset({"Presence.Read"}),
-    Module.SECURITY: frozenset({"SecurityAlert.Read.All", "SecurityIncident.Read.All"}),
-    Module.AUDIT: frozenset({"AuditLog.Read.All"}),
-    Module.INTUNE: frozenset(
-        {
-            "DeviceManagementConfiguration.Read.All",
-            "DeviceManagementManagedDevices.Read.All",
-        }
-    ),
-    Module.SERVICE_HEALTH: frozenset({"ServiceHealth.Read.All"}),
+    module: frozenset(
+        scope
+        for permission in READ_TOOL_PERMISSIONS.values()
+        if permission.module == module.value
+        for scope in permission.scopes
+    )
+    for module in Module
 }
 
 PRIVILEGED_MODULES = frozenset(
@@ -81,6 +68,26 @@ PRIVILEGED_MODULES = frozenset(
         Module.AUDIT,
         Module.INTUNE,
         Module.SERVICE_HEALTH,
+        Module.ENTRA_APPS,
+        Module.GOVERNANCE,
+        Module.LICENSING,
+    }
+)
+
+ENTRA_APPLICATION_TOOLS = frozenset(
+    {
+        "m365_list_allowed_applications",
+        "m365_get_application",
+        "m365_list_application_owners",
+    }
+)
+ENTRA_SERVICE_PRINCIPAL_TOOLS = frozenset(
+    {
+        "m365_list_allowed_service_principals",
+        "m365_get_service_principal",
+        "m365_list_service_principal_owners",
+        "m365_list_service_principal_app_role_assignments",
+        "m365_list_service_principal_delegated_grants",
     }
 )
 
@@ -97,9 +104,21 @@ WRITE_ACTION_SCOPES: dict[str, frozenset[str]] = {
     "planner.create_task": frozenset({"Tasks.ReadWrite"}),
     "planner.update_task": frozenset({"Tasks.ReadWrite"}),
     "planner.update_task_details": frozenset({"Tasks.ReadWrite"}),
+    "entra.update_application": frozenset({"Application.ReadWrite.All"}),
+    "entra.update_service_principal": frozenset({"Application.ReadWrite.All"}),
+    "governance.update_conditional_access_policy": frozenset(
+        {"Policy.Read.All", "Policy.ReadWrite.ConditionalAccess"}
+    ),
 }
 
 KNOWN_WRITE_ACTIONS = frozenset(WRITE_ACTION_SCOPES)
+PRIVILEGED_WRITE_ACTIONS = frozenset(
+    {
+        "entra.update_application",
+        "entra.update_service_principal",
+        "governance.update_conditional_access_policy",
+    }
+)
 
 
 def _csv(value: str) -> tuple[str, ...]:
@@ -139,6 +158,9 @@ class Settings(BaseSettings):
     allowed_chat_ids: str = ""
     allowed_group_ids: str = ""
     allowed_plan_ids: str = ""
+    allowed_application_ids: str = ""
+    allowed_service_principal_ids: str = ""
+    allowed_conditional_access_policy_ids: str = ""
     allowed_recipient_domains: str = ""
 
     auth_flow: Literal["interactive", "device_code"] = "interactive"
@@ -149,6 +171,7 @@ class Settings(BaseSettings):
     write_enabled: bool = False
     write_actions: str = ""
     privileged_modules_enabled: bool = False
+    privileged_writes_enabled: bool = False
     enabled_tools: str = ""
     disabled_tools: str = ""
 
@@ -191,9 +214,22 @@ class Settings(BaseSettings):
                 raise ValueError("domains and hosts must be lowercase bare DNS names")
         return value
 
+    @field_validator(
+        "allowed_user_object_ids",
+        "allowed_application_ids",
+        "allowed_service_principal_ids",
+        "allowed_conditional_access_policy_ids",
+    )
+    @classmethod
+    def validate_uuid_allowlists(cls, value: str) -> str:
+        _uuid_set(value, "UUID allowlist")
+        return value
+
     @model_validator(mode="after")
     def validate_security_posture(self) -> Settings:
         module_names = set(_csv(self.modules))
+        enabled_tools = set(_csv(self.enabled_tools))
+        disabled_tools = set(_csv(self.disabled_tools))
         unknown_modules = module_names - {module.value for module in Module}
         if unknown_modules:
             raise ValueError(f"unknown M365 modules: {sorted(unknown_modules)}")
@@ -207,6 +243,29 @@ class Settings(BaseSettings):
             raise ValueError("planner module requires M365_ALLOWED_PLAN_IDS")
         if Module.GROUPS.value in module_names and not self.group_ids:
             raise ValueError("groups module requires M365_ALLOWED_GROUP_IDS")
+        if Module.ENTRA_APPS.value in module_names:
+            selected_application_tools = (
+                ENTRA_APPLICATION_TOOLS
+                if not enabled_tools
+                else ENTRA_APPLICATION_TOOLS & enabled_tools
+            ) - disabled_tools
+            selected_service_principal_tools = (
+                ENTRA_SERVICE_PRINCIPAL_TOOLS
+                if not enabled_tools
+                else ENTRA_SERVICE_PRINCIPAL_TOOLS & enabled_tools
+            ) - disabled_tools
+            if selected_application_tools and not self.application_ids:
+                raise ValueError(
+                    "Entra application tools require M365_ALLOWED_APPLICATION_IDS"
+                )
+            if (
+                selected_service_principal_tools
+                and not self.service_principal_ids
+            ):
+                raise ValueError(
+                    "Entra service-principal tools require "
+                    "M365_ALLOWED_SERVICE_PRINCIPAL_IDS"
+                )
         privileged = {Module(item) for item in module_names} & PRIVILEGED_MODULES
         if privileged and not self.privileged_modules_enabled:
             names = sorted(module.value for module in privileged)
@@ -229,6 +288,12 @@ class Settings(BaseSettings):
                 raise ValueError("write profile requires M365_WRITE_ENABLED=true")
             if not actions:
                 raise ValueError("write profile requires an explicit M365_WRITE_ACTIONS allowlist")
+        privileged_actions = actions & PRIVILEGED_WRITE_ACTIONS
+        if privileged_actions and not self.privileged_writes_enabled:
+            raise ValueError(
+                "privileged write actions require "
+                "M365_PRIVILEGED_WRITES_ENABLED=true"
+            )
 
         recipient_actions = {
             "mail.create_draft",
@@ -249,9 +314,27 @@ class Settings(BaseSettings):
             raise ValueError("Teams channel writes require M365_ALLOWED_TEAM_IDS")
         if "teams.send_chat_message" in actions and not self.chat_ids:
             raise ValueError("Teams chat writes require M365_ALLOWED_CHAT_IDS")
+        if "entra.update_application" in actions and not self.application_ids:
+            raise ValueError(
+                "Entra application writes require M365_ALLOWED_APPLICATION_IDS"
+            )
+        if (
+            "entra.update_service_principal" in actions
+            and not self.service_principal_ids
+        ):
+            raise ValueError(
+                "Entra service-principal writes require "
+                "M365_ALLOWED_SERVICE_PRINCIPAL_IDS"
+            )
+        if (
+            "governance.update_conditional_access_policy" in actions
+            and not self.conditional_access_policy_ids
+        ):
+            raise ValueError(
+                "Conditional Access writes require "
+                "M365_ALLOWED_CONDITIONAL_ACCESS_POLICY_IDS"
+            )
 
-        enabled_tools = set(_csv(self.enabled_tools))
-        disabled_tools = set(_csv(self.disabled_tools))
         for tool_name in enabled_tools | disabled_tools:
             if not re.fullmatch(r"m365_[a-z0-9_]{3,96}", tool_name):
                 raise ValueError("tool allowlists accept only explicit m365_* tool names")
@@ -301,6 +384,27 @@ class Settings(BaseSettings):
         return frozenset(_csv(self.allowed_plan_ids))
 
     @property
+    def application_ids(self) -> frozenset[str]:
+        return _uuid_set(
+            self.allowed_application_ids,
+            "M365_ALLOWED_APPLICATION_IDS",
+        )
+
+    @property
+    def service_principal_ids(self) -> frozenset[str]:
+        return _uuid_set(
+            self.allowed_service_principal_ids,
+            "M365_ALLOWED_SERVICE_PRINCIPAL_IDS",
+        )
+
+    @property
+    def conditional_access_policy_ids(self) -> frozenset[str]:
+        return _uuid_set(
+            self.allowed_conditional_access_policy_ids,
+            "M365_ALLOWED_CONDITIONAL_ACCESS_POLICY_IDS",
+        )
+
+    @property
     def recipient_domains(self) -> frozenset[str]:
         return frozenset(_csv(self.allowed_recipient_domains))
 
@@ -316,8 +420,16 @@ class Settings(BaseSettings):
     def scopes(self) -> tuple[str, ...]:
         scopes: set[str] = {"User.Read"}
         if self.profile is Profile.READ:
-            for module in self.enabled_modules:
-                scopes.update(READ_SCOPES[module])
+            selected_tools = {
+                name
+                for name, permission in READ_TOOL_PERMISSIONS.items()
+                if Module(permission.module) in self.enabled_modules
+            }
+            if self.tool_allowlist:
+                selected_tools &= self.tool_allowlist
+            selected_tools -= self.tool_denylist
+            for tool in selected_tools:
+                scopes.update(READ_TOOL_PERMISSIONS[tool].scopes)
         else:
             for action in self.enabled_write_actions:
                 scopes.update(WRITE_ACTION_SCOPES[action])
@@ -372,11 +484,56 @@ class Settings(BaseSettings):
             "chat_allowlist_count": len(self.chat_ids),
             "group_allowlist_count": len(self.group_ids),
             "planner_plan_allowlist_count": len(self.plan_ids),
+            "entra_application_allowlist_count": len(self.application_ids),
+            "entra_service_principal_allowlist_count": len(
+                self.service_principal_ids
+            ),
+            "conditional_access_policy_allowlist_count": len(
+                self.conditional_access_policy_ids
+            ),
             "privileged_modules_enabled": self.privileged_modules_enabled,
+            "privileged_writes_enabled": self.privileged_writes_enabled,
             "explicit_tool_allowlist": sorted(self.tool_allowlist),
             "explicit_tool_denylist": sorted(self.tool_denylist),
             "write_enabled": self.write_enabled,
             "write_actions": sorted(self.enabled_write_actions),
+            "token_cache_mode": self.token_cache_mode,
+            "auth_flow": self.auth_flow,
+            "write_rate_limit_per_minute": self.write_rate_limit_per_minute,
+        }
+
+    def agent_summary(self) -> dict[str, object]:
+        """Return policy posture without tenant, client, domain, or resource values."""
+
+        return {
+            "tenant_id_configured": True,
+            "client_id_configured": True,
+            "profile": self.profile.value,
+            "modules": sorted(module.value for module in self.enabled_modules),
+            "scopes": list(self.scopes),
+            "principal_object_id_allowlist_configured": bool(
+                self.allowed_user_ids
+            ),
+            "upn_domain_allowlist_count": len(self.upn_domains),
+            "site_allowlist_count": len(self.site_ids),
+            "sharepoint_host_allowlist_count": len(self.sharepoint_hosts),
+            "team_allowlist_count": len(self.team_ids),
+            "chat_allowlist_count": len(self.chat_ids),
+            "group_allowlist_count": len(self.group_ids),
+            "planner_plan_allowlist_count": len(self.plan_ids),
+            "entra_application_allowlist_count": len(self.application_ids),
+            "entra_service_principal_allowlist_count": len(
+                self.service_principal_ids
+            ),
+            "conditional_access_policy_allowlist_count": len(
+                self.conditional_access_policy_ids
+            ),
+            "privileged_modules_enabled": self.privileged_modules_enabled,
+            "privileged_writes_enabled": self.privileged_writes_enabled,
+            "explicit_tool_allowlist_count": len(self.tool_allowlist),
+            "explicit_tool_denylist_count": len(self.tool_denylist),
+            "write_enabled": self.write_enabled,
+            "write_action_count": len(self.enabled_write_actions),
             "token_cache_mode": self.token_cache_mode,
             "auth_flow": self.auth_flow,
             "write_rate_limit_per_minute": self.write_rate_limit_per_minute,
@@ -410,6 +567,11 @@ class Settings(BaseSettings):
             "chat_ids": sorted(self.chat_ids),
             "group_ids": sorted(self.group_ids),
             "plan_ids": sorted(self.plan_ids),
+            "application_ids": sorted(self.application_ids),
+            "service_principal_ids": sorted(self.service_principal_ids),
+            "conditional_access_policy_ids": sorted(
+                self.conditional_access_policy_ids
+            ),
             "recipient_domains": sorted(self.recipient_domains),
             "auth_flow": self.auth_flow,
             "allow_device_code": self.allow_device_code,
@@ -417,6 +579,7 @@ class Settings(BaseSettings):
             "write_enabled": self.write_enabled,
             "write_actions": sorted(self.enabled_write_actions),
             "privileged_modules_enabled": self.privileged_modules_enabled,
+            "privileged_writes_enabled": self.privileged_writes_enabled,
             "tool_allowlist": sorted(self.tool_allowlist),
             "tool_denylist": sorted(self.tool_denylist),
             "graph_timeout_seconds": self.graph_timeout_seconds,
@@ -434,12 +597,25 @@ class Settings(BaseSettings):
     def permission_explanation(self) -> dict[str, object]:
         """Explain exactly why each effective delegated scope is requested."""
 
+        module_names = sorted(module.value for module in self.enabled_modules)
         modules = [
             {
-                "module": module.value,
-                "scopes": sorted(READ_SCOPES[module]),
+                "module": module_name,
+                "scopes": sorted(
+                    {
+                        scope
+                        for tool, permission in READ_TOOL_PERMISSIONS.items()
+                        if permission.module == module_name
+                        and (
+                            not self.tool_allowlist
+                            or tool in self.tool_allowlist
+                        )
+                        and tool not in self.tool_denylist
+                        for scope in permission.scopes
+                    }
+                ),
             }
-            for module in sorted(self.enabled_modules, key=lambda item: item.value)
+            for module_name in module_names
         ]
         actions = [
             {

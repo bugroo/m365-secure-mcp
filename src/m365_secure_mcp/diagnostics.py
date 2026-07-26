@@ -12,33 +12,19 @@ from typing import Any, Literal
 import keyring
 
 from .auth import TokenProvider
-from .catalog import SPECS
-from .config import READ_SCOPES, WRITE_ACTION_SCOPES, Module, Profile, Settings
+from .config import (
+    PRIVILEGED_WRITE_ACTIONS,
+    WRITE_ACTION_SCOPES,
+    Profile,
+    Settings,
+)
 from .graph import GRAPH_BASE_URL, GraphClient, classify_agent_error
+from .permissions import READ_TOOL_PERMISSIONS
 from .security import SecurityPolicy
 from .server import WRITE_TOOL_ACTIONS, create_server
 
 CheckStatus = Literal["pass", "warn", "info", "fail"]
 KEYRING_CACHE_MODE = "keyring"  # noqa: S105
-MANUAL_READ_TOOL_MODULES: dict[str, Module] = {
-    "m365_get_my_profile": Module.PROFILE,
-    "m365_search_mail": Module.MAIL,
-    "m365_get_mail_message": Module.MAIL,
-    "m365_list_calendar": Module.CALENDAR,
-    "m365_find_schedule": Module.CALENDAR,
-    "m365_search_files": Module.FILES,
-    "m365_get_file_metadata": Module.FILES,
-    "m365_list_allowed_sites": Module.SITES,
-    "m365_search_contacts": Module.CONTACTS,
-    "m365_list_todo_tasks": Module.TODO,
-    "m365_list_allowed_plans": Module.PLANNER,
-    "m365_list_planner_tasks": Module.PLANNER,
-    "m365_list_planner_buckets": Module.PLANNER,
-    "m365_get_planner_task": Module.PLANNER,
-    "m365_list_channel_messages": Module.TEAMS,
-}
-
-
 def _check(
     name: str,
     status: CheckStatus,
@@ -110,17 +96,16 @@ async def permission_report(settings: Settings) -> dict[str, Any]:
     server = create_server(surface_settings)
     tools = await server.list_tools()
     tool_names = sorted(tool.name for tool in tools)
-    catalog_modules = {spec.name: spec.module for spec in SPECS}
     contracts: list[dict[str, Any]] = []
     for tool in tool_names:
         action = WRITE_TOOL_ACTIONS.get(tool)
-        module = MANUAL_READ_TOOL_MODULES.get(tool) or catalog_modules.get(tool)
+        permission = READ_TOOL_PERMISSIONS.get(tool)
         if action is not None:
             scopes = sorted(set(WRITE_ACTION_SCOPES[action]) | {"User.Read"})
             reason = f"enabled write action: {action}"
-        elif module is not None:
-            scopes = sorted(set(READ_SCOPES[module]) | {"User.Read"})
-            reason = f"enabled read module: {module.value}"
+        elif permission is not None:
+            scopes = sorted(set(permission.scopes) | {"User.Read"})
+            reason = f"fixed read contract in module: {permission.module}"
         elif tool == "m365_get_security_posture":
             scopes = []
             reason = "local policy inspection; no Graph call"
@@ -307,9 +292,19 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
             _check(
                 "write_gates",
                 "pass",
-                "Write profile, global write gate, and exact action allowlist agree.",
+                (
+                    "Write profile, global gate, exact action allowlist, and "
+                    "privileged-write gate agree."
+                ),
                 evidence={
                     "enabled_actions": sorted(settings.enabled_write_actions),
+                    "privileged_actions": sorted(
+                        settings.enabled_write_actions
+                        & PRIVILEGED_WRITE_ACTIONS
+                    ),
+                    "privileged_writes_enabled": (
+                        settings.privileged_writes_enabled
+                    ),
                     "exposed_write_tools": exposed_write_tools,
                     "rate_limit_per_tool_per_minute": (
                         settings.write_rate_limit_per_minute

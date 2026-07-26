@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pytest
 
-from m365_secure_mcp.graph import classify_agent_error
+from m365_secure_mcp.graph import GraphError, GraphFailure, classify_agent_error
 from m365_secure_mcp.security import SecurityError
 from m365_secure_mcp.state import IdempotencyStore, WriteRateLimiter
 
@@ -115,6 +115,56 @@ async def test_failure_after_graph_write_attempt_is_always_uncertain(tmp_path: P
     assert receipt is not None
     assert receipt.status == "uncertain"
     assert receipt.uncertain_commit is True
+
+
+@pytest.mark.asyncio
+async def test_failure_after_confirmed_write_is_uncertain_even_when_read_returns_404(
+    tmp_path: Path,
+) -> None:
+    store = IdempotencyStore(tmp_path / "writes.sqlite3", pending_seconds=300)
+
+    async def verification_failure() -> str:
+        raise GraphError(
+            "verification resource was not found",
+            GraphFailure(404, "verification-read", None),
+        )
+
+    with pytest.raises(GraphError):
+        await store.execute(
+            "write",
+            "key-1",
+            {"value": "one"},
+            verification_failure,
+            write_confirmed=lambda: True,
+        )
+    receipt = await store.get_receipt(tool="write", idempotency_key="key-1")
+    assert receipt is not None
+    assert receipt.status == "uncertain"
+    assert receipt.uncertain_commit is True
+
+
+@pytest.mark.asyncio
+async def test_direct_graph_412_without_prior_success_is_rejected(tmp_path: Path) -> None:
+    store = IdempotencyStore(tmp_path / "writes.sqlite3", pending_seconds=300)
+
+    async def stale_etag() -> str:
+        raise GraphError(
+            "resource changed",
+            GraphFailure(412, "stale-etag", None),
+        )
+
+    with pytest.raises(GraphError):
+        await store.execute(
+            "write",
+            "key-1",
+            {"value": "one"},
+            stale_etag,
+            write_attempted=lambda: True,
+        )
+    receipt = await store.get_receipt(tool="write", idempotency_key="key-1")
+    assert receipt is not None
+    assert receipt.status == "rejected"
+    assert receipt.uncertain_commit is False
 
 
 @pytest.mark.asyncio

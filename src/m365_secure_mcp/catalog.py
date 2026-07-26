@@ -27,6 +27,7 @@ class ReadSpec:
     policies: tuple[str, ...] = ()
     collection: bool = True
     local_filter: str | None = None
+    supports_top: bool = True
 
 
 SPECS: tuple[ReadSpec, ...] = (
@@ -421,6 +422,180 @@ SPECS: tuple[ReadSpec, ...] = (
         "/admin/serviceAnnouncement/messages",
         "id,title,services,category,severity,startDateTime,endDateTime,lastModifiedDateTime,isMajorChange",
     ),
+    ReadSpec(
+        "m365_list_allowed_applications",
+        Module.ENTRA_APPS,
+        "Allowlisted Microsoft Entra Applications",
+        "List only application registrations present in the local application allowlist.",
+        "/applications",
+        (
+            "id,appId,displayName,createdDateTime,signInAudience,"
+            "publisherDomain,verifiedPublisher,disabledByMicrosoftStatus"
+        ),
+        local_filter="application",
+    ),
+    ReadSpec(
+        "m365_get_application",
+        Module.ENTRA_APPS,
+        "Microsoft Entra Application",
+        "Get one locally allowlisted application registration without credential material.",
+        "/applications/{application_id}",
+        (
+            "id,appId,displayName,createdDateTime,signInAudience,"
+            "publisherDomain,verifiedPublisher,disabledByMicrosoftStatus,"
+            "requiredResourceAccess"
+        ),
+        ("application_id",),
+        ("application",),
+        collection=False,
+    ),
+    ReadSpec(
+        "m365_list_application_owners",
+        Module.ENTRA_APPS,
+        "Microsoft Entra Application Owners",
+        "List owners of one locally allowlisted application registration.",
+        "/applications/{application_id}/owners",
+        "id,displayName,userPrincipalName",
+        ("application_id",),
+        ("application",),
+    ),
+    ReadSpec(
+        "m365_list_allowed_service_principals",
+        Module.ENTRA_APPS,
+        "Allowlisted Microsoft Entra Service Principals",
+        "List only enterprise applications present in the local service-principal allowlist.",
+        "/servicePrincipals",
+        (
+            "id,appId,displayName,accountEnabled,servicePrincipalType,"
+            "signInAudience,appOwnerOrganizationId,appRoleAssignmentRequired"
+        ),
+        local_filter="service_principal",
+    ),
+    ReadSpec(
+        "m365_get_service_principal",
+        Module.ENTRA_APPS,
+        "Microsoft Entra Service Principal",
+        "Get one locally allowlisted enterprise application without credential material.",
+        "/servicePrincipals/{service_principal_id}",
+        (
+            "id,appId,displayName,accountEnabled,servicePrincipalType,"
+            "signInAudience,appOwnerOrganizationId,appRoleAssignmentRequired,"
+            "verifiedPublisher,preferredSingleSignOnMode"
+        ),
+        ("service_principal_id",),
+        ("service_principal",),
+        collection=False,
+    ),
+    ReadSpec(
+        "m365_list_service_principal_owners",
+        Module.ENTRA_APPS,
+        "Microsoft Entra Service Principal Owners",
+        "List owners of one locally allowlisted enterprise application.",
+        "/servicePrincipals/{service_principal_id}/owners",
+        "id,displayName,userPrincipalName",
+        ("service_principal_id",),
+        ("service_principal",),
+    ),
+    ReadSpec(
+        "m365_list_service_principal_app_role_assignments",
+        Module.ENTRA_APPS,
+        "Microsoft Entra Application Permission Grants",
+        "List application permissions granted to one locally allowlisted service principal.",
+        "/servicePrincipals/{service_principal_id}/appRoleAssignments",
+        (
+            "id,createdDateTime,appRoleId,principalId,principalType,"
+            "resourceId,resourceDisplayName"
+        ),
+        ("service_principal_id",),
+        ("service_principal",),
+    ),
+    ReadSpec(
+        "m365_list_service_principal_delegated_grants",
+        Module.ENTRA_APPS,
+        "Microsoft Entra Delegated Permission Grants",
+        "List delegated permission grants for one locally allowlisted service principal.",
+        "/servicePrincipals/{service_principal_id}/oauth2PermissionGrants",
+        "id,clientId,consentType,principalId,resourceId,scope",
+        ("service_principal_id",),
+        ("service_principal",),
+    ),
+    ReadSpec(
+        "m365_list_conditional_access_policies",
+        Module.GOVERNANCE,
+        "Microsoft Entra Conditional Access Policies",
+        "List bounded Conditional Access policy definitions and enforcement state.",
+        "/identity/conditionalAccess/policies",
+        (
+            "id,displayName,createdDateTime,modifiedDateTime,state,"
+            "templateId,conditions,grantControls,sessionControls"
+        ),
+    ),
+    ReadSpec(
+        "m365_list_directory_role_definitions",
+        Module.GOVERNANCE,
+        "Microsoft Entra Role Definitions",
+        "List directory role definitions and their permitted resource actions.",
+        "/roleManagement/directory/roleDefinitions",
+        (
+            "id,displayName,description,isBuiltIn,isEnabled,"
+            "templateId,version,rolePermissions"
+        ),
+    ),
+    ReadSpec(
+        "m365_list_directory_role_assignments",
+        Module.GOVERNANCE,
+        "Microsoft Entra Role Assignments",
+        "List active directory role assignments without expanding principal profiles.",
+        "/roleManagement/directory/roleAssignments",
+        "id,principalId,roleDefinitionId,directoryScopeId,appScopeId",
+    ),
+    ReadSpec(
+        "m365_list_access_review_definitions",
+        Module.GOVERNANCE,
+        "Microsoft Entra Access Review Definitions",
+        "List access-review definitions, scopes, reviewers, schedules, and settings.",
+        "/identityGovernance/accessReviews/definitions",
+        (
+            "id,displayName,descriptionForAdmins,status,createdDateTime,"
+            "lastModifiedDateTime,scope,reviewers,fallbackReviewers,"
+            "settings,instanceEnumerationScope"
+        ),
+    ),
+    ReadSpec(
+        "m365_list_entitlement_catalogs",
+        Module.GOVERNANCE,
+        "Microsoft Entra Entitlement Catalogs",
+        "List access-package catalog metadata without assignments or request contents.",
+        "/identityGovernance/entitlementManagement/catalogs",
+        (
+            "id,displayName,description,catalogType,state,"
+            "isExternallyVisible,createdDateTime,modifiedDateTime"
+        ),
+    ),
+    ReadSpec(
+        "m365_list_subscribed_skus",
+        Module.LICENSING,
+        "Microsoft 365 Subscribed SKUs",
+        "List tenant license inventory and aggregate consumption.",
+        "/subscribedSkus",
+        (
+            "id,skuId,skuPartNumber,appliesTo,capabilityStatus,"
+            "consumedUnits,prepaidUnits,servicePlans"
+        ),
+        supports_top=False,
+    ),
+    ReadSpec(
+        "m365_list_domains",
+        Module.LICENSING,
+        "Microsoft 365 Domains",
+        "List tenant domain posture without DNS record contents.",
+        "/domains",
+        (
+            "id,authenticationType,availabilityStatus,isAdminManaged,"
+            "isDefault,isInitial,isRoot,isVerified,supportedServices"
+        ),
+        supports_top=False,
+    ),
 )
 
 
@@ -436,6 +611,8 @@ def _annotations(title: str) -> ToolAnnotations:
 
 def _value(params: CatalogReadInput, field: str) -> str:
     value = getattr(params, field)
+    if field in {"application_id", "service_principal_id"} and value is not None:
+        return str(value)
     if not isinstance(value, str) or not value:
         raise SecurityError(f"{field} is required for this tool")
     return value
@@ -458,6 +635,12 @@ def _apply_policies(spec: ReadSpec, params: CatalogReadInput, services: Any) -> 
             services.policy.authorize_chat(_value(params, "chat_id"))
         elif policy == "group":
             services.policy.authorize_group(_value(params, "group_id"))
+        elif policy == "application":
+            services.policy.authorize_application(_value(params, "application_id"))
+        elif policy == "service_principal":
+            services.policy.authorize_service_principal(
+                _value(params, "service_principal_id")
+            )
         else:
             raise SecurityError("internal catalog policy is invalid")
 
@@ -489,6 +672,18 @@ def _filter_items(
         return [item for item in items if item.get("planId") in services.settings.plan_ids]
     if spec.local_filter == "chat":
         return [item for item in items if item.get("id") in services.settings.chat_ids]
+    if spec.local_filter == "application":
+        return [
+            item
+            for item in items
+            if item.get("id") in services.settings.application_ids
+        ]
+    if spec.local_filter == "service_principal":
+        return [
+            item
+            for item in items
+            if item.get("id") in services.settings.service_principal_ids
+        ]
     return items
 
 
@@ -501,13 +696,16 @@ def _handler(spec: ReadSpec, services: Any, runner: Any) -> Any:
                 url = services.cursors.decode(spec.name, params.cursor)
                 data = await services.graph.request_cursor(url)
             else:
+                query: dict[str, str | int] = {"$select": spec.select}
+                if spec.supports_top:
+                    query["$top"] = min(
+                        params.limit,
+                        services.settings.max_items,
+                    )
                 data = await services.graph.request_json(
                     "GET",
                     endpoint,
-                    params={
-                        "$select": spec.select,
-                        "$top": min(params.limit, services.settings.max_items),
-                    },
+                    params=query,
                 )
             if not spec.collection:
                 return render_record(
@@ -516,8 +714,13 @@ def _handler(spec: ReadSpec, services: Any, runner: Any) -> Any:
                     response_format=params.response_format,
                     character_limit=services.settings.max_tool_characters,
                 )
-            raw_items = [item for item in data.get("value", []) if isinstance(item, dict)]
-            items = [_safe_value(item) for item in _filter_items(spec, raw_items, services)]
+            raw_items = [
+                item for item in data.get("value", []) if isinstance(item, dict)
+            ]
+            filtered = _filter_items(spec, raw_items, services)[
+                : min(params.limit, services.settings.max_items)
+            ]
+            items = [_safe_value(item) for item in filtered]
             next_link = data.get("@odata.nextLink")
             cursor = (
                 services.cursors.encode(spec.name, next_link)

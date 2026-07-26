@@ -37,6 +37,12 @@ class PrivateStateError(SecurityError):
     private_state_error = True
 
 
+class WriteVerificationError(SecurityError):
+    """A successful write response could not be proven by its postcondition."""
+
+    write_verification_failed = True
+
+
 def open_private_file(path: Path, flags: int) -> int:
     """Open a regular local file without following symlinks or broad access."""
 
@@ -260,6 +266,21 @@ class SecurityPolicy:
         if plan_id not in self.settings.plan_ids:
             raise SecurityError("Planner plan is not allowlisted")
         return plan_id
+
+    def authorize_application(self, application_id: str) -> str:
+        if application_id not in self.settings.application_ids:
+            raise SecurityError("Microsoft Entra application is not allowlisted")
+        return application_id
+
+    def authorize_service_principal(self, service_principal_id: str) -> str:
+        if service_principal_id not in self.settings.service_principal_ids:
+            raise SecurityError("Microsoft Entra service principal is not allowlisted")
+        return service_principal_id
+
+    def authorize_conditional_access_policy(self, policy_id: str) -> str:
+        if policy_id not in self.settings.conditional_access_policy_ids:
+            raise SecurityError("Conditional Access policy is not allowlisted")
+        return policy_id
 
     def authorize_assignee(self, object_id: str) -> str:
         if not self.settings.allowed_user_ids:

@@ -194,7 +194,22 @@ class IdempotencyStore:
         )
 
     @staticmethod
-    def _failure_status(exc: Exception, *, write_attempted: bool) -> str:
+    def _failure_status(
+        exc: Exception,
+        *,
+        write_attempted: bool,
+        write_confirmed: bool,
+        write_ambiguous: bool,
+    ) -> str:
+        if (
+            write_confirmed
+            or write_ambiguous
+            or (
+                isinstance(exc, GraphError)
+                and exc.write_may_have_committed
+            )
+        ):
+            return "uncertain"
         if isinstance(exc, GraphError):
             failure = exc.failure
             if failure is not None and 400 <= failure.status_code < 500:
@@ -245,6 +260,8 @@ class IdempotencyStore:
         *,
         operation_id: UUID | None = None,
         write_attempted: Callable[[], bool] | None = None,
+        write_confirmed: Callable[[], bool] | None = None,
+        write_ambiguous: Callable[[], bool] | None = None,
     ) -> WriteExecution:
         payload_hash = self._payload_hash(parameters)
         requested_operation_id = operation_id or uuid4()
@@ -361,6 +378,12 @@ class IdempotencyStore:
             status = self._failure_status(
                 exc,
                 write_attempted=write_attempted() if write_attempted is not None else False,
+                write_confirmed=(
+                    write_confirmed() if write_confirmed is not None else False
+                ),
+                write_ambiguous=(
+                    write_ambiguous() if write_ambiguous is not None else False
+                ),
             )
             details = classify_agent_error(exc)
             async with self._lock:

@@ -5,7 +5,7 @@ from typing import Any
 import httpx
 import pytest
 
-from m365_secure_mcp.graph import GraphClient, GraphError
+from m365_secure_mcp.graph import GraphClient, GraphError, classify_agent_error
 from m365_secure_mcp.security import SecurityPolicy
 
 from .conftest import USER_ID
@@ -140,3 +140,122 @@ async def test_graph_does_not_expose_provider_error_body(settings: Any) -> None:
     message = str(captured.value)
     assert "safe-request-id" in message
     assert "private tenant policy" not in message
+
+
+@pytest.mark.asyncio
+async def test_graph_never_retries_ambiguous_write_timeout(settings: Any) -> None:
+    settings.graph_max_retries = 3
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        if request.url.path == "/v1.0/me":
+            return httpx.Response(
+                200,
+                json={
+                    "id": USER_ID,
+                    "userPrincipalName": "person@example.com",
+                    "mail": "person@example.com",
+                },
+            )
+        calls += 1
+        raise httpx.ReadTimeout("response was lost", request=request)
+
+    graph = GraphClient(
+        settings,
+        FakeTokens(),  # type: ignore[arg-type]
+        SecurityPolicy(settings),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(GraphError) as captured:
+            await graph.request_json("POST", "/me/messages", json_body={"subject": "test"})
+    finally:
+        await graph.close()
+
+    assert calls == 1
+    assert captured.value.write_may_have_committed is True
+    assert graph.write_attempt_count == 1
+    assert graph.write_ambiguous_count == 1
+    assert graph.write_confirmed_count == 0
+    details = classify_agent_error(captured.value)
+    assert details.code == "GRAPH_WRITE_OUTCOME_UNCERTAIN"
+    assert details.safe_to_retry is False
+
+
+@pytest.mark.asyncio
+async def test_graph_never_retries_ambiguous_write_503(settings: Any) -> None:
+    settings.graph_max_retries = 3
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        if request.url.path == "/v1.0/me":
+            return httpx.Response(
+                200,
+                json={
+                    "id": USER_ID,
+                    "userPrincipalName": "person@example.com",
+                    "mail": "person@example.com",
+                },
+            )
+        calls += 1
+        return httpx.Response(503, headers={"request-id": "write-503"})
+
+    graph = GraphClient(
+        settings,
+        FakeTokens(),  # type: ignore[arg-type]
+        SecurityPolicy(settings),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        with pytest.raises(GraphError) as captured:
+            await graph.request_json("PATCH", "/planner/tasks/task-1", json_body={"title": "x"})
+    finally:
+        await graph.close()
+
+    assert calls == 1
+    assert captured.value.write_may_have_committed is True
+    assert graph.write_ambiguous_count == 1
+
+
+@pytest.mark.asyncio
+async def test_graph_retries_explicitly_failed_429_write(settings: Any) -> None:
+    settings.graph_max_retries = 1
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        if request.url.path == "/v1.0/me":
+            return httpx.Response(
+                200,
+                json={
+                    "id": USER_ID,
+                    "userPrincipalName": "person@example.com",
+                    "mail": "person@example.com",
+                },
+            )
+        calls += 1
+        if calls == 1:
+            return httpx.Response(429, headers={"Retry-After": "0"})
+        return httpx.Response(201, json={"id": "created"})
+
+    graph = GraphClient(
+        settings,
+        FakeTokens(),  # type: ignore[arg-type]
+        SecurityPolicy(settings),
+        transport=httpx.MockTransport(handler),
+    )
+    try:
+        result = await graph.request_json(
+            "POST",
+            "/me/messages",
+            json_body={"subject": "test"},
+        )
+    finally:
+        await graph.close()
+
+    assert result == {"id": "created"}
+    assert calls == 2
+    assert graph.write_confirmed_count == 1
+    assert graph.write_ambiguous_count == 0

@@ -30,8 +30,12 @@ Start with `User.Read`. Add modules independently:
 | Personal contacts | `Contacts.Read` |
 | To Do read | `Tasks.Read` |
 | Planner read | `Tasks.Read` |
+| Team metadata | `Team.ReadBasic.All` |
+| Team channel metadata | `Channel.ReadBasic.All` |
+| Channel members | `ChannelMember.Read.All` |
 | Teams channel messages | `ChannelMessage.Read.All` |
-| Teams chats | `Chat.Read` |
+| Teams chat metadata | `Chat.ReadBasic` |
+| Teams chat messages | `Chat.Read` |
 | Basic directory users | `User.ReadBasic.All` |
 | Group metadata/membership | `GroupMember.Read.All` |
 | Organization metadata | `Organization.Read.All` |
@@ -44,6 +48,14 @@ Start with `User.Read`. Add modules independently:
 | Intune managed devices | `DeviceManagementManagedDevices.Read.All` |
 | Intune configuration/compliance | `DeviceManagementConfiguration.Read.All` |
 | Microsoft 365 service health | `ServiceHealth.Read.All` |
+| Entra applications/service principals | `Application.Read.All` |
+| Service-principal delegated grants | `Directory.Read.All` |
+| Conditional Access read | `Policy.Read.All` |
+| Directory role definitions/assignments | `RoleManagement.Read.Directory` |
+| Access reviews | `AccessReview.Read.All` |
+| Entitlement catalogs | `EntitlementManagement.Read.All` |
+| License inventory | `LicenseAssignment.Read.All` |
+| Tenant domains | `Domain.Read.All` |
 | Mail draft | `Mail.ReadWrite` |
 | Send existing draft | `Mail.ReadWrite`, `Mail.Send` |
 | Calendar create | `Calendars.ReadWrite` |
@@ -53,14 +65,19 @@ Start with `User.Read`. Add modules independently:
 | Send Teams channel message | `ChannelMessage.Send` |
 | Send Teams chat message | `ChatMessage.Send` |
 | Planner task and task-details create/update | `Tasks.ReadWrite` |
+| Entra application/service-principal update | `Application.ReadWrite.All` |
+| Conditional Access state/name update | `Policy.Read.All`, `Policy.ReadWrite.ConditionalAccess` |
 
 Teams scopes are broad/admin-restricted. Keep the Teams module disabled unless
 there is a specific approved use case.
 
-Organization, Defender, audit, Intune, and service-health permissions are
-administrative or tenant-wide. They are blocked locally unless
-`M365_PRIVILEGED_MODULES_ENABLED=true`. Admin consent and the signed-in user's
-Microsoft 365/Entra roles still apply; the MCP never bypasses Graph RBAC.
+Organization, Defender, audit, Intune, service health, Entra applications,
+governance, licensing, and domain permissions are administrative or
+tenant-wide. They are blocked locally unless
+`M365_PRIVILEGED_MODULES_ENABLED=true`. Administrative write actions also
+require `M365_PRIVILEGED_WRITES_ENABLED=true`. Admin consent and the signed-in
+user's Microsoft 365/Entra roles still apply; the MCP never bypasses Graph
+RBAC.
 
 For `Sites.Selected`, an administrator must additionally grant the application
 access to each approved site. Configure the same site IDs and hostnames in the
@@ -68,13 +85,21 @@ local MCP allowlists.
 
 ## 3. Prefer separate app registrations
 
-For a high-security deployment, create:
+For a high-security deployment, create up to four registrations:
 
-- `M365 Secure MCP Read` with read permissions only.
-- `M365 Secure MCP Write` with only the explicitly needed write permissions.
+- `M365 Secure MCP Routine Read` with user-work permissions only.
+- `M365 Secure MCP Routine Write` with only routine write permissions.
+- `M365 Secure MCP Privileged Read` with selected administrative read scopes.
+- `M365 Secure MCP Privileged Write` with one selected administrative write
+  scope and restricted user assignment.
 
 Use each app's client ID only in the corresponding MCP entry. This preserves
 the read/write boundary even if environment configuration is changed.
+
+Never add a permission merely because it appears in this table. Run
+`--explain-permissions` for each private policy and grant only its reported
+scopes. In particular, `Directory.Read.All` is needed only for the delegated
+grant tool, not for general Entra application inventory.
 
 ## 4. Consent
 

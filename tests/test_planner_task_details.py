@@ -10,7 +10,15 @@ from mcp.server.fastmcp import FastMCP
 from pydantic import ValidationError
 
 from m365_secure_mcp.config import Settings
-from m365_secure_mcp.models import UpdatePlannerTaskDetailsInput
+from m365_secure_mcp.models import (
+    UpdateApplicationInput,
+    UpdateConditionalAccessPolicyInput,
+    UpdateEventInput,
+    UpdatePlannerTaskDetailsInput,
+    UpdatePlannerTaskInput,
+    UpdateServicePrincipalInput,
+    UpdateTodoTaskInput,
+)
 from m365_secure_mcp.security import AuditLogger, CursorCodec, SecurityPolicy
 from m365_secure_mcp.server import Services, ToolRunner, _register_write_tools
 from m365_secure_mcp.state import IdempotencyStore, WriteRateLimiter
@@ -21,12 +29,18 @@ TASK_ID = "task-1"
 PLAN_ID = "plan-1"
 DETAILS_ETAG = 'W/"details-etag-1"'
 EXISTING_ITEM_ID = "95e27074-6c4a-447a-aa24-9d718a0b86fa"
+APPLICATION_ID = "44444444-4444-4444-8444-444444444444"
+SERVICE_PRINCIPAL_ID = "55555555-5555-4555-8555-555555555555"
+CONDITIONAL_ACCESS_POLICY_ID = "66666666-6666-4666-8666-666666666666"
 
 
 class FakeGraph:
     def __init__(self, handler: Any) -> None:
         self.handler = handler
         self.calls: list[dict[str, Any]] = []
+        self.write_attempt_count = 0
+        self.write_confirmed_count = 0
+        self.write_ambiguous_count = 0
 
     async def request_json(
         self,
@@ -45,7 +59,12 @@ class FakeGraph:
             "headers": dict(headers) if headers is not None else None,
         }
         self.calls.append(call)
-        return self.handler(call)
+        if method in {"POST", "PATCH"}:
+            self.write_attempt_count += 1
+        result = self.handler(call)
+        if method in {"POST", "PATCH"}:
+            self.write_confirmed_count += 1
+        return result
 
 
 def make_settings(tmp_path: Path, **overrides: object) -> Settings:
@@ -143,14 +162,57 @@ def test_details_input_rejects_duplicate_or_empty_checklist_updates() -> None:
         )
 
 
+@pytest.mark.parametrize(
+    ("model", "payload"),
+    [
+        (
+            UpdatePlannerTaskInput,
+            {
+                "task_id": TASK_ID,
+                "plan_id": PLAN_ID,
+                "etag": 'W/"safe"\r\nInjected: true',
+                "title": "New title",
+                "idempotency_key": str(uuid4()),
+            },
+        ),
+        (
+            UpdateEventInput,
+            {
+                "event_id": "event-1",
+                "etag": 'W/"safe"\r\nInjected: true',
+                "subject": "New subject",
+                "idempotency_key": str(uuid4()),
+            },
+        ),
+        (
+            UpdateTodoTaskInput,
+            {
+                "list_id": "list-1",
+                "task_id": "task-1",
+                "etag": 'W/"safe"\r\nInjected: true',
+                "title": "New title",
+                "idempotency_key": str(uuid4()),
+            },
+        ),
+    ],
+)
+def test_all_update_etags_reject_header_control_characters(
+    model: type[Any],
+    payload: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError, match="control characters"):
+        model.model_validate(payload)
+
+
 @pytest.mark.asyncio
 async def test_details_update_sends_a_closed_patch_and_verifies_204_response(
     tmp_path: Path,
 ) -> None:
     details_reads = 0
+    checklist_after_patch: dict[str, dict[str, Any]] = {}
 
     def handler(call: dict[str, Any]) -> dict[str, Any]:
-        nonlocal details_reads
+        nonlocal details_reads, checklist_after_patch
         if call["method"] == "GET" and call["endpoint"] == f"/planner/tasks/{TASK_ID}":
             return {"id": TASK_ID, "planId": PLAN_ID}
         if call["method"] == "GET" and call["endpoint"].endswith("/details"):
@@ -167,19 +229,25 @@ async def test_details_update_sends_a_closed_patch_and_verifies_204_response(
                         }
                     },
                 }
+            verified_checklist = {
+                EXISTING_ITEM_ID: {
+                    "title": "Existing item",
+                    "isChecked": True,
+                }
+            }
+            for item_id, item in checklist_after_patch.items():
+                if item_id == EXISTING_ITEM_ID:
+                    continue
+                verified_checklist[item_id] = item
             return {
                 "id": TASK_ID,
                 "@odata.etag": 'W/"details-etag-2"',
                 "description": "Implementation notes",
                 "previewType": "checklist",
-                "checklist": {
-                    EXISTING_ITEM_ID: {
-                        "title": "Existing item",
-                        "isChecked": True,
-                    }
-                },
+                "checklist": verified_checklist,
             }
         if call["method"] == "PATCH" and call["endpoint"].endswith("/details"):
+            checklist_after_patch = dict(call["json_body"]["checklist"])
             return {}
         raise AssertionError(f"unexpected Graph call: {call}")
 
@@ -329,6 +397,42 @@ async def test_details_update_rejects_task_outside_declared_plan(tmp_path: Path)
 
 
 @pytest.mark.asyncio
+async def test_details_update_marks_mismatched_postcondition_uncertain(
+    tmp_path: Path,
+) -> None:
+    details_reads = 0
+
+    def handler(call: dict[str, Any]) -> dict[str, Any]:
+        nonlocal details_reads
+        if call["endpoint"] == f"/planner/tasks/{TASK_ID}":
+            return {"id": TASK_ID, "planId": PLAN_ID}
+        if call["method"] == "GET" and call["endpoint"].endswith("/details"):
+            details_reads += 1
+            return {
+                "id": TASK_ID,
+                "@odata.etag": (
+                    DETAILS_ETAG if details_reads == 1 else 'W/"details-etag-2"'
+                ),
+                "description": "Old notes",
+                "checklist": {},
+            }
+        if call["method"] == "PATCH":
+            return {}
+        raise AssertionError(f"unexpected Graph call: {call}")
+
+    tool = make_tool(tmp_path, FakeGraph(handler))
+    result = await tool.run({"params": base_payload(description="New notes")})
+
+    assert result.isError is True
+    assert result.structuredContent is not None
+    assert result.structuredContent["error"]["code"] == "WRITE_VERIFICATION_FAILED"
+    receipt = result.structuredContent["evidence"]["write_receipt"]
+    assert receipt["status"] == "uncertain"
+    assert receipt["uncertain_commit"] is True
+    assert result.structuredContent["retry"]["safe_to_retry"] is False
+
+
+@pytest.mark.asyncio
 async def test_write_receipt_tool_queries_one_exact_local_operation(tmp_path: Path) -> None:
     graph = FakeGraph(lambda call: pytest.fail(f"unexpected Graph call: {call}"))
     server, services = make_server(tmp_path, graph)
@@ -358,6 +462,195 @@ async def test_write_receipt_tool_queries_one_exact_local_operation(tmp_path: Pa
     assert data["operation_id"] == str(execution.receipt.operation_id)
     assert data["status"] == "completed"
     assert graph.calls == []
+
+
+def make_admin_tool(
+    tmp_path: Path,
+    graph: FakeGraph,
+    *,
+    action: str,
+    tool_name: str,
+) -> Any:
+    settings = make_settings(
+        tmp_path,
+        write_actions=action,
+        allowed_plan_ids="",
+        allowed_application_ids=APPLICATION_ID,
+        allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
+        allowed_conditional_access_policy_ids=(
+            CONDITIONAL_ACCESS_POLICY_ID
+        ),
+        privileged_writes_enabled=True,
+    )
+    services = Services(
+        settings=settings,
+        policy=SecurityPolicy(settings),
+        graph=graph,  # type: ignore[arg-type]
+        cursors=CursorCodec(b"x" * 32),
+        audit=AuditLogger(tmp_path / f"{tool_name}-audit.jsonl"),
+        idempotency=IdempotencyStore(
+            tmp_path / f"{tool_name}-writes.sqlite3",
+            pending_seconds=300,
+        ),
+        write_limiter=WriteRateLimiter(10),
+    )
+    server = FastMCP("admin-write-test")
+    _register_write_tools(server, services, ToolRunner(services))
+    return server._tool_manager.get_tool(tool_name)  # noqa: SLF001
+
+
+def test_admin_update_models_exclude_credentials_grants_and_arbitrary_fields() -> None:
+    base = {"idempotency_key": str(uuid4())}
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        UpdateApplicationInput.model_validate(
+            {
+                **base,
+                "application_id": APPLICATION_ID,
+                "display_name": "Approved name",
+                "password_credentials": [{"secretText": "blocked"}],
+            }
+        )
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        UpdateServicePrincipalInput.model_validate(
+            {
+                **base,
+                "service_principal_id": SERVICE_PRINCIPAL_ID,
+                "account_enabled": True,
+                "app_role_assignments": ["blocked"],
+            }
+        )
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        UpdateConditionalAccessPolicyInput.model_validate(
+            {
+                **base,
+                "policy_id": CONDITIONAL_ACCESS_POLICY_ID,
+                "state": "enabled",
+                "conditions": {"users": {"includeUsers": ["All"]}},
+            }
+        )
+
+
+@pytest.mark.asyncio
+async def test_service_principal_update_uses_closed_patch_and_postcondition(
+    tmp_path: Path,
+) -> None:
+    def handler(call: dict[str, Any]) -> dict[str, Any]:
+        if call["method"] == "PATCH":
+            return {}
+        if call["method"] == "GET":
+            return {
+                "id": SERVICE_PRINCIPAL_ID,
+                "appId": APPLICATION_ID,
+                "displayName": "Protected workload",
+                "accountEnabled": False,
+                "appRoleAssignmentRequired": True,
+            }
+        raise AssertionError(f"unexpected Graph call: {call}")
+
+    graph = FakeGraph(handler)
+    tool = make_admin_tool(
+        tmp_path,
+        graph,
+        action="entra.update_service_principal",
+        tool_name="m365_update_entra_service_principal",
+    )
+    result = await tool.run(
+        {
+            "params": {
+                "service_principal_id": SERVICE_PRINCIPAL_ID,
+                "display_name": "Protected workload",
+                "account_enabled": False,
+                "app_role_assignment_required": True,
+                "idempotency_key": str(uuid4()),
+            }
+        }
+    )
+
+    assert result.isError is False
+    patch = graph.calls[0]
+    assert patch["method"] == "PATCH"
+    assert patch["endpoint"] == f"/servicePrincipals/{SERVICE_PRINCIPAL_ID}"
+    assert patch["json_body"] == {
+        "displayName": "Protected workload",
+        "accountEnabled": False,
+        "appRoleAssignmentRequired": True,
+    }
+    assert graph.calls[1]["method"] == "GET"
+    assert result.structuredContent is not None
+    assert result.structuredContent["evidence"]["write_receipt"]["status"] == (
+        "completed"
+    )
+
+
+@pytest.mark.asyncio
+async def test_conditional_access_mismatch_is_uncertain_and_not_retried(
+    tmp_path: Path,
+) -> None:
+    def handler(call: dict[str, Any]) -> dict[str, Any]:
+        if call["method"] == "PATCH":
+            return {}
+        if call["method"] == "GET":
+            return {
+                "id": CONDITIONAL_ACCESS_POLICY_ID,
+                "displayName": "Baseline",
+                "state": "disabled",
+            }
+        raise AssertionError(f"unexpected Graph call: {call}")
+
+    graph = FakeGraph(handler)
+    tool = make_admin_tool(
+        tmp_path,
+        graph,
+        action="governance.update_conditional_access_policy",
+        tool_name="m365_update_conditional_access_policy",
+    )
+    result = await tool.run(
+        {
+            "params": {
+                "policy_id": CONDITIONAL_ACCESS_POLICY_ID,
+                "state": "enabledForReportingButNotEnforced",
+                "idempotency_key": str(uuid4()),
+            }
+        }
+    )
+
+    assert result.isError is True
+    assert len([call for call in graph.calls if call["method"] == "PATCH"]) == 1
+    assert result.structuredContent is not None
+    assert result.structuredContent["error"]["code"] == (
+        "WRITE_VERIFICATION_FAILED"
+    )
+    assert result.structuredContent["retry"]["safe_to_retry"] is False
+    assert result.structuredContent["evidence"]["write_receipt"]["status"] == (
+        "uncertain"
+    )
+
+
+@pytest.mark.asyncio
+async def test_entra_application_write_rejects_non_allowlisted_target(
+    tmp_path: Path,
+) -> None:
+    graph = FakeGraph(lambda call: pytest.fail(f"unexpected Graph call: {call}"))
+    tool = make_admin_tool(
+        tmp_path,
+        graph,
+        action="entra.update_application",
+        tool_name="m365_update_entra_application",
+    )
+    result = await tool.run(
+        {
+            "params": {
+                "application_id": "77777777-7777-4777-8777-777777777777",
+                "display_name": "Blocked",
+                "idempotency_key": str(uuid4()),
+            }
+        }
+    )
+
+    assert result.isError is True
+    assert graph.calls == []
+    assert result.structuredContent is not None
+    assert result.structuredContent["error"]["code"] == "POLICY_REJECTED"
 
 
 @pytest.mark.asyncio

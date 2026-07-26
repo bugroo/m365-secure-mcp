@@ -1,7 +1,7 @@
 # Tool catalog and exposure model
 
-The source defines 73 fixed contracts. A maximally enabled read process exposes
-60; a write process exposes the two common tools, the local receipt query, and
+The source defines 91 fixed contracts. A maximally enabled read process exposes
+75; a write process exposes the two common tools, the local receipt query, and
 only its selected write actions. The default process exposes only the two
 common tools.
 
@@ -130,10 +130,44 @@ Only metadata is exposed; page HTML is not downloaded.
 - `m365_list_service_health`
 - `m365_list_service_issues`
 - `m365_list_service_messages`
+- `m365_list_allowed_applications`
+- `m365_get_application`
+- `m365_list_application_owners`
+- `m365_list_allowed_service_principals`
+- `m365_get_service_principal`
+- `m365_list_service_principal_owners`
+- `m365_list_service_principal_app_role_assignments`
+- `m365_list_service_principal_delegated_grants`
+- `m365_list_conditional_access_policies`
+- `m365_list_directory_role_definitions`
+- `m365_list_directory_role_assignments`
+- `m365_list_access_review_definitions`
+- `m365_list_entitlement_catalogs`
+- `m365_list_subscribed_skus`
+- `m365_list_domains`
 
 These tools require both their module and
 `M365_PRIVILEGED_MODULES_ENABLED=true`. Microsoft admin consent, licensing, and
-the signed-in user's RBAC roles remain authoritative.
+the signed-in user's RBAC roles remain authoritative. Application and service
+principal results are narrowed by separate local UUID allowlists.
+
+## Privileged administration writes
+
+- `m365_update_entra_application` (write)
+- `m365_update_entra_service_principal` (write)
+- `m365_update_conditional_access_policy` (write)
+
+These require the write profile, global write gate, privileged-write gate,
+exact action, exact resource allowlist, delegated Entra consent/RBAC, UUID
+idempotency key, and MCP-client approval. Each tool sends a closed PATCH and
+then reads the target back to verify the requested fields.
+
+The application tool can change only `displayName` and
+`groupMembershipClaims`. The service-principal tool can change only
+`displayName`, `accountEnabled`, and `appRoleAssignmentRequired`. The
+Conditional Access tool can change only `displayName` and `state`.
+Credential, consent, owner, role, policy-condition, license, and delete
+surfaces are absent.
 
 ## Exact selection
 

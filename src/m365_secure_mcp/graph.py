@@ -13,12 +13,14 @@ from urllib.parse import urljoin
 
 import httpx
 
+from . import __version__
 from .auth import AuthenticationError, TokenProvider
 from .config import Settings
 from .security import Principal, SecurityPolicy, validate_graph_url
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0/"
 RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
+SAFE_WRITE_RETRY_STATUS_CODES = frozenset({429})
 ErrorCategory = Literal[
     "authentication",
     "authorization",
@@ -40,9 +42,16 @@ class GraphFailure:
 class GraphError(RuntimeError):
     """Sanitized Microsoft Graph failure safe for an agent-facing response."""
 
-    def __init__(self, message: str, failure: GraphFailure | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        failure: GraphFailure | None = None,
+        *,
+        write_may_have_committed: bool = False,
+    ) -> None:
         super().__init__(message)
         self.failure = failure
+        self.write_may_have_committed = write_may_have_committed
 
 
 @dataclass(frozen=True)
@@ -75,6 +84,8 @@ class GraphClient:
         self._principal: Principal | None = None
         self._principal_lock = asyncio.Lock()
         self._write_attempt_count = 0
+        self._write_confirmed_count = 0
+        self._write_ambiguous_count = 0
         self._client = httpx.AsyncClient(
             base_url=GRAPH_BASE_URL,
             timeout=httpx.Timeout(settings.graph_timeout_seconds),
@@ -82,7 +93,7 @@ class GraphClient:
             transport=transport,
             headers={
                 "Accept": "application/json",
-                "User-Agent": "m365-secure-mcp/0.3.0",
+                "User-Agent": f"m365-secure-mcp/{__version__}",
             },
         )
 
@@ -98,6 +109,18 @@ class GraphClient:
         """Monotonic count used only to classify ambiguous local write outcomes."""
 
         return self._write_attempt_count
+
+    @property
+    def write_confirmed_count(self) -> int:
+        """Number of write requests that received a successful Graph response."""
+
+        return self._write_confirmed_count
+
+    @property
+    def write_ambiguous_count(self) -> int:
+        """Number of writes whose transport/upstream outcome could not be proven."""
+
+        return self._write_ambiguous_count
 
     async def ensure_principal(self) -> Principal:
         if self._principal is not None:
@@ -159,6 +182,7 @@ class GraphClient:
         method = method.upper()
         if method not in {"GET", "POST", "PATCH"}:
             raise GraphError("internal Graph method failed validation")
+        is_write = method in {"POST", "PATCH"}
 
         token = await self.tokens.get_access_token()
         auth_headers = {"Authorization": f"Bearer {token}"}
@@ -168,7 +192,7 @@ class GraphClient:
         refreshed = False
         for attempt in range(self.settings.graph_max_retries + 1):
             try:
-                if method in {"POST", "PATCH"}:
+                if is_write:
                     self._write_attempt_count += 1
                 response = await self._client.request(
                     method,
@@ -178,11 +202,25 @@ class GraphClient:
                     headers=auth_headers,
                 )
             except httpx.TimeoutException as exc:
+                if is_write:
+                    self._write_ambiguous_count += 1
+                    raise GraphError(
+                        "Microsoft Graph write timed out after transmission; "
+                        "the external outcome is uncertain",
+                        write_may_have_committed=True,
+                    ) from exc
                 if attempt < self.settings.graph_max_retries:
                     await asyncio.sleep(min(2**attempt, 8))
                     continue
                 raise GraphError("Microsoft Graph timed out; retry with a narrower query") from exc
             except httpx.RequestError as exc:
+                if is_write:
+                    self._write_ambiguous_count += 1
+                    raise GraphError(
+                        "Microsoft Graph write lost its transport response; "
+                        "the external outcome is uncertain",
+                        write_may_have_committed=True,
+                    ) from exc
                 raise GraphError("Microsoft Graph could not be reached securely") from exc
 
             if response.status_code == 401 and not refreshed:
@@ -192,16 +230,54 @@ class GraphClient:
                 continue
 
             if response.status_code in RETRYABLE_STATUS_CODES:
-                if attempt < self.settings.graph_max_retries:
+                safe_write_retry = response.status_code in SAFE_WRITE_RETRY_STATUS_CODES
+                if (not is_write or safe_write_retry) and (
+                    attempt < self.settings.graph_max_retries
+                ):
                     await asyncio.sleep(self._retry_delay(response, attempt))
                     continue
+                if is_write and not safe_write_retry:
+                    self._write_ambiguous_count += 1
+                    error = self._safe_http_error(response)
+                    raise GraphError(
+                        str(error),
+                        error.failure,
+                        write_may_have_committed=True,
+                    )
 
             if response.status_code >= 400:
                 raise self._safe_http_error(response)
+            if response.status_code >= 300:
+                if is_write:
+                    self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph returned an unexpected redirect response",
+                    GraphFailure(
+                        response.status_code,
+                        response.headers.get("request-id"),
+                        None,
+                    ),
+                    write_may_have_committed=is_write,
+                )
+
+            if is_write:
+                # Count the write before parsing the body. A successful HTTP response
+                # proves Graph accepted the mutation even if local result parsing or
+                # the subsequent verification read fails.
+                self._write_confirmed_count += 1
 
             content_length = response.headers.get("Content-Length")
-            if content_length and int(content_length) > self.settings.max_response_bytes:
-                raise GraphError("Microsoft Graph response exceeded the configured byte limit")
+            if content_length:
+                try:
+                    declared_length = int(content_length)
+                except ValueError as exc:
+                    raise GraphError(
+                        "Microsoft Graph returned an invalid response length"
+                    ) from exc
+                if declared_length > self.settings.max_response_bytes:
+                    raise GraphError(
+                        "Microsoft Graph response exceeded the configured byte limit"
+                    )
             if len(response.content) > self.settings.max_response_bytes:
                 raise GraphError("Microsoft Graph response exceeded the configured byte limit")
             if response.status_code == 204 or not response.content:
@@ -298,6 +374,16 @@ def classify_agent_error(exc: Exception) -> AgentSafeError:
                     "do not retry with a new key blindly."
                 ),
             )
+        if getattr(exc, "write_verification_failed", False):
+            return AgentSafeError(
+                code="WRITE_VERIFICATION_FAILED",
+                category="conflict",
+                message=str(exc),
+                action=(
+                    "Query the operation receipt and inspect the external resource; "
+                    "do not repeat the write until its state is known."
+                ),
+            )
         return AgentSafeError(
             code="POLICY_REJECTED",
             category="authorization",
@@ -305,6 +391,24 @@ def classify_agent_error(exc: Exception) -> AgentSafeError:
             action="Change the request or the operator-controlled allowlist; do not bypass policy.",
         )
     if isinstance(exc, GraphError):
+        if exc.write_may_have_committed:
+            failure = exc.failure
+            return AgentSafeError(
+                code="GRAPH_WRITE_OUTCOME_UNCERTAIN",
+                category="conflict",
+                message=str(exc),
+                action=(
+                    "Query the operation receipt and verify the external resource; "
+                    "do not retry with any key until the outcome is known."
+                ),
+                safe_to_retry=False,
+                retry_after_seconds=(
+                    failure.retry_after_seconds if failure is not None else None
+                ),
+                graph_request_id=(
+                    failure.request_id if failure is not None else None
+                ),
+            )
         failure = exc.failure
         status = failure.status_code if failure is not None else None
         category: ErrorCategory = "upstream"

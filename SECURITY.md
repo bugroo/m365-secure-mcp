@@ -24,8 +24,8 @@ the blast radius of:
 4. **Microsoft 365 content → model context.** All returned business content is
    considered attacker-controlled.
 5. **Write server → external people/data.** A write can affect recipients,
-   calendars, or Planner data and therefore needs an independent local gate and
-   MCP-client approval.
+   calendars, Planner, applications, service principals, or Conditional Access
+   and therefore needs independent local gates and MCP-client approval.
 
 ## Implemented controls
 
@@ -53,12 +53,16 @@ the blast radius of:
   start.
 - Groups require group IDs; Teams chats require chat IDs before their content
   can be returned.
-- Organization, Defender, Entra audit, Intune, and service-health modules
-  require an independent privileged-module gate.
+- Organization, Defender, Entra audit, Intune, service health, Entra
+  applications, governance, licensing, and domains require an independent
+  privileged-module gate.
+- Application registrations, service principals, and Conditional Access
+  writes require separate UUID resource allowlists and the privileged-write
+  gate.
 - Exact per-tool allowlists/denylists are applied after module registration;
   unknown tool names fail startup.
-- No directory-write permission, application permission, `.default` scope,
-  Graph `beta`, or Azure Resource Manager access.
+- No `Directory.ReadWrite.All`, app-only authentication mode, `.default`
+  scope, Graph `beta`, or Azure Resource Manager access.
 
 ### MCP and prompt injection
 
@@ -88,12 +92,22 @@ the blast radius of:
   UUIDs. Additions use deterministic UUIDv5 identifiers.
 - Checklist deletion by `null`, whole-checklist replacement, and description
   clearing are absent from the tool contract.
+- Administrative writes expose only bounded metadata/control fields. They
+  cannot manage credentials, owners, redirect URIs, consent grants, app roles,
+  role assignments, licenses, or Conditional Access conditions.
+- Privileged writes require `M365_PRIVILEGED_WRITES_ENABLED=true` in addition
+  to the write profile, global write gate, exact action, exact resource
+  allowlist, Entra consent/RBAC, and MCP-client approval.
 - Every write is reserved in a mode-`0600` local SQLite ledger before Graph is
   called. Reused keys with changed payloads are rejected.
 - The ledger issues a metadata-only UUID receipt and records `pending`,
   `completed`, `rejected`, or `uncertain`. It never stores M365 content.
-- A lost/uncertain response blocks automatic retry indefinitely. A locally
-  rejected request can safely reuse its original idempotency key.
+- A lost/uncertain response, a write-side timeout, or a `502`/`503`/`504`
+  blocks automatic retry indefinitely. A Graph `429` explicitly means the
+  request failed and is the only write response retried automatically.
+- Every accepted update is followed by a bounded read that verifies the
+  requested fields. A missing or mismatched postcondition is classified
+  `uncertain`, never as a safe rejection.
 - `m365_get_write_operation` reads one receipt by exact selector, cannot list
   history, is limited to actions active in the current policy, and never calls
   Graph.
@@ -107,8 +121,8 @@ the blast radius of:
   fragment.
 - Redirect following disabled, preventing automatic use of pre-authenticated
   file download URLs.
-- Timeouts, bounded retries, `Retry-After`, byte limits, item limits, and
-  character limits.
+- Timeouts, bounded read retries, safe write throttling retries,
+  `Retry-After`, byte limits, item limits, and character limits.
 - Provider error bodies are not returned to the model. Correlation/request IDs
   may be returned for support.
 
@@ -133,6 +147,9 @@ the blast radius of:
   a crash, timeout, or ambiguous transport failure. This deliberately prefers
   a blocked retry over a duplicate write.
 - Metadata can itself contain sensitive business information.
+- A privileged delegated scope still lets the signed-in operator perform
+  whatever Microsoft Graph and Entra RBAC allow outside this MCP. Separate app
+  registrations and user assignment remain essential.
 - This local profile is single-user. Multi-user remote deployment requires a
   separate OAuth 2.1 resource-server design, per-client consent, token audience
   validation, session isolation, CSRF/state protection, and a reviewed OBO

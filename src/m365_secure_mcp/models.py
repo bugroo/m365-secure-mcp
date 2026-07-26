@@ -7,7 +7,14 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 
 class ResponseFormat(StrEnum):
@@ -20,6 +27,19 @@ class StrictInput(BaseModel):
 
 
 Limit = Annotated[int, Field(ge=1, le=50)]
+
+
+def _safe_etag(value: str) -> str:
+    if any(ord(character) < 32 or ord(character) == 127 for character in value):
+        raise ValueError("etag contains control characters")
+    return value
+
+
+ETag = Annotated[
+    str,
+    Field(min_length=4, max_length=1_000),
+    AfterValidator(_safe_etag),
+]
 
 
 class PageInput(StrictInput):
@@ -41,6 +61,8 @@ class CatalogReadInput(PageInput):
     team_id: str | None = Field(default=None, min_length=1, max_length=512)
     chat_id: str | None = Field(default=None, min_length=1, max_length=512)
     group_id: str | None = Field(default=None, min_length=1, max_length=512)
+    application_id: UUID | None = None
+    service_principal_id: UUID | None = None
 
 
 class MailSearchInput(PageInput):
@@ -158,7 +180,7 @@ class CreatePlannerTaskInput(StrictInput):
 class UpdatePlannerTaskInput(StrictInput):
     task_id: str = Field(min_length=1, max_length=512)
     plan_id: str = Field(min_length=1, max_length=512)
-    etag: str = Field(min_length=4, max_length=1_000)
+    etag: ETag
     title: str | None = Field(default=None, min_length=1, max_length=255)
     percent_complete: int | None = Field(default=None, ge=0, le=100)
     priority: int | None = Field(default=None, ge=0, le=10)
@@ -189,14 +211,15 @@ class PlannerChecklistUpdateInput(StrictInput):
 class UpdatePlannerTaskDetailsInput(StrictInput):
     task_id: str = Field(min_length=1, max_length=512)
     plan_id: str = Field(min_length=1, max_length=512)
-    details_etag: str = Field(
-        min_length=4,
-        max_length=1_000,
-        description=(
-            "ETag from m365_get_planner_task.details_etag. "
-            "The basic Planner task ETag is a different concurrency token."
+    details_etag: Annotated[
+        ETag,
+        Field(
+            description=(
+                "ETag from m365_get_planner_task.details_etag. "
+                "The basic Planner task ETag is a different concurrency token."
+            ),
         ),
-    )
+    ]
     description: str | None = Field(default=None, min_length=1, max_length=4_000)
     preview_type: (
         Literal["automatic", "noPreview", "checklist", "description", "reference"] | None
@@ -210,13 +233,6 @@ class UpdatePlannerTaskDetailsInput(StrictInput):
         max_length=20,
     )
     idempotency_key: UUID
-
-    @field_validator("details_etag")
-    @classmethod
-    def validate_details_etag(cls, value: str) -> str:
-        if any(ord(character) < 32 or ord(character) == 127 for character in value):
-            raise ValueError("details_etag contains control characters")
-        return value
 
     @model_validator(mode="after")
     def validate_update(self) -> UpdatePlannerTaskDetailsInput:
@@ -268,7 +284,7 @@ class CreateEventInput(StrictInput):
 
 class UpdateEventInput(StrictInput):
     event_id: str = Field(min_length=1, max_length=512)
-    etag: str = Field(min_length=4, max_length=1_000)
+    etag: ETag
     subject: str | None = Field(default=None, min_length=1, max_length=255)
     start: datetime | None = None
     end: datetime | None = None
@@ -309,7 +325,7 @@ class CreateTodoTaskInput(StrictInput):
 class UpdateTodoTaskInput(StrictInput):
     list_id: str = Field(min_length=1, max_length=512)
     task_id: str = Field(min_length=1, max_length=512)
-    etag: str = Field(min_length=4, max_length=1_000)
+    etag: ETag
     title: str | None = Field(default=None, min_length=1, max_length=255)
     status: (
         Literal["notStarted", "inProgress", "completed", "waitingOnOthers", "deferred"] | None
@@ -336,4 +352,42 @@ class SendChannelMessageInput(StrictInput):
 class SendChatMessageInput(StrictInput):
     chat_id: str = Field(min_length=1, max_length=512)
     body_text: str = Field(min_length=1, max_length=20_000)
+    idempotency_key: UUID
+
+
+class UpdateApplicationInput(StrictInput):
+    application_id: UUID
+    display_name: str | None = Field(default=None, min_length=1, max_length=256)
+    group_membership_claims: Literal["None", "SecurityGroup", "All"] | None = None
+    idempotency_key: UUID
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdateApplicationInput:
+        if self.display_name is None and self.group_membership_claims is None:
+            raise ValueError("at least one application field must be provided")
+        return self
+
+
+class UpdateServicePrincipalInput(StrictInput):
+    service_principal_id: UUID
+    display_name: str | None = Field(default=None, min_length=1, max_length=256)
+    account_enabled: bool | None = None
+    app_role_assignment_required: bool | None = None
+    idempotency_key: UUID
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdateServicePrincipalInput:
+        if (
+            self.display_name is None
+            and self.account_enabled is None
+            and self.app_role_assignment_required is None
+        ):
+            raise ValueError("at least one service-principal field must be provided")
+        return self
+
+
+class UpdateConditionalAccessPolicyInput(StrictInput):
+    policy_id: UUID
+    state: Literal["enabled", "disabled", "enabledForReportingButNotEnforced"]
+    display_name: str | None = Field(default=None, min_length=1, max_length=256)
     idempotency_key: UUID

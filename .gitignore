@@ -17,3 +17,6 @@ build/
 *.pfx
 *.p12
 token-cache*
+*.policy.json
+*-policy.json
+private/
