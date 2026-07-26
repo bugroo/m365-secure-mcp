@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from enum import StrEnum
-from typing import Annotated, Literal
+from typing import Annotated, Literal, TypeAlias
 from uuid import UUID
 
 from pydantic import (
@@ -61,8 +61,13 @@ class CatalogReadInput(PageInput):
     team_id: str | None = Field(default=None, min_length=1, max_length=512)
     chat_id: str | None = Field(default=None, min_length=1, max_length=512)
     group_id: str | None = Field(default=None, min_length=1, max_length=512)
+    user_id: UUID | None = None
+    device_id: UUID | None = None
+    cloudpc_id: UUID | None = None
     application_id: UUID | None = None
     service_principal_id: UUID | None = None
+    ediscovery_case_id: UUID | None = None
+    retention_label_id: UUID | None = None
 
 
 class MailSearchInput(PageInput):
@@ -114,6 +119,145 @@ class FileSearchInput(PageInput):
 class FileMetadataInput(StrictInput):
     item_id: str = Field(min_length=1, max_length=512)
     response_format: ResponseFormat = ResponseFormat.MARKDOWN
+
+
+class OfficeFileInput(StrictInput):
+    drive_id: str = Field(min_length=1, max_length=512)
+    item_id: str = Field(min_length=1, max_length=512)
+    max_characters: int = Field(default=24_000, ge=1_000, le=50_000)
+    include_notes: bool = False
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN
+
+
+class OfficeTextReplacement(StrictInput):
+    old_text: str = Field(min_length=1, max_length=2_000)
+    new_text: str = Field(max_length=4_000)
+
+
+class ReplaceOfficeTextInput(StrictInput):
+    drive_id: str = Field(min_length=1, max_length=512)
+    item_id: str = Field(min_length=1, max_length=512)
+    etag: ETag
+    replacements: list[OfficeTextReplacement] = Field(
+        min_length=1,
+        max_length=20,
+    )
+    include_notes: bool = False
+    idempotency_key: UUID
+
+    @model_validator(mode="after")
+    def validate_replacements(self) -> ReplaceOfficeTextInput:
+        old_values = [item.old_text for item in self.replacements]
+        if len(old_values) != len(set(old_values)):
+            raise ValueError("Office replacements contain duplicate old_text values")
+        if any(item.old_text == item.new_text for item in self.replacements):
+            raise ValueError("Office replacement old_text and new_text must differ")
+        return self
+
+
+class WorkbookRangeInput(StrictInput):
+    drive_id: str = Field(min_length=1, max_length=512)
+    item_id: str = Field(min_length=1, max_length=512)
+    worksheet: str = Field(
+        min_length=1,
+        max_length=255,
+        pattern=r"^[^/\\\x00-\x1f\x7f]{1,255}$",
+    )
+    address: str = Field(
+        min_length=2,
+        max_length=32,
+        pattern=r"^[A-Za-z]{1,3}[1-9][0-9]{0,6}(?::[A-Za-z]{1,3}[1-9][0-9]{0,6})?$",
+    )
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN
+
+
+class WorkbookInput(StrictInput):
+    drive_id: str = Field(min_length=1, max_length=512)
+    item_id: str = Field(min_length=1, max_length=512)
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN
+
+
+WorkbookScalar: TypeAlias = str | int | float | bool | None
+
+
+class UpdateWorkbookRangeInput(WorkbookRangeInput):
+    values: list[list[WorkbookScalar]] = Field(
+        min_length=1,
+        max_length=100,
+    )
+    idempotency_key: UUID
+
+    @field_validator("values")
+    @classmethod
+    def validate_values(
+        cls,
+        value: list[list[WorkbookScalar]],
+    ) -> list[list[WorkbookScalar]]:
+        if any(not row or len(row) > 50 for row in value):
+            raise ValueError("Excel rows must contain between 1 and 50 cells")
+        width = len(value[0])
+        if any(len(row) != width for row in value):
+            raise ValueError("Excel values must form a rectangular matrix")
+        if len(value) * width > 5_000:
+            raise ValueError("Excel write exceeds the 5,000-cell limit")
+        for row in value:
+            for cell in row:
+                if isinstance(cell, str):
+                    if len(cell) > 8_000:
+                        raise ValueError("Excel cell text exceeds policy")
+                    if cell.lstrip().startswith(("=", "+", "-", "@")):
+                        raise ValueError(
+                            "Excel formula-like strings are disabled; "
+                            "values must be literal"
+                        )
+        return value
+
+
+class OneNotePageInput(StrictInput):
+    page_id: str = Field(min_length=1, max_length=512)
+    max_characters: int = Field(default=24_000, ge=1_000, le=50_000)
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN
+
+
+class AppendOneNotePageTextInput(StrictInput):
+    page_id: str = Field(min_length=1, max_length=512)
+    text: str = Field(min_length=1, max_length=20_000)
+    idempotency_key: UUID
+
+
+class PowerBIWorkspaceInput(PageInput):
+    workspace_id: UUID
+
+
+class PowerBIListInput(PageInput):
+    pass
+
+
+class PowerBIReportInput(StrictInput):
+    workspace_id: UUID
+    report_id: UUID
+    response_format: ResponseFormat = ResponseFormat.MARKDOWN
+
+
+class PowerBIDatasetInput(PageInput):
+    workspace_id: UUID
+    dataset_id: UUID
+
+
+class RefreshPowerBIDatasetInput(StrictInput):
+    workspace_id: UUID
+    dataset_id: UUID
+    notify_option: Literal["MailOnFailure", "NoNotification"] = (
+        "MailOnFailure"
+    )
+    idempotency_key: UUID
+
+
+class RebindPowerBIReportInput(StrictInput):
+    workspace_id: UUID
+    report_id: UUID
+    dataset_id: UUID
+    idempotency_key: UUID
 
 
 class SiteSearchInput(PageInput):
@@ -352,6 +496,77 @@ class SendChannelMessageInput(StrictInput):
 class SendChatMessageInput(StrictInput):
     chat_id: str = Field(min_length=1, max_length=512)
     body_text: str = Field(min_length=1, max_length=20_000)
+    idempotency_key: UUID
+
+
+class UpdateDirectoryUserInput(StrictInput):
+    user_id: UUID
+    display_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+    )
+    job_title: str | None = Field(default=None, max_length=128)
+    department: str | None = Field(default=None, max_length=128)
+    office_location: str | None = Field(default=None, max_length=128)
+    usage_location: str | None = Field(
+        default=None,
+        pattern=r"^[A-Z]{2}$",
+    )
+    idempotency_key: UUID
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdateDirectoryUserInput:
+        if all(
+            value is None
+            for value in (
+                self.display_name,
+                self.job_title,
+                self.department,
+                self.office_location,
+                self.usage_location,
+            )
+        ):
+            raise ValueError("at least one user profile field is required")
+        return self
+
+
+class SetDirectoryUserAccountInput(StrictInput):
+    user_id: UUID
+    account_enabled: bool
+    idempotency_key: UUID
+
+
+class UpdateDirectoryGroupInput(StrictInput):
+    group_id: UUID
+    display_name: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=256,
+    )
+    description: str | None = Field(default=None, max_length=1_024)
+    idempotency_key: UUID
+
+    @model_validator(mode="after")
+    def validate_update(self) -> UpdateDirectoryGroupInput:
+        if self.display_name is None and self.description is None:
+            raise ValueError("at least one group field is required")
+        return self
+
+
+class AddUserToGroupInput(StrictInput):
+    group_id: UUID
+    user_id: UUID
+    idempotency_key: UUID
+
+
+class ManagedDeviceActionInput(StrictInput):
+    managed_device_id: UUID
+    idempotency_key: UUID
+
+
+class CloudPCActionInput(StrictInput):
+    cloudpc_id: UUID
     idempotency_key: UUID
 
 

@@ -51,14 +51,17 @@ Use a staged transition:
 | Workload | Read | Write | Boundary |
 |---|---:|---:|---|
 | Mail, calendar, contacts, To Do | yes | selected non-delete actions | principal and recipient domains |
-| OneDrive, SharePoint, Excel, OneNote | metadata/selected content | no | site/tool surface |
+| OneDrive, SharePoint, Office, OneNote | metadata/selected content | bounded Word/PPT/Excel/OneNote edits | drive/item/page allowlists and ETags |
 | Planner | yes | create, basic update, details/checklist update | plan and assignee allowlists |
-| Teams and groups | yes | channel/chat message send | team/chat/group allowlists |
-| Defender, audit, Intune, Service Health | yes | no | privileged module and exact tool |
+| Teams and groups | yes | messages, group metadata/member add | team/chat/group/user allowlists |
+| Entra users and devices | yes | bounded profile/account state | privileged gate and target allowlists |
+| Defender, audit, Intune, Windows 365, Service Health | yes | device sync, Cloud PC reboot | privileged gate and device allowlists |
+| Power BI | workspace/content inventory | dataset refresh, report rebind | separate OAuth audience and resource allowlists |
 | Entra apps and service principals | yes | bounded metadata/control update | privileged gate and object allowlists |
 | Conditional Access | yes | state/name update | privileged gate and policy allowlist |
 | Directory roles, access reviews, entitlement | yes | no | privileged module and exact tool |
 | Licenses and domains | yes | no | privileged module and exact tool |
+| Purview eDiscovery and retention labels | allowlisted metadata/definitions | no | privileged module, Purview RBAC and separate UUID allowlists |
 
 Credential rotation, permission-grant mutation, role assignment, license
 assignment, Exchange Online PowerShell, and destructive operations are not
@@ -95,6 +98,10 @@ m365-secure-mcp --policy-file "/private/policy.json" --explain-permissions
 7. Require a client approval prompt for every write tool.
 8. Record the reviewed source commit and update it only through a controlled
    dependency review.
+
+For MSP use, repeat these profiles per customer tenant. Tenant IDs are process
+configuration, never tool inputs; see
+[MSP multi-tenant deployment](MSP_MULTI_TENANT.md).
 
 Discovery never edits a policy or makes a resource available to the model. A
 resource becomes reachable only after the operator explicitly places its ID in

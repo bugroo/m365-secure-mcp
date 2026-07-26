@@ -17,7 +17,7 @@ In Microsoft Entra admin center:
 
 MSAL Python automatically protects interactive acquisition with PKCE.
 
-## 2. Add only required delegated Graph permissions
+## 2. Add and admin-consent only the required delegated permissions
 
 Start with `User.Read`. Add modules independently:
 
@@ -37,9 +37,14 @@ Start with `User.Read`. Add modules independently:
 | Teams chat metadata | `Chat.ReadBasic` |
 | Teams chat messages | `Chat.Read` |
 | Basic directory users | `User.ReadBasic.All` |
+| Allowlisted administrative user profiles | `User.Read.All` |
 | Group metadata/membership | `GroupMember.Read.All` |
+| Entra devices | `Device.Read.All` |
 | Organization metadata | `Organization.Read.All` |
 | OneNote | `Notes.Read` |
+| OneNote content append | `Notes.ReadWrite` |
+| Word/PowerPoint read | `Files.Read` |
+| Word/PowerPoint replace, Excel range read/write | `Files.ReadWrite` |
 | Relevant people | `People.Read` |
 | Own presence | `Presence.Read` |
 | Defender incidents | `SecurityIncident.Read.All` |
@@ -47,6 +52,9 @@ Start with `User.Read`. Add modules independently:
 | Entra sign-in/directory audit | `AuditLog.Read.All` |
 | Intune managed devices | `DeviceManagementManagedDevices.Read.All` |
 | Intune configuration/compliance | `DeviceManagementConfiguration.Read.All` |
+| Intune device sync | `DeviceManagementManagedDevices.PrivilegedOperations.All` |
+| Windows 365 inventory | `CloudPC.Read.All` |
+| Windows 365 reboot | `CloudPC.ReadWrite.All` |
 | Microsoft 365 service health | `ServiceHealth.Read.All` |
 | Entra applications/service principals | `Application.Read.All` |
 | Service-principal delegated grants | `Directory.Read.All` |
@@ -56,6 +64,8 @@ Start with `User.Read`. Add modules independently:
 | Entitlement catalogs | `EntitlementManagement.Read.All` |
 | License inventory | `LicenseAssignment.Read.All` |
 | Tenant domains | `Domain.Read.All` |
+| Purview eDiscovery case metadata | `eDiscovery.Read.All` |
+| Purview retention-label definitions | `RecordsManagement.Read.All` |
 | Mail draft | `Mail.ReadWrite` |
 | Send existing draft | `Mail.ReadWrite`, `Mail.Send` |
 | Calendar create | `Calendars.ReadWrite` |
@@ -65,27 +75,49 @@ Start with `User.Read`. Add modules independently:
 | Send Teams channel message | `ChannelMessage.Send` |
 | Send Teams chat message | `ChatMessage.Send` |
 | Planner task and task-details create/update | `Tasks.ReadWrite` |
+| User profile update | `User.ReadWrite.All` |
+| Enable/disable allowlisted user | `User.EnableDisableAccount.All`, `User.Read.All` |
+| Group metadata update | `Group.ReadWrite.All` |
+| Add allowlisted user to non-role group | `GroupMember.ReadWrite.All` |
 | Entra application/service-principal update | `Application.ReadWrite.All` |
 | Conditional Access state/name update | `Policy.Read.All`, `Policy.ReadWrite.ConditionalAccess` |
+
+Power BI uses a different API resource and access token:
+
+| Power BI feature | Delegated Power BI permission |
+|---|---|
+| Workspaces | `Workspace.Read.All` |
+| Reports | `Report.Read.All` |
+| Datasets, refresh history and datasources | `Dataset.Read.All` |
+| Dashboards | `Dashboard.Read.All` |
+| Queue dataset refresh | `Dataset.ReadWrite.All` |
+| Rebind report | `Report.ReadWrite.All` |
+
+Power BI workspace roles and dataset Build permission remain independently
+authoritative. Do not add these scopes to the Microsoft Graph permission list;
+select the Power BI Service API in Entra.
 
 Teams scopes are broad/admin-restricted. Keep the Teams module disabled unless
 there is a specific approved use case.
 
-Organization, Defender, audit, Intune, service health, Entra applications,
-governance, licensing, and domain permissions are administrative or
-tenant-wide. They are blocked locally unless
-`M365_PRIVILEGED_MODULES_ENABLED=true`. Administrative write actions also
-require `M365_PRIVILEGED_WRITES_ENABLED=true`. Admin consent and the signed-in
-user's Microsoft 365/Entra roles still apply; the MCP never bypasses Graph
-RBAC.
+Organization, administrative users/devices, Defender, audit, Intune, Windows
+365, Power BI, service health, Entra applications, governance, licensing, and
+domain and Purview compliance permissions are administrative or tenant-wide.
+They are blocked locally unless `M365_PRIVILEGED_MODULES_ENABLED=true`.
+Administrative write actions also require
+`M365_PRIVILEGED_WRITES_ENABLED=true`. Admin consent and the signed-in user's
+Microsoft 365/Entra/Purview roles still apply; the MCP never bypasses Graph or
+Purview RBAC. For delegated eDiscovery reads, assign only the supported Purview
+role needed by the operator; an eDiscovery Manager is narrower than an
+eDiscovery Administrator.
 
 For `Sites.Selected`, an administrator must additionally grant the application
 access to each approved site. Configure the same site IDs and hostnames in the
 local MCP allowlists.
 
-## 3. Prefer separate app registrations
+## 3. Use separate app registrations per tenant and profile
 
-For a high-security deployment, create up to four registrations:
+For a high-security deployment, create separate registrations for:
 
 - `M365 Secure MCP Routine Read` with user-work permissions only.
 - `M365 Secure MCP Routine Write` with only routine write permissions.
@@ -93,19 +125,27 @@ For a high-security deployment, create up to four registrations:
 - `M365 Secure MCP Privileged Write` with one selected administrative write
   scope and restricted user assignment.
 
-Use each app's client ID only in the corresponding MCP entry. This preserves
-the read/write boundary even if environment configuration is changed.
+Repeat that pattern inside each customer tenant; do not reuse a host-tenant
+policy file or token cache for a customer. Use each app's client ID only in
+the corresponding MCP entry. This preserves the read/write and tenant
+boundaries even if environment configuration is changed.
 
 Never add a permission merely because it appears in this table. Run
 `--explain-permissions` for each private policy and grant only its reported
 scopes. In particular, `Directory.Read.All` is needed only for the delegated
 grant tool, not for general Entra application inventory.
 
-## 4. Consent
+## 4. Admin consent is mandatory
 
-Use tenant policy to determine whether user consent is allowed. Admin consent
-may be required for broad organizational scopes. Never grant a permission only
-to suppress an error; map it to an enabled tool first.
+Run `--explain-permissions` against the final private policy, compare its
+tool-by-tool report with the app registration, then have an administrator grant
+tenant consent. Runtime requests use the resource's `/.default` scope and
+reject missing or unexpected permission claims by default.
+
+The MCP has no tool or CLI command that can add API permissions, create an
+OAuth grant, grant admin consent, assign an app role, change a directory role,
+or activate PIM. Never add a permission only to suppress an error; map it to an
+enabled tool first.
 
 ## 5. Conditional Access
 

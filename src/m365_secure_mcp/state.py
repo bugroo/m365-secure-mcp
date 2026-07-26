@@ -74,9 +74,16 @@ class WriteStateError(SecurityError):
 class IdempotencyStore:
     """Fail-closed SQLite ledger that prevents duplicate Graph writes."""
 
-    def __init__(self, path: Path, *, pending_seconds: int) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        pending_seconds: int,
+        deployment_namespace: str | None = None,
+    ) -> None:
         self.path = path
         self.pending_seconds = pending_seconds
+        self.deployment_namespace = deployment_namespace
         self._lock = asyncio.Lock()
 
     def _connect(self) -> sqlite3.Connection:
@@ -102,6 +109,38 @@ class IdempotencyStore:
             )
             """
         )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS deployment_metadata (
+                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                deployment_namespace TEXT NOT NULL
+            )
+            """
+        )
+        if self.deployment_namespace is not None:
+            row = connection.execute(
+                """
+                SELECT deployment_namespace
+                FROM deployment_metadata
+                WHERE singleton = 1
+                """
+            ).fetchone()
+            if row is None:
+                connection.execute(
+                    """
+                    INSERT INTO deployment_metadata (
+                        singleton,
+                        deployment_namespace
+                    ) VALUES (1, ?)
+                    """,
+                    (self.deployment_namespace,),
+                )
+            elif str(row[0]) != self.deployment_namespace:
+                connection.close()
+                raise SecurityError(
+                    "write ledger belongs to a different tenant/profile "
+                    "deployment namespace"
+                )
         self._migrate(connection)
         connection.row_factory = sqlite3.Row
         return connection

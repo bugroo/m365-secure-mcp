@@ -1,7 +1,7 @@
 # Tool catalog and exposure model
 
-The source defines 91 fixed contracts. A maximally enabled read process exposes
-75; a write process exposes the two common tools, the local receipt query, and
+The source defines 125 fixed contracts. A maximally enabled read process exposes
+96; a write process exposes the two common tools, the local receipt query, and
 only its selected write actions. The default process exposes only the two
 common tools.
 
@@ -38,7 +38,7 @@ Attachments are metadata-only and are never executed.
 - `m365_create_calendar_event` (write)
 - `m365_update_calendar_event` (write)
 
-## OneDrive, SharePoint, and Excel
+## OneDrive and selected SharePoint
 
 - `m365_search_files`
 - `m365_get_file_metadata`
@@ -51,11 +51,30 @@ Attachments are metadata-only and are never executed.
 - `m365_list_site_list_items`
 - `m365_list_site_drives`
 - `m365_list_site_pages`
-- `m365_list_workbook_worksheets`
 - `m365_list_workbook_tables`
 
-Download redirects, arbitrary paths, workbook cells, and formulas are not
-exposed. SharePoint operations require a site allowlist.
+SharePoint operations require a site allowlist. OneDrive search returns drive
+IDs so Office items can be placed in a separate write/read allowlist.
+
+## Word, PowerPoint, Excel, and OneNote content
+
+- `m365_get_word_document_text`
+- `m365_get_powerpoint_presentation_text`
+- `m365_list_workbook_worksheets`
+- `m365_get_workbook_range`
+- `m365_get_onenote_page_text`
+- `m365_replace_word_text` (write)
+- `m365_replace_powerpoint_text` (write)
+- `m365_update_excel_range` (write)
+- `m365_append_onenote_page_text` (write)
+
+Word and PowerPoint accept only exact drive/item allowlists and macro-free OOXML
+within configured compressed/expanded limits. Package traversal, duplicate or
+encrypted members, entities, macros, ActiveX and embedded OLE are rejected.
+Writes use `If-Match`. Excel accepts bounded A1 ranges and literal values only;
+formula-trigger strings beginning with `=`, `+`, `-`, or `@` are rejected.
+OneNote content is converted to plain text, and appends escape the supplied text
+before Graph receives HTML.
 
 ## Contacts, people, presence, and directory
 
@@ -66,9 +85,18 @@ exposed. SharePoint operations require a site allowlist.
 - `m365_get_my_presence`
 - `m365_list_users`
 - `m365_get_user`
+- `m365_list_allowed_users`
+- `m365_get_allowed_user`
+- `m365_list_allowed_directory_devices`
+- `m365_get_directory_device`
+- `m365_update_directory_user` (write)
+- `m365_set_directory_user_account_enabled` (write)
 
 Directory tools use the constrained `User.ReadBasic.All` permission instead of
-`Directory.Read.All`.
+`Directory.Read.All`. Administrative user/device tools are separate privileged
+modules with exact UUID allowlists. User updates cannot touch passwords,
+authentication methods, identities, phones, licenses or custom security
+attributes.
 
 ## To Do and Planner
 
@@ -91,7 +119,8 @@ ETag. Task-details writes use their separate `details_etag`, accept description
 and preview changes, add checklist items with deterministic UUIDs, and update
 only checklist UUIDs verified against the current task. Checklist removal,
 arbitrary `null` values, references, and whole-object replacement are not
-exposed.
+exposed. Task assignees have their own UUID allowlist and are never inferred
+from the principals authorized to operate the MCP.
 
 ## Teams and groups
 
@@ -106,8 +135,12 @@ exposed.
 - `m365_list_group_owners`
 - `m365_send_channel_message` (write)
 - `m365_send_chat_message` (write)
+- `m365_update_directory_group` (write)
+- `m365_add_user_to_group` (write)
 
-Teams, chats, and groups use separate resource allowlists.
+Teams, chats, and groups use separate resource allowlists. Every group write
+requires Graph to explicitly confirm `isAssignableToRole=false`; role-assignable
+or unclassified groups fail closed before a PATCH or membership POST.
 
 ## OneNote
 
@@ -115,7 +148,7 @@ Teams, chats, and groups use separate resource allowlists.
 - `m365_list_onenote_sections`
 - `m365_list_onenote_pages`
 
-Only metadata is exposed; page HTML is not downloaded.
+This module is metadata-only. Page content is a separate allowlisted module.
 
 ## Privileged administration and security
 
@@ -127,6 +160,10 @@ Only metadata is exposed; page HTML is not downloaded.
 - `m365_list_managed_devices`
 - `m365_list_device_compliance_policies`
 - `m365_list_device_configurations`
+- `m365_list_allowed_cloudpcs`
+- `m365_get_cloudpc`
+- `m365_sync_managed_device` (write)
+- `m365_reboot_cloudpc` (write)
 - `m365_list_service_health`
 - `m365_list_service_issues`
 - `m365_list_service_messages`
@@ -151,11 +188,50 @@ These tools require both their module and
 the signed-in user's RBAC roles remain authoritative. Application and service
 principal results are narrowed by separate local UUID allowlists.
 
+## Microsoft Purview compliance
+
+- `m365_list_allowed_ediscovery_cases`
+- `m365_get_ediscovery_case`
+- `m365_list_allowed_retention_labels`
+- `m365_get_retention_label`
+
+Compliance is a privileged read-only module. eDiscovery cases and retention
+labels have independent UUID allowlists. The list tools filter Graph output
+locally; the get tools reject non-allowlisted IDs before network access.
+eDiscovery case content, searches, holds, exports, case mutation, retention
+label assignment/mutation, and every compliance delete action are absent.
+Microsoft Purview RBAC and licensing remain authoritative in addition to admin
+consent.
+
+## Power BI
+
+- `m365_list_allowed_powerbi_workspaces`
+- `m365_list_powerbi_reports`
+- `m365_get_powerbi_report`
+- `m365_list_powerbi_datasets`
+- `m365_get_powerbi_dataset`
+- `m365_list_powerbi_dataset_refreshes`
+- `m365_list_powerbi_dataset_datasources`
+- `m365_list_powerbi_dashboards`
+- `m365_refresh_powerbi_dataset` (write)
+- `m365_rebind_powerbi_report` (write)
+
+Power BI uses its own OAuth audience and token. Workspace, report, dataset and
+dashboard allowlists are independent. Datasource connection details are
+removed from output. Refresh/rebind also require the privileged-write gate,
+idempotency ledger, local rate limit and client approval.
+
 ## Privileged administration writes
 
 - `m365_update_entra_application` (write)
 - `m365_update_entra_service_principal` (write)
 - `m365_update_conditional_access_policy` (write)
+- `m365_set_directory_user_account_enabled` (write)
+- `m365_add_user_to_group` (write)
+- `m365_sync_managed_device` (write)
+- `m365_reboot_cloudpc` (write)
+- `m365_refresh_powerbi_dataset` (write)
+- `m365_rebind_powerbi_report` (write)
 
 These require the write profile, global write gate, privileged-write gate,
 exact action, exact resource allowlist, delegated Entra consent/RBAC, UUID
@@ -168,6 +244,10 @@ The application tool can change only `displayName` and
 Conditional Access tool can change only `displayName` and `state`.
 Credential, consent, owner, role, policy-condition, license, and delete
 surfaces are absent.
+
+In particular, there is no tool for required-resource permissions, OAuth
+grants, admin consent, app-role assignments, directory-role assignments or PIM
+activation. The administrator must configure those outside the MCP.
 
 ## Exact selection
 

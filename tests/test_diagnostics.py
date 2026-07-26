@@ -63,6 +63,7 @@ async def test_permission_explanation_and_policy_digest_are_effective() -> None:
     assert explanation["write_action_scope_reasons"] == [
         {
             "action": "planner.update_task_details",
+            "resource": "graph",
             "scopes": ["Tasks.ReadWrite"],
         }
     ]
@@ -78,11 +79,14 @@ async def test_permission_explanation_and_policy_digest_are_effective() -> None:
 
     report = await permission_report(settings)
     contracts = {item["tool"]: item for item in report["tool_contracts"]}
-    assert contracts["m365_update_planner_task_details"] == {
-        "tool": "m365_update_planner_task_details",
-        "scopes": ["Tasks.ReadWrite", "User.Read"],
-        "reason": "enabled write action: planner.update_task_details",
+    planner_contract = contracts["m365_update_planner_task_details"]
+    assert planner_contract["scopes"] == ["Tasks.ReadWrite", "User.Read"]
+    assert planner_contract["resources"] == {
+        "graph": ["Tasks.ReadWrite", "User.Read"]
     }
+    assert planner_contract["reason"] == (
+        "enabled write action: planner.update_task_details"
+    )
     assert contracts["m365_get_write_operation"]["scopes"] == []
     assert report["scope_to_tools"]["Tasks.ReadWrite"] == [
         "m365_update_planner_task_details"

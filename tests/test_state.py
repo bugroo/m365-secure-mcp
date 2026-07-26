@@ -48,6 +48,30 @@ async def test_idempotency_key_is_bound_to_payload(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_write_ledger_cannot_be_reused_across_tenant_namespaces(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "writes.sqlite3"
+    first = IdempotencyStore(
+        path,
+        pending_seconds=300,
+        deployment_namespace="tenant-profile-a",
+    )
+
+    async def operation() -> str:
+        return "created"
+
+    await first.execute("write", "key-1", {"value": "one"}, operation)
+    second = IdempotencyStore(
+        path,
+        pending_seconds=300,
+        deployment_namespace="tenant-profile-b",
+    )
+    with pytest.raises(SecurityError, match="different tenant/profile"):
+        await second.get_receipt(tool="write", idempotency_key="key-1")
+
+
+@pytest.mark.asyncio
 async def test_uncertain_write_is_not_automatically_retried(tmp_path: Path) -> None:
     store = IdempotencyStore(tmp_path / "writes.sqlite3", pending_seconds=300)
 

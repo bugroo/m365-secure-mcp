@@ -11,6 +11,9 @@ from .conftest import CLIENT_ID, TENANT_ID, USER_ID
 APPLICATION_ID = "44444444-4444-4444-8444-444444444444"
 SERVICE_PRINCIPAL_ID = "55555555-5555-4555-8555-555555555555"
 CONDITIONAL_ACCESS_POLICY_ID = "66666666-6666-4666-8666-666666666666"
+RESOURCE_ID = "77777777-7777-4777-8777-777777777777"
+EDISCOVERY_CASE_ID = "88888888-8888-4888-8888-888888888888"
+RETENTION_LABEL_ID = "99999999-9999-4999-8999-999999999999"
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -73,7 +76,9 @@ async def test_catalog_is_broad_and_module_scoped() -> None:
                 "profile,mail,calendar,files,sites,contacts,todo,planner,teams,"
                 "directory,groups,organization,onenote,excel,people,presence,"
                 "security,audit,intune,service_health,entra_apps,governance,"
-                "licensing"
+                "licensing,users_admin,directory_devices,windows365,"
+                "word,powerpoint,excel_workbook,onenote_content,powerbi,"
+                "compliance"
             ),
             allowed_site_ids="tenant.sharepoint.com,site-id,web-id",
             allowed_sharepoint_hosts="tenant.sharepoint.com",
@@ -81,13 +86,27 @@ async def test_catalog_is_broad_and_module_scoped() -> None:
             allowed_chat_ids="chat-1",
             allowed_group_ids="group-1",
             allowed_plan_ids="plan-1",
+            allowed_target_user_ids=RESOURCE_ID,
+            allowed_device_ids=RESOURCE_ID,
+            allowed_cloudpc_ids=RESOURCE_ID,
+            allowed_drive_ids="drive-1",
+            allowed_word_item_ids="word-1",
+            allowed_powerpoint_item_ids="powerpoint-1",
+            allowed_excel_item_ids="excel-1",
+            allowed_onenote_page_ids="page-1",
+            allowed_powerbi_workspace_ids=RESOURCE_ID,
+            allowed_powerbi_report_ids=RESOURCE_ID,
+            allowed_powerbi_dataset_ids=RESOURCE_ID,
+            allowed_powerbi_dashboard_ids=RESOURCE_ID,
             allowed_application_ids=APPLICATION_ID,
             allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
+            allowed_ediscovery_case_ids=EDISCOVERY_CASE_ID,
+            allowed_retention_label_ids=RETENTION_LABEL_ID,
             privileged_modules_enabled=True,
         )
     )
     names = {tool.name for tool in await server.list_tools()}
-    assert len(names) == 75
+    assert len(names) == 97
     assert {
         "m365_list_users",
         "m365_list_group_members",
@@ -102,6 +121,16 @@ async def test_catalog_is_broad_and_module_scoped() -> None:
         "m365_list_directory_role_assignments",
         "m365_list_subscribed_skus",
         "m365_list_domains",
+        "m365_list_allowed_users",
+        "m365_list_allowed_directory_devices",
+        "m365_list_allowed_cloudpcs",
+        "m365_get_word_document_text",
+        "m365_get_powerpoint_presentation_text",
+        "m365_get_workbook_range",
+        "m365_get_onenote_page_text",
+        "m365_list_allowed_powerbi_workspaces",
+        "m365_list_allowed_ediscovery_cases",
+        "m365_get_retention_label",
     } <= names
 
 
@@ -132,6 +161,18 @@ async def test_all_write_actions_are_independently_discoverable() -> None:
             allowed_team_ids="team-1",
             allowed_chat_ids="chat-1",
             allowed_plan_ids="plan-1",
+            allowed_target_user_ids=RESOURCE_ID,
+            allowed_group_ids=RESOURCE_ID,
+            allowed_managed_device_ids=RESOURCE_ID,
+            allowed_cloudpc_ids=RESOURCE_ID,
+            allowed_drive_ids="drive-1",
+            allowed_word_item_ids="word-1",
+            allowed_powerpoint_item_ids="powerpoint-1",
+            allowed_excel_item_ids="excel-1",
+            allowed_onenote_page_ids="page-1",
+            allowed_powerbi_workspace_ids=RESOURCE_ID,
+            allowed_powerbi_report_ids=RESOURCE_ID,
+            allowed_powerbi_dataset_ids=RESOURCE_ID,
             allowed_application_ids=APPLICATION_ID,
             allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
             allowed_conditional_access_policy_ids=(
@@ -141,9 +182,21 @@ async def test_all_write_actions_are_independently_discoverable() -> None:
         )
     )
     names = {tool.name for tool in await server.list_tools()}
-    assert len(names) == 18
+    assert len(names) == len(WRITE_TOOL_ACTIONS) + 3
     assert set(WRITE_TOOL_ACTIONS) <= names
     assert "m365_get_write_operation" in names
+    assert not any(
+        forbidden in name
+        for name in names
+        for forbidden in (
+            "grant_permission",
+            "admin_consent",
+            "assign_role",
+            "app_role_assignment",
+            "oauth_grant",
+            "delete",
+        )
+    )
 
 
 @pytest.mark.asyncio
@@ -219,7 +272,9 @@ async def test_every_read_graph_tool_has_an_exact_permission_contract() -> None:
                 "profile,mail,calendar,files,sites,contacts,todo,planner,teams,"
                 "directory,groups,organization,onenote,excel,people,presence,"
                 "security,audit,intune,service_health,entra_apps,governance,"
-                "licensing"
+                "licensing,users_admin,directory_devices,windows365,"
+                "word,powerpoint,excel_workbook,onenote_content,powerbi,"
+                "compliance"
             ),
             allowed_site_ids="tenant.sharepoint.com,site-id,web-id",
             allowed_sharepoint_hosts="tenant.sharepoint.com",
@@ -227,8 +282,22 @@ async def test_every_read_graph_tool_has_an_exact_permission_contract() -> None:
             allowed_chat_ids="chat-1",
             allowed_group_ids="group-1",
             allowed_plan_ids="plan-1",
+            allowed_target_user_ids=RESOURCE_ID,
+            allowed_device_ids=RESOURCE_ID,
+            allowed_cloudpc_ids=RESOURCE_ID,
+            allowed_drive_ids="drive-1",
+            allowed_word_item_ids="word-1",
+            allowed_powerpoint_item_ids="powerpoint-1",
+            allowed_excel_item_ids="excel-1",
+            allowed_onenote_page_ids="page-1",
+            allowed_powerbi_workspace_ids=RESOURCE_ID,
+            allowed_powerbi_report_ids=RESOURCE_ID,
+            allowed_powerbi_dataset_ids=RESOURCE_ID,
+            allowed_powerbi_dashboard_ids=RESOURCE_ID,
             allowed_application_ids=APPLICATION_ID,
             allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
+            allowed_ediscovery_case_ids=EDISCOVERY_CASE_ID,
+            allowed_retention_label_ids=RETENTION_LABEL_ID,
             privileged_modules_enabled=True,
         )
     )

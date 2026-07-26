@@ -13,13 +13,16 @@ import keyring
 
 from .auth import TokenProvider
 from .config import (
+    POWERBI_RESOURCE,
     PRIVILEGED_WRITE_ACTIONS,
+    WRITE_ACTION_RESOURCES,
     WRITE_ACTION_SCOPES,
     Profile,
     Settings,
 )
 from .graph import GRAPH_BASE_URL, GraphClient, classify_agent_error
 from .permissions import READ_TOOL_PERMISSIONS
+from .powerbi import POWERBI_BASE_URL
 from .security import SecurityPolicy
 from .server import WRITE_TOOL_ACTIONS, create_server
 
@@ -101,34 +104,79 @@ async def permission_report(settings: Settings) -> dict[str, Any]:
         action = WRITE_TOOL_ACTIONS.get(tool)
         permission = READ_TOOL_PERMISSIONS.get(tool)
         if action is not None:
-            scopes = sorted(set(WRITE_ACTION_SCOPES[action]) | {"User.Read"})
+            resource = WRITE_ACTION_RESOURCES[action]
+            action_scopes = sorted(WRITE_ACTION_SCOPES[action])
+            resources = {
+                "graph": (
+                    sorted(set(action_scopes) | {"User.Read"})
+                    if resource == "graph"
+                    else ["User.Read"]
+                ),
+                **(
+                    {
+                        "powerbi": [
+                            f"{POWERBI_RESOURCE}/{scope}"
+                            for scope in action_scopes
+                        ]
+                    }
+                    if resource == "powerbi"
+                    else {}
+                ),
+            }
             reason = f"enabled write action: {action}"
         elif permission is not None:
-            scopes = sorted(set(permission.scopes) | {"User.Read"})
+            resources = {
+                "graph": (
+                    sorted(set(permission.scopes) | {"User.Read"})
+                    if permission.resource == "graph"
+                    else ["User.Read"]
+                ),
+                **(
+                    {
+                        "powerbi": [
+                            f"{POWERBI_RESOURCE}/{scope}"
+                            for scope in sorted(permission.scopes)
+                        ]
+                    }
+                    if permission.resource == "powerbi"
+                    else {}
+                ),
+            }
             reason = f"fixed read contract in module: {permission.module}"
         elif tool == "m365_get_security_posture":
-            scopes = []
+            resources = {}
             reason = "local policy inspection; no Graph call"
         elif tool == "m365_get_write_operation":
-            scopes = []
+            resources = {}
             reason = "local receipt lookup; no Graph call"
         else:
             raise RuntimeError(f"effective tool has no permission explanation: {tool}")
         contracts.append(
             {
                 "tool": tool,
-                "scopes": scopes,
+                "scopes": sorted(
+                    {
+                        scope
+                        for scopes in resources.values()
+                        for scope in scopes
+                    }
+                ),
+                "resources": resources,
                 "reason": reason,
             }
         )
 
+    all_scopes = [*settings.scopes, *settings.powerbi_scopes]
     scope_to_tools = {
         scope: sorted(
             contract["tool"]
             for contract in contracts
-            if scope in contract["scopes"]
+            if any(
+                scope in scopes
+                for scopes in contract["resources"].values()
+            )
         )
-        for scope in settings.scopes
+        for scope in all_scopes
     }
     return {
         **settings.permission_explanation(),
@@ -213,11 +261,28 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
         _check(
             "graph_egress",
             "pass",
-            "Runtime egress is pinned to Microsoft Graph v1.0 over HTTPS.",
-            evidence={"base_url": GRAPH_BASE_URL},
+            (
+                "Runtime API egress is pinned to Microsoft Graph v1.0"
+                + (
+                    " and Power BI REST"
+                    if settings.powerbi_scopes
+                    else ""
+                )
+                + " over HTTPS."
+            ),
+            evidence={
+                "graph_base_url": GRAPH_BASE_URL,
+                "powerbi_base_url": (
+                    POWERBI_BASE_URL if settings.powerbi_scopes else None
+                ),
+            },
         )
     )
-    private_scopes = [scope for scope in settings.scopes if scope.startswith("api://")]
+    private_scopes = [
+        scope
+        for scope in (*settings.scopes, *settings.powerbi_scopes)
+        if scope.startswith("api://")
+    ]
     checks.append(
         _check(
             "private_api_scope",
@@ -229,7 +294,9 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
                 else "A private api:// resource scope is present."
             ),
             evidence={
+                "graph_scopes": list(settings.scopes),
                 "scopes": list(settings.scopes),
+                "powerbi_scopes": list(settings.powerbi_scopes),
                 "private_scopes": private_scopes,
             },
         )
@@ -368,6 +435,38 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
                     "Microsoft Graph /me succeeded and the principal passed local allowlists.",
                 )
             )
+            if settings.powerbi_scopes:
+                powerbi_tokens = TokenProvider(
+                    settings,
+                    scopes=settings.powerbi_scopes,
+                    resource="powerbi",
+                )
+                powerbi_token = await powerbi_tokens.get_access_token()
+                powerbi_claims = _jwt_claims_unverified(powerbi_token)
+                powerbi_granted = frozenset(
+                    str(powerbi_claims.get("scp", "")).split()
+                )
+                requested = {
+                    scope.rsplit("/", 1)[-1]
+                    for scope in settings.powerbi_scopes
+                }
+                missing_powerbi = sorted(requested - powerbi_granted)
+                checks.append(
+                    _check(
+                        "powerbi_scope_claims",
+                        "pass" if not missing_powerbi else "fail",
+                        (
+                            "The Power BI token contains every requested scope."
+                            if not missing_powerbi
+                            else "The Power BI token is missing requested scopes."
+                        ),
+                        evidence={
+                            "requested_scopes": sorted(requested),
+                            "granted_scopes": sorted(powerbi_granted),
+                            "missing_scopes": missing_powerbi,
+                        },
+                    )
+                )
         except Exception as exc:
             details = classify_agent_error(exc)
             checks.append(

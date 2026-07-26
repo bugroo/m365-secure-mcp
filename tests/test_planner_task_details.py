@@ -470,18 +470,20 @@ def make_admin_tool(
     *,
     action: str,
     tool_name: str,
+    settings_overrides: Mapping[str, object] | None = None,
 ) -> Any:
-    settings = make_settings(
-        tmp_path,
-        write_actions=action,
-        allowed_plan_ids="",
-        allowed_application_ids=APPLICATION_ID,
-        allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
-        allowed_conditional_access_policy_ids=(
+    overrides: dict[str, object] = {
+        "write_actions": action,
+        "allowed_plan_ids": "",
+        "allowed_application_ids": APPLICATION_ID,
+        "allowed_service_principal_ids": SERVICE_PRINCIPAL_ID,
+        "allowed_conditional_access_policy_ids": (
             CONDITIONAL_ACCESS_POLICY_ID
         ),
-        privileged_writes_enabled=True,
-    )
+        "privileged_writes_enabled": True,
+    }
+    overrides.update(settings_overrides or {})
+    settings = make_settings(tmp_path, **overrides)
     services = Services(
         settings=settings,
         policy=SecurityPolicy(settings),
@@ -528,6 +530,44 @@ def test_admin_update_models_exclude_credentials_grants_and_arbitrary_fields() -
                 "conditions": {"users": {"includeUsers": ["All"]}},
             }
         )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("role_state", [True, None])
+async def test_group_update_rejects_role_assignable_or_unclassified_group(
+    tmp_path: Path,
+    role_state: bool | None,
+) -> None:
+    def handler(call: dict[str, Any]) -> dict[str, Any]:
+        if call["method"] != "GET":
+            raise AssertionError(f"unexpected Graph call: {call}")
+        response: dict[str, Any] = {"id": APPLICATION_ID}
+        if role_state is not None:
+            response["isAssignableToRole"] = role_state
+        return response
+
+    graph = FakeGraph(handler)
+    tool = make_admin_tool(
+        tmp_path,
+        graph,
+        action="groups.update",
+        tool_name="m365_update_directory_group",
+        settings_overrides={"allowed_group_ids": APPLICATION_ID},
+    )
+    result = await tool.run(
+        {
+            "params": {
+                "group_id": APPLICATION_ID,
+                "description": "Approved description",
+                "idempotency_key": str(uuid4()),
+            }
+        }
+    )
+
+    assert result.isError is True
+    assert result.structuredContent is not None
+    assert result.structuredContent["error"]["code"] == "POLICY_REJECTED"
+    assert not any(call["method"] == "PATCH" for call in graph.calls)
 
 
 @pytest.mark.asyncio

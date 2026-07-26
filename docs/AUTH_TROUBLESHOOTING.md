@@ -15,7 +15,8 @@ Check:
 2. Its Application ID URI exactly matches the requested `api://...`.
 3. The API scope exists and is enabled.
 4. The client application is authorized for that scope.
-5. Admin/user consent has been granted as required.
+5. An administrator added every compiled delegated permission and granted
+   tenant admin consent.
 6. The authorization endpoint uses the tenant that owns the resource app.
 
 For this project's local stdio profile, none of those custom-resource steps

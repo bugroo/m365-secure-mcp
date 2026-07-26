@@ -8,6 +8,7 @@ from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from html import escape
 from typing import Any, TypeVar
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
@@ -20,8 +21,11 @@ from .config import Module, Profile, Settings
 from .formatting import addresses, render_collection, render_record
 from .graph import GraphClient, classify_agent_error
 from .models import (
+    AddUserToGroupInput,
+    AppendOneNotePageTextInput,
     BasicInput,
     CalendarInput,
+    CloudPCActionInput,
     ContactSearchInput,
     CreateContactInput,
     CreateDraftInput,
@@ -32,24 +36,46 @@ from .models import (
     FileSearchInput,
     MailMessageInput,
     MailSearchInput,
+    ManagedDeviceActionInput,
+    OfficeFileInput,
+    OneNotePageInput,
     PlannerPlanInput,
     PlannerTaskInput,
+    PowerBIDatasetInput,
+    PowerBIListInput,
+    PowerBIReportInput,
+    PowerBIWorkspaceInput,
+    RebindPowerBIReportInput,
+    RefreshPowerBIDatasetInput,
+    ReplaceOfficeTextInput,
     ResponseFormat,
     ScheduleInput,
     SendChannelMessageInput,
     SendChatMessageInput,
     SendDraftInput,
+    SetDirectoryUserAccountInput,
     TeamsMessageInput,
     TodoListInput,
     UpdateApplicationInput,
     UpdateConditionalAccessPolicyInput,
+    UpdateDirectoryGroupInput,
+    UpdateDirectoryUserInput,
     UpdateEventInput,
     UpdatePlannerTaskDetailsInput,
     UpdatePlannerTaskInput,
     UpdateServicePrincipalInput,
     UpdateTodoTaskInput,
+    UpdateWorkbookRangeInput,
+    WorkbookInput,
+    WorkbookRangeInput,
     WriteOperationQueryInput,
 )
+from .ooxml import (
+    extract_powerpoint_text,
+    extract_word_text,
+    replace_ooxml_text,
+)
+from .powerbi import PowerBIClient
 from .protocol import ToolResponse, error_response, success_response
 from .security import (
     AuditLogger,
@@ -87,6 +113,20 @@ WRITE_TOOL_ACTIONS = {
     "m365_create_planner_task": "planner.create_task",
     "m365_update_planner_task": "planner.update_task",
     "m365_update_planner_task_details": "planner.update_task_details",
+    "m365_update_directory_user": "users.update_profile",
+    "m365_set_directory_user_account_enabled": (
+        "users.set_account_enabled"
+    ),
+    "m365_update_directory_group": "groups.update",
+    "m365_add_user_to_group": "groups.add_user_member",
+    "m365_sync_managed_device": "intune.sync_device",
+    "m365_reboot_cloudpc": "windows365.reboot_cloudpc",
+    "m365_replace_word_text": "word.replace_text",
+    "m365_replace_powerpoint_text": "powerpoint.replace_text",
+    "m365_update_excel_range": "excel.update_range",
+    "m365_append_onenote_page_text": "onenote.append_page_text",
+    "m365_refresh_powerbi_dataset": "powerbi.refresh_dataset",
+    "m365_rebind_powerbi_report": "powerbi.rebind_report",
     "m365_update_entra_application": "entra.update_application",
     "m365_update_entra_service_principal": "entra.update_service_principal",
     "m365_update_conditional_access_policy": (
@@ -129,6 +169,25 @@ class Services:
     audit: AuditLogger
     idempotency: IdempotencyStore
     write_limiter: WriteRateLimiter
+    powerbi: PowerBIClient | None = None
+
+    @property
+    def write_attempt_count(self) -> int:
+        return self.graph.write_attempt_count + (
+            self.powerbi.write_attempt_count if self.powerbi else 0
+        )
+
+    @property
+    def write_confirmed_count(self) -> int:
+        return self.graph.write_confirmed_count + (
+            self.powerbi.write_confirmed_count if self.powerbi else 0
+        )
+
+    @property
+    def write_ambiguous_count(self) -> int:
+        return self.graph.write_ambiguous_count + (
+            self.powerbi.write_ambiguous_count if self.powerbi else 0
+        )
 
 
 class ToolRunner:
@@ -169,17 +228,17 @@ class ToolRunner:
                 if not idempotency_key:
                     raise ValueError("write tools require an idempotency key")
                 graph_writes_before = getattr(
-                    self.services.graph,
+                    self.services,
                     "write_attempt_count",
                     0,
                 )
                 graph_confirmed_before = getattr(
-                    self.services.graph,
+                    self.services,
                     "write_confirmed_count",
                     0,
                 )
                 graph_ambiguous_before = getattr(
-                    self.services.graph,
+                    self.services,
                     "write_ambiguous_count",
                     0,
                 )
@@ -191,7 +250,7 @@ class ToolRunner:
                     operation_id=operation_id,
                     write_attempted=lambda: (
                         getattr(
-                            self.services.graph,
+                            self.services,
                             "write_attempt_count",
                             graph_writes_before,
                         )
@@ -199,7 +258,7 @@ class ToolRunner:
                     ),
                     write_confirmed=lambda: (
                         getattr(
-                            self.services.graph,
+                            self.services,
                             "write_confirmed_count",
                             graph_confirmed_before,
                         )
@@ -207,7 +266,7 @@ class ToolRunner:
                     ),
                     write_ambiguous=lambda: (
                         getattr(
-                            self.services.graph,
+                            self.services,
                             "write_ambiguous_count",
                             graph_ambiguous_before,
                         )
@@ -350,6 +409,7 @@ def _drive_item_summary(item: dict[str, Any]) -> dict[str, Any]:
         "mime_type": item.get("file", {}).get("mimeType"),
         "is_folder": "folder" in item,
         "parent_path": clean_external_text(parent.get("path"), 1_000),
+        "drive_id": parent.get("driveId"),
     }
 
 
@@ -1186,6 +1246,621 @@ def _register_teams_read(mcp: FastMCP, services: Services, runner: ToolRunner) -
         )
 
 
+WORD_MIME = (
+    "application/vnd.openxmlformats-officedocument."
+    "wordprocessingml.document"
+)
+POWERPOINT_MIME = (
+    "application/vnd.openxmlformats-officedocument."
+    "presentationml.presentation"
+)
+
+
+def _validate_office_identity(
+    *,
+    name: str,
+    mime_type: str,
+    kind: str,
+) -> None:
+    expected = {
+        "word": (".docx", WORD_MIME),
+        "powerpoint": (".pptx", POWERPOINT_MIME),
+    }[kind]
+    if not name.lower().endswith(expected[0]) or mime_type.lower() != expected[1]:
+        raise SecurityError(
+            f"allowlisted drive item is not a valid {kind} OOXML file"
+        )
+
+
+def _workbook_endpoint(params: WorkbookRangeInput) -> str:
+    worksheet = path_segment(params.worksheet, max_length=255)
+    drive_id = path_segment(params.drive_id)
+    item_id = path_segment(params.item_id)
+    return (
+        f"/drives/{drive_id}/items/{item_id}/workbook/"
+        f"worksheets/{worksheet}/range(address='{params.address.upper()}')"
+    )
+
+
+def _safe_api_value(value: Any, *, depth: int = 0) -> Any:
+    if depth > 5:
+        return "[nested data omitted]"
+    if isinstance(value, str):
+        return clean_external_text(value, 2_000)
+    if isinstance(value, dict):
+        return {
+            str(key): _safe_api_value(item, depth=depth + 1)
+            for key, item in value.items()
+            if key not in {"connectionDetails", "token", "accessToken"}
+        }
+    if isinstance(value, list):
+        return [
+            _safe_api_value(item, depth=depth + 1)
+            for item in value[:100]
+        ]
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return clean_external_text(value, 2_000)
+
+
+def _require_powerbi(services: Services) -> PowerBIClient:
+    if services.powerbi is None:
+        raise SecurityError("Power BI is not enabled in this policy profile")
+    return services.powerbi
+
+
+async def _require_non_role_assignable_group(
+    services: Services,
+    group_id: str,
+) -> dict[str, Any]:
+    """Fail closed unless Graph explicitly confirms a normal group."""
+
+    group = await services.graph.request_json(
+        "GET",
+        f"/groups/{path_segment(group_id)}",
+        params={"$select": "id,isAssignableToRole"},
+    )
+    if group.get("id") != group_id:
+        raise SecurityError("Graph returned an unexpected group")
+    if group.get("isAssignableToRole") is not False:
+        raise SecurityError(
+            "role-assignable or unclassified group writes are never exposed"
+        )
+    return group
+
+
+def _register_office_read(
+    mcp: FastMCP,
+    services: Services,
+    runner: ToolRunner,
+) -> None:
+    if Module.WORD in services.settings.enabled_modules:
+
+        @mcp.tool(
+            name="m365_get_word_document_text",
+            annotations=_read_annotations("Read Allowlisted Word Text"),
+        )
+        async def get_word_document_text(
+            params: OfficeFileInput,
+        ) -> ToolResponse:
+            """Read bounded text from one allowlisted macro-free DOCX file."""
+
+            async def operation() -> str:
+                drive_id = services.policy.authorize_drive(params.drive_id)
+                item_id = services.policy.authorize_word_item(params.item_id)
+                item = await services.graph.download_drive_item(
+                    drive_id,
+                    item_id,
+                )
+                _validate_office_identity(
+                    name=item.name,
+                    mime_type=item.mime_type,
+                    kind="word",
+                )
+                result = extract_word_text(
+                    item.content,
+                    max_file_bytes=services.settings.max_office_file_bytes,
+                    max_members=services.settings.max_ooxml_members,
+                    max_expanded_bytes=(
+                        services.settings.max_ooxml_expanded_bytes
+                    ),
+                    max_characters=min(
+                        params.max_characters,
+                        services.settings.max_tool_characters,
+                    ),
+                )
+                return render_record(
+                    title="Allowlisted Word Document",
+                    record={
+                        "item_id": item.item_id,
+                        "name": clean_external_text(item.name, 500),
+                        "etag": item.etag,
+                        "parts_read": result.parts_read,
+                        "truncated": result.truncated,
+                        "text": result.text,
+                    },
+                    response_format=params.response_format,
+                    character_limit=services.settings.max_tool_characters,
+                )
+
+            return await runner.call(
+                "m365_get_word_document_text",
+                params.model_dump(mode="json"),
+                operation,
+            )
+
+    if Module.POWERPOINT in services.settings.enabled_modules:
+
+        @mcp.tool(
+            name="m365_get_powerpoint_presentation_text",
+            annotations=_read_annotations(
+                "Read Allowlisted PowerPoint Text"
+            ),
+        )
+        async def get_powerpoint_presentation_text(
+            params: OfficeFileInput,
+        ) -> ToolResponse:
+            """Read bounded text from one allowlisted macro-free PPTX file."""
+
+            async def operation() -> str:
+                drive_id = services.policy.authorize_drive(params.drive_id)
+                item_id = services.policy.authorize_powerpoint_item(
+                    params.item_id
+                )
+                item = await services.graph.download_drive_item(
+                    drive_id,
+                    item_id,
+                )
+                _validate_office_identity(
+                    name=item.name,
+                    mime_type=item.mime_type,
+                    kind="powerpoint",
+                )
+                result = extract_powerpoint_text(
+                    item.content,
+                    max_file_bytes=services.settings.max_office_file_bytes,
+                    max_members=services.settings.max_ooxml_members,
+                    max_expanded_bytes=(
+                        services.settings.max_ooxml_expanded_bytes
+                    ),
+                    max_characters=min(
+                        params.max_characters,
+                        services.settings.max_tool_characters,
+                    ),
+                    include_notes=params.include_notes,
+                )
+                return render_record(
+                    title="Allowlisted PowerPoint Presentation",
+                    record={
+                        "item_id": item.item_id,
+                        "name": clean_external_text(item.name, 500),
+                        "etag": item.etag,
+                        "parts_read": result.parts_read,
+                        "notes_included": params.include_notes,
+                        "truncated": result.truncated,
+                        "text": result.text,
+                    },
+                    response_format=params.response_format,
+                    character_limit=services.settings.max_tool_characters,
+                )
+
+            return await runner.call(
+                "m365_get_powerpoint_presentation_text",
+                params.model_dump(mode="json"),
+                operation,
+            )
+
+    if Module.EXCEL_WORKBOOK in services.settings.enabled_modules:
+
+        @mcp.tool(
+            name="m365_list_workbook_worksheets",
+            annotations=_read_annotations(
+                "List Allowlisted Excel Worksheets"
+            ),
+        )
+        async def list_workbook_worksheets(
+            params: WorkbookInput,
+        ) -> ToolResponse:
+            """List worksheet metadata for one allowlisted workbook."""
+
+            async def operation() -> str:
+                drive_id = services.policy.authorize_drive(params.drive_id)
+                item_id = services.policy.authorize_excel_item(params.item_id)
+                data = await services.graph.request_json(
+                    "GET",
+                    (
+                        f"/drives/{path_segment(drive_id)}/items/"
+                        f"{path_segment(item_id)}/workbook/worksheets"
+                    ),
+                    params={"$select": "id,name,position,visibility"},
+                )
+                items = [
+                    _safe_api_value(item)
+                    for item in data.get("value", [])
+                    if isinstance(item, dict)
+                ]
+                return render_collection(
+                    title="Allowlisted Excel Worksheets",
+                    key="worksheets",
+                    items=items,
+                    response_format=params.response_format,
+                    character_limit=services.settings.max_tool_characters,
+                )
+
+            return await runner.call(
+                "m365_list_workbook_worksheets",
+                params.model_dump(mode="json"),
+                operation,
+            )
+
+        @mcp.tool(
+            name="m365_get_workbook_range",
+            annotations=_read_annotations("Read Allowlisted Excel Range"),
+        )
+        async def get_workbook_range(
+            params: WorkbookRangeInput,
+        ) -> ToolResponse:
+            """Read one bounded A1 range from an allowlisted workbook."""
+
+            async def operation() -> str:
+                services.policy.authorize_drive(params.drive_id)
+                services.policy.authorize_excel_item(params.item_id)
+                data = await services.graph.request_json(
+                    "GET",
+                    _workbook_endpoint(params),
+                    params={
+                        "$select": (
+                            "address,rowCount,columnCount,values,valueTypes"
+                        )
+                    },
+                )
+                return render_record(
+                    title="Allowlisted Excel Range",
+                    record=_safe_api_value(data),
+                    response_format=params.response_format,
+                    character_limit=services.settings.max_tool_characters,
+                )
+
+            return await runner.call(
+                "m365_get_workbook_range",
+                params.model_dump(mode="json"),
+                operation,
+            )
+
+    if Module.ONENOTE_CONTENT in services.settings.enabled_modules:
+
+        @mcp.tool(
+            name="m365_get_onenote_page_text",
+            annotations=_read_annotations("Read Allowlisted OneNote Page"),
+        )
+        async def get_onenote_page_text(
+            params: OneNotePageInput,
+        ) -> ToolResponse:
+            """Read sanitized plain text from one allowlisted OneNote page."""
+
+            async def operation() -> str:
+                page_id = services.policy.authorize_onenote_page(
+                    params.page_id
+                )
+                content = await services.graph.request_text(
+                    (
+                        f"/me/onenote/pages/{path_segment(page_id)}/"
+                        "content?includeIDs=true"
+                    ),
+                    accept="text/html",
+                    max_bytes=services.settings.max_response_bytes,
+                )
+                text = clean_external_text(
+                    html_to_plain_text(content),
+                    min(
+                        params.max_characters,
+                        services.settings.max_tool_characters,
+                    ),
+                )
+                return render_record(
+                    title="Allowlisted OneNote Page",
+                    record={"page_id": page_id, "text": text},
+                    response_format=params.response_format,
+                    character_limit=services.settings.max_tool_characters,
+                )
+
+            return await runner.call(
+                "m365_get_onenote_page_text",
+                params.model_dump(mode="json"),
+                operation,
+            )
+
+
+def _register_powerbi_read(
+    mcp: FastMCP,
+    services: Services,
+    runner: ToolRunner,
+) -> None:
+    powerbi = _require_powerbi(services)
+
+    async def read_collection(
+        *,
+        endpoint: str,
+        allowed_ids: frozenset[str],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        data = await powerbi.request_json("GET", endpoint)
+        return [
+            _safe_api_value(item)
+            for item in data.get("value", [])
+            if isinstance(item, dict)
+            and str(item.get("id", "")).lower() in allowed_ids
+        ][: min(limit, services.settings.max_items)]
+
+    @mcp.tool(
+        name="m365_list_allowed_powerbi_workspaces",
+        annotations=_read_annotations("List Allowlisted Power BI Workspaces"),
+    )
+    async def list_allowed_powerbi_workspaces(
+        params: PowerBIListInput,
+    ) -> ToolResponse:
+        """List only Power BI workspaces present in the local policy."""
+
+        async def operation() -> str:
+            items = await read_collection(
+                endpoint="/groups",
+                allowed_ids=services.settings.powerbi_workspace_ids,
+                limit=params.limit,
+            )
+            return render_collection(
+                title="Allowlisted Power BI Workspaces",
+                key="workspaces",
+                items=items,
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_list_allowed_powerbi_workspaces",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name="m365_list_powerbi_reports",
+        annotations=_read_annotations("List Allowlisted Power BI Reports"),
+    )
+    async def list_powerbi_reports(
+        params: PowerBIWorkspaceInput,
+    ) -> ToolResponse:
+        """List allowlisted reports in one allowlisted Power BI workspace."""
+
+        async def operation() -> str:
+            workspace_id = services.policy.authorize_powerbi_workspace(
+                str(params.workspace_id)
+            )
+            items = await read_collection(
+                endpoint=f"/groups/{workspace_id}/reports",
+                allowed_ids=services.settings.powerbi_report_ids,
+                limit=params.limit,
+            )
+            return render_collection(
+                title="Allowlisted Power BI Reports",
+                key="reports",
+                items=items,
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_list_powerbi_reports",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name="m365_get_powerbi_report",
+        annotations=_read_annotations("Get Allowlisted Power BI Report"),
+    )
+    async def get_powerbi_report(
+        params: PowerBIReportInput,
+    ) -> ToolResponse:
+        """Get metadata for one allowlisted Power BI report."""
+
+        async def operation() -> str:
+            workspace_id = services.policy.authorize_powerbi_workspace(
+                str(params.workspace_id)
+            )
+            report_id = services.policy.authorize_powerbi_report(
+                str(params.report_id)
+            )
+            data = await powerbi.request_json(
+                "GET",
+                f"/groups/{workspace_id}/reports/{report_id}",
+            )
+            if str(data.get("id", "")).lower() != report_id:
+                raise SecurityError("Power BI returned an unexpected report")
+            return render_record(
+                title="Allowlisted Power BI Report",
+                record=_safe_api_value(data),
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_get_powerbi_report",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name="m365_list_powerbi_datasets",
+        annotations=_read_annotations("List Allowlisted Power BI Datasets"),
+    )
+    async def list_powerbi_datasets(
+        params: PowerBIWorkspaceInput,
+    ) -> ToolResponse:
+        """List allowlisted datasets in one allowlisted workspace."""
+
+        async def operation() -> str:
+            workspace_id = services.policy.authorize_powerbi_workspace(
+                str(params.workspace_id)
+            )
+            items = await read_collection(
+                endpoint=f"/groups/{workspace_id}/datasets",
+                allowed_ids=services.settings.powerbi_dataset_ids,
+                limit=params.limit,
+            )
+            return render_collection(
+                title="Allowlisted Power BI Datasets",
+                key="datasets",
+                items=items,
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_list_powerbi_datasets",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    async def dataset_read(
+        params: PowerBIDatasetInput,
+        *,
+        suffix: str = "",
+    ) -> tuple[str, dict[str, Any]]:
+        workspace_id = services.policy.authorize_powerbi_workspace(
+            str(params.workspace_id)
+        )
+        dataset_id = services.policy.authorize_powerbi_dataset(
+            str(params.dataset_id)
+        )
+        data = await powerbi.request_json(
+            "GET",
+            f"/groups/{workspace_id}/datasets/{dataset_id}{suffix}",
+        )
+        return dataset_id, data
+
+    @mcp.tool(
+        name="m365_get_powerbi_dataset",
+        annotations=_read_annotations("Get Allowlisted Power BI Dataset"),
+    )
+    async def get_powerbi_dataset(
+        params: PowerBIDatasetInput,
+    ) -> ToolResponse:
+        """Get metadata for one allowlisted Power BI dataset."""
+
+        async def operation() -> str:
+            dataset_id, data = await dataset_read(params)
+            if str(data.get("id", "")).lower() != dataset_id:
+                raise SecurityError("Power BI returned an unexpected dataset")
+            return render_record(
+                title="Allowlisted Power BI Dataset",
+                record=_safe_api_value(data),
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_get_powerbi_dataset",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    async def render_dataset_collection(
+        params: PowerBIDatasetInput,
+        *,
+        tool: str,
+        suffix: str,
+        title: str,
+        key: str,
+    ) -> ToolResponse:
+        async def operation() -> str:
+            _, data = await dataset_read(params, suffix=suffix)
+            items = [
+                _safe_api_value(item)
+                for item in data.get("value", [])
+                if isinstance(item, dict)
+            ][: min(params.limit, services.settings.max_items)]
+            return render_collection(
+                title=title,
+                key=key,
+                items=items,
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            tool,
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name="m365_list_powerbi_dataset_refreshes",
+        annotations=_read_annotations("List Power BI Dataset Refreshes"),
+    )
+    async def list_powerbi_dataset_refreshes(
+        params: PowerBIDatasetInput,
+    ) -> ToolResponse:
+        """List bounded refresh history for one allowlisted dataset."""
+
+        return await render_dataset_collection(
+            params,
+            tool="m365_list_powerbi_dataset_refreshes",
+            suffix="/refreshes",
+            title="Power BI Dataset Refresh History",
+            key="refreshes",
+        )
+
+    @mcp.tool(
+        name="m365_list_powerbi_dataset_datasources",
+        annotations=_read_annotations("List Power BI Dataset Sources"),
+    )
+    async def list_powerbi_dataset_datasources(
+        params: PowerBIDatasetInput,
+    ) -> ToolResponse:
+        """List source types and gateway IDs, excluding connection details."""
+
+        return await render_dataset_collection(
+            params,
+            tool="m365_list_powerbi_dataset_datasources",
+            suffix="/datasources",
+            title="Power BI Dataset Sources",
+            key="datasources",
+        )
+
+    @mcp.tool(
+        name="m365_list_powerbi_dashboards",
+        annotations=_read_annotations(
+            "List Allowlisted Power BI Dashboards"
+        ),
+    )
+    async def list_powerbi_dashboards(
+        params: PowerBIWorkspaceInput,
+    ) -> ToolResponse:
+        """List allowlisted dashboards in one allowlisted workspace."""
+
+        async def operation() -> str:
+            workspace_id = services.policy.authorize_powerbi_workspace(
+                str(params.workspace_id)
+            )
+            items = await read_collection(
+                endpoint=f"/groups/{workspace_id}/dashboards",
+                allowed_ids=services.settings.powerbi_dashboard_ids,
+                limit=params.limit,
+            )
+            return render_collection(
+                title="Allowlisted Power BI Dashboards",
+                key="dashboards",
+                items=items,
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_list_powerbi_dashboards",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+
 def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) -> None:
     @mcp.tool(
         name="m365_get_write_operation",
@@ -1228,6 +1903,691 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
             "m365_get_write_operation",
             params.model_dump(mode="json"),
             operation,
+        )
+
+    @mcp.tool(
+        name="m365_update_directory_user",
+        annotations=_write_annotations(
+            "Update Allowlisted Microsoft Entra User",
+            destructive=True,
+        ),
+    )
+    async def update_directory_user(
+        params: UpdateDirectoryUserInput,
+    ) -> ToolResponse:
+        """Update bounded profile fields on one allowlisted Entra user."""
+
+        async def operation() -> str:
+            services.policy.require_write_action("users.update_profile")
+            user_id = services.policy.authorize_target_user(
+                str(params.user_id)
+            )
+            body: dict[str, Any] = {}
+            for key, value in (
+                ("displayName", params.display_name),
+                ("jobTitle", params.job_title),
+                ("department", params.department),
+                ("officeLocation", params.office_location),
+                ("usageLocation", params.usage_location),
+            ):
+                if value is not None:
+                    body[key] = value
+            endpoint = f"/users/{path_segment(user_id)}"
+            await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body=body,
+            )
+            current = await services.graph.request_json(
+                "GET",
+                endpoint,
+                params={
+                    "$select": (
+                        "id,displayName,userPrincipalName,jobTitle,"
+                        "department,officeLocation,usageLocation"
+                    )
+                },
+            )
+            _verify_exact_field(
+                current,
+                field="id",
+                expected=user_id,
+                resource="Entra user",
+            )
+            for field, expected in body.items():
+                _verify_exact_field(
+                    current,
+                    field=field,
+                    expected=expected,
+                    resource="Entra user",
+                )
+            return render_record(
+                title="Microsoft Entra User Updated",
+                record={
+                    **_safe_api_value(current),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_update_directory_user",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_set_directory_user_account_enabled",
+        annotations=_write_annotations(
+            "Enable or Disable Allowlisted Entra User",
+            destructive=True,
+        ),
+    )
+    async def set_directory_user_account_enabled(
+        params: SetDirectoryUserAccountInput,
+    ) -> ToolResponse:
+        """Set accountEnabled on one allowlisted user; no password controls."""
+
+        async def operation() -> str:
+            services.policy.require_write_action(
+                "users.set_account_enabled"
+            )
+            user_id = services.policy.authorize_target_user(
+                str(params.user_id)
+            )
+            endpoint = f"/users/{path_segment(user_id)}"
+            await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body={"accountEnabled": params.account_enabled},
+            )
+            current = await services.graph.request_json(
+                "GET",
+                endpoint,
+                params={"$select": "id,displayName,accountEnabled"},
+            )
+            _verify_exact_field(
+                current,
+                field="id",
+                expected=user_id,
+                resource="Entra user",
+            )
+            _verify_exact_field(
+                current,
+                field="accountEnabled",
+                expected=params.account_enabled,
+                resource="Entra user",
+            )
+            return render_record(
+                title="Microsoft Entra User Account State Updated",
+                record={
+                    "id": user_id,
+                    "account_enabled": current.get("accountEnabled"),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_set_directory_user_account_enabled",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_update_directory_group",
+        annotations=_write_annotations(
+            "Update Allowlisted Microsoft Entra Group",
+            destructive=True,
+        ),
+    )
+    async def update_directory_group(
+        params: UpdateDirectoryGroupInput,
+    ) -> ToolResponse:
+        """Update display name or description on one allowlisted group."""
+
+        async def operation() -> str:
+            services.policy.require_write_action("groups.update")
+            group_id = services.policy.authorize_group(str(params.group_id))
+            await _require_non_role_assignable_group(services, group_id)
+            body: dict[str, Any] = {}
+            if params.display_name is not None:
+                body["displayName"] = params.display_name
+            if params.description is not None:
+                body["description"] = params.description
+            endpoint = f"/groups/{path_segment(group_id)}"
+            await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body=body,
+            )
+            current = await services.graph.request_json(
+                "GET",
+                endpoint,
+                params={"$select": "id,displayName,description"},
+            )
+            _verify_exact_field(
+                current,
+                field="id",
+                expected=group_id,
+                resource="Entra group",
+            )
+            for field, expected in body.items():
+                _verify_exact_field(
+                    current,
+                    field=field,
+                    expected=expected,
+                    resource="Entra group",
+                )
+            return render_record(
+                title="Microsoft Entra Group Updated",
+                record={
+                    **_safe_api_value(current),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_update_directory_group",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_add_user_to_group",
+        annotations=_write_annotations(
+            "Add Allowlisted User to Allowlisted Group",
+            destructive=True,
+        ),
+    )
+    async def add_user_to_group(
+        params: AddUserToGroupInput,
+    ) -> ToolResponse:
+        """Add one allowlisted user to a non-role-assignable group."""
+
+        async def operation() -> str:
+            services.policy.require_write_action("groups.add_user_member")
+            group_id = services.policy.authorize_group(str(params.group_id))
+            user_id = services.policy.authorize_target_user(
+                str(params.user_id)
+            )
+            group_endpoint = f"/groups/{path_segment(group_id)}"
+            await _require_non_role_assignable_group(services, group_id)
+            user = await services.graph.request_json(
+                "GET",
+                f"/users/{path_segment(user_id)}",
+                params={"$select": "id"},
+            )
+            if user.get("id") != user_id:
+                raise SecurityError("Graph returned an unexpected target user")
+            await services.graph.request_json(
+                "POST",
+                f"{group_endpoint}/members/$ref",
+                json_body={
+                    "@odata.id": (
+                        "https://graph.microsoft.com/v1.0/"
+                        f"directoryObjects/{user_id}"
+                    )
+                },
+            )
+            membership = await services.graph.request_json(
+                "GET",
+                (
+                    f"{group_endpoint}/members/"
+                    f"{path_segment(user_id)}"
+                ),
+                params={"$select": "id"},
+            )
+            _verify_exact_field(
+                membership,
+                field="id",
+                expected=user_id,
+                resource="group membership",
+            )
+            return render_record(
+                title="Microsoft Entra Group Member Added",
+                record={
+                    "group_id": group_id,
+                    "user_id": user_id,
+                    "verified": True,
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_add_user_to_group",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_sync_managed_device",
+        annotations=_write_annotations("Sync Allowlisted Intune Device"),
+    )
+    async def sync_managed_device(
+        params: ManagedDeviceActionInput,
+    ) -> ToolResponse:
+        """Request an Intune sync for one allowlisted managed device."""
+
+        async def operation() -> str:
+            services.policy.require_write_action("intune.sync_device")
+            device_id = services.policy.authorize_managed_device(
+                str(params.managed_device_id)
+            )
+            await services.graph.request_json(
+                "POST",
+                (
+                    "/deviceManagement/managedDevices/"
+                    f"{path_segment(device_id)}/syncDevice"
+                ),
+            )
+            return render_record(
+                title="Intune Device Sync Accepted",
+                record={
+                    "managed_device_id": device_id,
+                    "accepted": True,
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_sync_managed_device",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_reboot_cloudpc",
+        annotations=_write_annotations(
+            "Reboot Allowlisted Windows 365 Cloud PC",
+            destructive=True,
+        ),
+    )
+    async def reboot_cloudpc(
+        params: CloudPCActionInput,
+    ) -> ToolResponse:
+        """Request a reboot for one allowlisted Windows 365 Cloud PC."""
+
+        async def operation() -> str:
+            services.policy.require_write_action(
+                "windows365.reboot_cloudpc"
+            )
+            cloudpc_id = services.policy.authorize_cloudpc(
+                str(params.cloudpc_id)
+            )
+            endpoint = (
+                "/deviceManagement/virtualEndpoint/cloudPCs/"
+                f"{path_segment(cloudpc_id)}"
+            )
+            current = await services.graph.request_json(
+                "GET",
+                endpoint,
+                params={"$select": "id,status"},
+            )
+            if current.get("id") != cloudpc_id:
+                raise SecurityError("Graph returned an unexpected Cloud PC")
+            await services.graph.request_json(
+                "POST",
+                f"{endpoint}/reboot",
+            )
+            return render_record(
+                title="Windows 365 Cloud PC Reboot Accepted",
+                record={
+                    "cloudpc_id": cloudpc_id,
+                    "accepted": True,
+                    "prior_status": current.get("status"),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_reboot_cloudpc",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    async def replace_office_text(
+        params: ReplaceOfficeTextInput,
+        *,
+        kind: str,
+    ) -> str:
+        action = f"{kind}.replace_text"
+        services.policy.require_write_action(action)
+        drive_id = services.policy.authorize_drive(params.drive_id)
+        if kind == "word":
+            item_id = services.policy.authorize_word_item(params.item_id)
+            content_type = WORD_MIME
+        else:
+            item_id = services.policy.authorize_powerpoint_item(
+                params.item_id
+            )
+            content_type = POWERPOINT_MIME
+        item = await services.graph.download_drive_item(drive_id, item_id)
+        _validate_office_identity(
+            name=item.name,
+            mime_type=item.mime_type,
+            kind=kind,
+        )
+        if item.etag != params.etag:
+            raise SecurityError(
+                "Office file changed after it was read; review the current ETag"
+            )
+        replacement_map = {
+            item.old_text: item.new_text for item in params.replacements
+        }
+        updated = replace_ooxml_text(
+            item.content,
+            replacement_map,
+            kind=kind,
+            max_file_bytes=services.settings.max_office_file_bytes,
+            max_members=services.settings.max_ooxml_members,
+            max_expanded_bytes=services.settings.max_ooxml_expanded_bytes,
+            include_notes=params.include_notes,
+        )
+        result = await services.graph.upload_drive_item(
+            drive_id,
+            item_id,
+            updated.content,
+            etag=params.etag,
+            content_type=content_type,
+        )
+        _verify_exact_field(
+            result,
+            field="id",
+            expected=item_id,
+            resource=f"{kind} document",
+        )
+        new_etag = result.get("eTag")
+        if not isinstance(new_etag, str) or not new_etag:
+            raise WriteVerificationError(
+                "Graph accepted the Office write but returned no ETag"
+            )
+        return render_record(
+            title=f"{kind.title()} Text Replaced",
+            record={
+                "item_id": item_id,
+                "name": clean_external_text(item.name, 500),
+                "etag": new_etag,
+                "parts_modified": updated.parts_modified,
+                "replacement_counts": updated.replacements,
+                "idempotency_key": str(params.idempotency_key),
+            },
+            response_format=ResponseFormat.JSON,
+            character_limit=services.settings.max_tool_characters,
+        )
+
+    @mcp.tool(
+        name="m365_replace_word_text",
+        annotations=_write_annotations(
+            "Replace Text in Allowlisted Word Document",
+            destructive=True,
+        ),
+    )
+    async def replace_word_text(
+        params: ReplaceOfficeTextInput,
+    ) -> ToolResponse:
+        """Replace exact text runs in one allowlisted, macro-free DOCX."""
+
+        async def operation() -> str:
+            return await replace_office_text(params, kind="word")
+
+        return await runner.call(
+            "m365_replace_word_text",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_replace_powerpoint_text",
+        annotations=_write_annotations(
+            "Replace Text in Allowlisted PowerPoint",
+            destructive=True,
+        ),
+    )
+    async def replace_powerpoint_text(
+        params: ReplaceOfficeTextInput,
+    ) -> ToolResponse:
+        """Replace exact text runs in one allowlisted, macro-free PPTX."""
+
+        async def operation() -> str:
+            return await replace_office_text(params, kind="powerpoint")
+
+        return await runner.call(
+            "m365_replace_powerpoint_text",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_update_excel_range",
+        annotations=_write_annotations(
+            "Update Allowlisted Excel Range",
+            destructive=True,
+        ),
+    )
+    async def update_excel_range(
+        params: UpdateWorkbookRangeInput,
+    ) -> ToolResponse:
+        """Write literal values to one A1 range in an allowlisted workbook."""
+
+        async def operation() -> str:
+            services.policy.require_write_action("excel.update_range")
+            services.policy.authorize_drive(params.drive_id)
+            services.policy.authorize_excel_item(params.item_id)
+            endpoint = _workbook_endpoint(params)
+            data = await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body={"values": params.values},
+            )
+            if not data:
+                data = await services.graph.request_json("GET", endpoint)
+            if data.get("values") != params.values:
+                raise WriteVerificationError(
+                    "Graph accepted the Excel write but returned different values"
+                )
+            return render_record(
+                title="Excel Range Updated",
+                record={
+                    "address": data.get("address"),
+                    "row_count": data.get("rowCount"),
+                    "column_count": data.get("columnCount"),
+                    "values": _safe_api_value(data.get("values")),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_update_excel_range",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_append_onenote_page_text",
+        annotations=_write_annotations("Append to Allowlisted OneNote Page"),
+    )
+    async def append_onenote_page_text(
+        params: AppendOneNotePageTextInput,
+    ) -> ToolResponse:
+        """Append escaped plain text to one allowlisted OneNote page."""
+
+        async def operation() -> str:
+            services.policy.require_write_action(
+                "onenote.append_page_text"
+            )
+            page_id = services.policy.authorize_onenote_page(params.page_id)
+            endpoint = (
+                f"/me/onenote/pages/{path_segment(page_id)}/content"
+            )
+            await services.graph.request_json(
+                "PATCH",
+                endpoint,
+                json_body=[
+                    {
+                        "target": "body",
+                        "action": "append",
+                        "content": (
+                            f"<p data-id=\"m365-secure-mcp\">"
+                            f"{escape(params.text)}</p>"
+                        ),
+                    }
+                ],
+            )
+            current = await services.graph.request_text(
+                f"{endpoint}?includeIDs=true",
+                accept="text/html",
+                max_bytes=services.settings.max_response_bytes,
+            )
+            plain = html_to_plain_text(current)
+            if params.text.strip() not in plain:
+                raise WriteVerificationError(
+                    "Graph accepted the OneNote write but appended text "
+                    "was not found during verification"
+                )
+            return render_record(
+                title="OneNote Page Updated",
+                record={
+                    "page_id": page_id,
+                    "verified": True,
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_append_onenote_page_text",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_refresh_powerbi_dataset",
+        annotations=_write_annotations("Refresh Allowlisted Power BI Dataset"),
+    )
+    async def refresh_powerbi_dataset(
+        params: RefreshPowerBIDatasetInput,
+    ) -> ToolResponse:
+        """Queue a refresh for one allowlisted Power BI dataset."""
+
+        async def operation() -> str:
+            services.policy.require_write_action("powerbi.refresh_dataset")
+            workspace_id = services.policy.authorize_powerbi_workspace(
+                str(params.workspace_id)
+            )
+            dataset_id = services.policy.authorize_powerbi_dataset(
+                str(params.dataset_id)
+            )
+            result = await _require_powerbi(services).request_json(
+                "POST",
+                f"/groups/{workspace_id}/datasets/{dataset_id}/refreshes",
+                json_body={"notifyOption": params.notify_option},
+            )
+            return render_record(
+                title="Power BI Dataset Refresh Queued",
+                record={
+                    "workspace_id": workspace_id,
+                    "dataset_id": dataset_id,
+                    "accepted": result.get("accepted", True),
+                    "request_id": result.get("request_id"),
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_refresh_powerbi_dataset",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
+        )
+
+    @mcp.tool(
+        name="m365_rebind_powerbi_report",
+        annotations=_write_annotations(
+            "Rebind Allowlisted Power BI Report",
+            destructive=True,
+        ),
+    )
+    async def rebind_powerbi_report(
+        params: RebindPowerBIReportInput,
+    ) -> ToolResponse:
+        """Rebind one allowlisted report to one allowlisted dataset."""
+
+        async def operation() -> str:
+            services.policy.require_write_action("powerbi.rebind_report")
+            workspace_id = services.policy.authorize_powerbi_workspace(
+                str(params.workspace_id)
+            )
+            report_id = services.policy.authorize_powerbi_report(
+                str(params.report_id)
+            )
+            dataset_id = services.policy.authorize_powerbi_dataset(
+                str(params.dataset_id)
+            )
+            powerbi = _require_powerbi(services)
+            await powerbi.request_json(
+                "POST",
+                f"/groups/{workspace_id}/reports/{report_id}/Rebind",
+                json_body={"datasetId": dataset_id},
+            )
+            current = await powerbi.request_json(
+                "GET",
+                f"/groups/{workspace_id}/reports/{report_id}",
+            )
+            _verify_exact_field(
+                current,
+                field="id",
+                expected=report_id,
+                resource="Power BI report",
+            )
+            _verify_exact_field(
+                current,
+                field="datasetId",
+                expected=dataset_id,
+                resource="Power BI report",
+            )
+            return render_record(
+                title="Power BI Report Rebound",
+                record={
+                    "workspace_id": workspace_id,
+                    "report_id": report_id,
+                    "dataset_id": dataset_id,
+                    "idempotency_key": str(params.idempotency_key),
+                },
+                response_format=ResponseFormat.JSON,
+                character_limit=services.settings.max_tool_characters,
+            )
+
+        return await runner.call(
+            "m365_rebind_powerbi_report",
+            params.model_dump(mode="json"),
+            operation,
+            write=True,
         )
 
     @mcp.tool(
@@ -1710,8 +3070,9 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
     async def create_planner_task(params: CreatePlannerTaskInput) -> ToolResponse:
         """Create a task only inside an allowlisted Planner plan.
 
-        Assignees must also be present in the object-ID allowlist. No Planner delete tools are
-        exposed. Configure the MCP client to prompt for this write.
+        Assignees must be present in the separate Planner-assignee allowlist.
+        No Planner delete tools are exposed. Configure the MCP client to prompt
+        for this write.
         """
 
         async def operation() -> str:
@@ -2278,17 +3639,34 @@ def create_server(settings: Settings) -> FastMCP:
     policy = SecurityPolicy(settings)
     tokens = TokenProvider(settings)
     graph = GraphClient(settings, tokens, policy)
+    powerbi: PowerBIClient | None = None
+    if settings.powerbi_scopes:
+        powerbi_tokens = TokenProvider(
+            settings,
+            scopes=settings.powerbi_scopes,
+            resource="powerbi",
+        )
+        powerbi = PowerBIClient(
+            settings,
+            powerbi_tokens,
+            ensure_principal=graph.ensure_principal,
+        )
     services = Services(
         settings=settings,
         policy=policy,
         graph=graph,
         cursors=CursorCodec(),
-        audit=AuditLogger(settings.effective_audit_log_path),
+        audit=AuditLogger(
+            settings.effective_audit_log_path,
+            deployment_namespace=settings.deployment_namespace,
+        ),
         idempotency=IdempotencyStore(
             settings.effective_idempotency_db_path,
             pending_seconds=settings.idempotency_pending_seconds,
+            deployment_namespace=settings.deployment_namespace,
         ),
         write_limiter=WriteRateLimiter(settings.write_rate_limit_per_minute),
+        powerbi=powerbi,
     )
     runner = ToolRunner(services)
 
@@ -2298,6 +3676,8 @@ def create_server(settings: Settings) -> FastMCP:
             yield
         finally:
             await graph.close()
+            if powerbi is not None:
+                await powerbi.close()
 
     mcp = FastMCP(
         "m365_secure_mcp",
@@ -2319,6 +3699,15 @@ def create_server(settings: Settings) -> FastMCP:
         ):
             if module in settings.enabled_modules:
                 registrar(mcp, services, runner)
+        if {
+            Module.WORD,
+            Module.POWERPOINT,
+            Module.EXCEL_WORKBOOK,
+            Module.ONENOTE_CONTENT,
+        } & settings.enabled_modules:
+            _register_office_read(mcp, services, runner)
+        if Module.POWERBI in settings.enabled_modules:
+            _register_powerbi_read(mcp, services, runner)
         register_catalog_tools(mcp, services, runner)
     else:
         _register_write_tools(mcp, services, runner)

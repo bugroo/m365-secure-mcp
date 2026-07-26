@@ -22,7 +22,7 @@ class ReadSpec:
     title: str
     description: str
     endpoint: str
-    select: str
+    select: str | None
     required: tuple[str, ...] = ()
     policies: tuple[str, ...] = ()
     collection: bool = True
@@ -243,6 +243,60 @@ SPECS: tuple[ReadSpec, ...] = (
         collection=False,
     ),
     ReadSpec(
+        "m365_list_allowed_users",
+        Module.USERS_ADMIN,
+        "Allowlisted Microsoft Entra Users",
+        "List only directory users present in the target-user allowlist.",
+        "/users",
+        (
+            "id,displayName,userPrincipalName,mail,userType,accountEnabled,"
+            "createdDateTime,jobTitle,department,officeLocation,usageLocation"
+        ),
+        local_filter="target_user",
+    ),
+    ReadSpec(
+        "m365_get_allowed_user",
+        Module.USERS_ADMIN,
+        "Allowlisted Microsoft Entra User",
+        "Read the bounded profile of one allowlisted target user.",
+        "/users/{user_id}",
+        (
+            "id,displayName,userPrincipalName,mail,userType,accountEnabled,"
+            "createdDateTime,jobTitle,department,officeLocation,usageLocation"
+        ),
+        ("user_id",),
+        ("target_user",),
+        collection=False,
+    ),
+    ReadSpec(
+        "m365_list_allowed_directory_devices",
+        Module.DIRECTORY_DEVICES,
+        "Allowlisted Microsoft Entra Devices",
+        "List only Entra device objects present in the local device allowlist.",
+        "/devices",
+        (
+            "id,deviceId,displayName,accountEnabled,operatingSystem,"
+            "operatingSystemVersion,trustType,isCompliant,isManaged,"
+            "approximateLastSignInDateTime,registrationDateTime"
+        ),
+        local_filter="device",
+    ),
+    ReadSpec(
+        "m365_get_directory_device",
+        Module.DIRECTORY_DEVICES,
+        "Allowlisted Microsoft Entra Device",
+        "Read one allowlisted Entra device object.",
+        "/devices/{device_id}",
+        (
+            "id,deviceId,displayName,accountEnabled,operatingSystem,"
+            "operatingSystemVersion,trustType,isCompliant,isManaged,"
+            "approximateLastSignInDateTime,registrationDateTime"
+        ),
+        ("device_id",),
+        ("device",),
+        collection=False,
+    ),
+    ReadSpec(
         "m365_get_group",
         Module.GROUPS,
         "M365 Group",
@@ -305,15 +359,6 @@ SPECS: tuple[ReadSpec, ...] = (
         "List page metadata from one explicit OneNote section; page HTML is not downloaded.",
         "/me/onenote/sections/{resource_id}/pages",
         "id,title,createdDateTime,lastModifiedDateTime,level,order,links",
-        ("resource_id",),
-    ),
-    ReadSpec(
-        "m365_list_workbook_worksheets",
-        Module.EXCEL,
-        "M365 Excel Worksheets",
-        "List worksheet metadata in one OneDrive workbook; no formulas or cell values are read.",
-        "/me/drive/items/{resource_id}/workbook/worksheets",
-        "id,name,position,visibility",
         ("resource_id",),
     ),
     ReadSpec(
@@ -397,6 +442,34 @@ SPECS: tuple[ReadSpec, ...] = (
         "List Intune device configuration policy metadata.",
         "/deviceManagement/deviceConfigurations",
         "id,displayName,description,createdDateTime,lastModifiedDateTime,version",
+    ),
+    ReadSpec(
+        "m365_list_allowed_cloudpcs",
+        Module.WINDOWS365,
+        "Allowlisted Windows 365 Cloud PCs",
+        "List only Windows 365 Cloud PCs present in the local allowlist.",
+        "/deviceManagement/virtualEndpoint/cloudPCs",
+        (
+            "id,displayName,managedDeviceId,managedDeviceName,"
+            "provisioningPolicyId,servicePlanId,status,statusDetails,"
+            "userPrincipalName,lastModifiedDateTime"
+        ),
+        local_filter="cloudpc",
+    ),
+    ReadSpec(
+        "m365_get_cloudpc",
+        Module.WINDOWS365,
+        "Allowlisted Windows 365 Cloud PC",
+        "Read one allowlisted Windows 365 Cloud PC.",
+        "/deviceManagement/virtualEndpoint/cloudPCs/{cloudpc_id}",
+        (
+            "id,displayName,managedDeviceId,managedDeviceName,"
+            "provisioningPolicyId,servicePlanId,status,statusDetails,"
+            "userPrincipalName,lastModifiedDateTime"
+        ),
+        ("cloudpc_id",),
+        ("cloudpc",),
+        collection=False,
     ),
     ReadSpec(
         "m365_list_service_health",
@@ -596,6 +669,66 @@ SPECS: tuple[ReadSpec, ...] = (
         ),
         supports_top=False,
     ),
+    ReadSpec(
+        "m365_list_allowed_ediscovery_cases",
+        Module.COMPLIANCE,
+        "Microsoft Purview eDiscovery Cases",
+        (
+            "List bounded metadata for only the locally allowlisted "
+            "Microsoft Purview eDiscovery cases."
+        ),
+        "/security/cases/ediscoveryCases",
+        (
+            "id,displayName,description,status,externalId,"
+            "createdDateTime,lastModifiedDateTime,closedDateTime"
+        ),
+        local_filter="ediscovery_case",
+    ),
+    ReadSpec(
+        "m365_get_ediscovery_case",
+        Module.COMPLIANCE,
+        "Microsoft Purview eDiscovery Case",
+        (
+            "Read bounded metadata for one locally allowlisted Microsoft "
+            "Purview eDiscovery case without case content or searches."
+        ),
+        "/security/cases/ediscoveryCases/{ediscovery_case_id}",
+        (
+            "id,displayName,description,status,externalId,"
+            "createdDateTime,lastModifiedDateTime,closedDateTime"
+        ),
+        ("ediscovery_case_id",),
+        ("ediscovery_case",),
+        collection=False,
+    ),
+    ReadSpec(
+        "m365_list_allowed_retention_labels",
+        Module.COMPLIANCE,
+        "Microsoft Purview Retention Labels",
+        (
+            "List only locally allowlisted retention-label definitions; "
+            "no label assignment or policy mutation is exposed."
+        ),
+        "/security/labels/retentionLabels",
+        None,
+        local_filter="retention_label",
+        supports_top=False,
+    ),
+    ReadSpec(
+        "m365_get_retention_label",
+        Module.COMPLIANCE,
+        "Microsoft Purview Retention Label",
+        (
+            "Read one locally allowlisted retention-label definition "
+            "without expanding descriptors or retention events."
+        ),
+        "/security/labels/retentionLabels/{retention_label_id}",
+        None,
+        ("retention_label_id",),
+        ("retention_label",),
+        collection=False,
+        supports_top=False,
+    ),
 )
 
 
@@ -611,7 +744,15 @@ def _annotations(title: str) -> ToolAnnotations:
 
 def _value(params: CatalogReadInput, field: str) -> str:
     value = getattr(params, field)
-    if field in {"application_id", "service_principal_id"} and value is not None:
+    if field in {
+        "application_id",
+        "service_principal_id",
+        "user_id",
+        "device_id",
+        "cloudpc_id",
+        "ediscovery_case_id",
+        "retention_label_id",
+    } and value is not None:
         return str(value)
     if not isinstance(value, str) or not value:
         raise SecurityError(f"{field} is required for this tool")
@@ -635,11 +776,25 @@ def _apply_policies(spec: ReadSpec, params: CatalogReadInput, services: Any) -> 
             services.policy.authorize_chat(_value(params, "chat_id"))
         elif policy == "group":
             services.policy.authorize_group(_value(params, "group_id"))
+        elif policy == "target_user":
+            services.policy.authorize_target_user(_value(params, "user_id"))
+        elif policy == "device":
+            services.policy.authorize_device(_value(params, "device_id"))
+        elif policy == "cloudpc":
+            services.policy.authorize_cloudpc(_value(params, "cloudpc_id"))
         elif policy == "application":
             services.policy.authorize_application(_value(params, "application_id"))
         elif policy == "service_principal":
             services.policy.authorize_service_principal(
                 _value(params, "service_principal_id")
+            )
+        elif policy == "ediscovery_case":
+            services.policy.authorize_ediscovery_case(
+                _value(params, "ediscovery_case_id")
+            )
+        elif policy == "retention_label":
+            services.policy.authorize_retention_label(
+                _value(params, "retention_label_id")
             )
         else:
             raise SecurityError("internal catalog policy is invalid")
@@ -684,6 +839,36 @@ def _filter_items(
             for item in items
             if item.get("id") in services.settings.service_principal_ids
         ]
+    if spec.local_filter == "target_user":
+        return [
+            item
+            for item in items
+            if item.get("id") in services.settings.target_user_ids
+        ]
+    if spec.local_filter == "device":
+        return [
+            item
+            for item in items
+            if item.get("id") in services.settings.device_ids
+        ]
+    if spec.local_filter == "cloudpc":
+        return [
+            item
+            for item in items
+            if item.get("id") in services.settings.cloudpc_ids
+        ]
+    if spec.local_filter == "ediscovery_case":
+        return [
+            item
+            for item in items
+            if item.get("id") in services.settings.ediscovery_case_ids
+        ]
+    if spec.local_filter == "retention_label":
+        return [
+            item
+            for item in items
+            if item.get("id") in services.settings.retention_label_ids
+        ]
     return items
 
 
@@ -696,7 +881,9 @@ def _handler(spec: ReadSpec, services: Any, runner: Any) -> Any:
                 url = services.cursors.decode(spec.name, params.cursor)
                 data = await services.graph.request_cursor(url)
             else:
-                query: dict[str, str | int] = {"$select": spec.select}
+                query: dict[str, str | int] = {}
+                if spec.select is not None:
+                    query["$select"] = spec.select
                 if spec.supports_top:
                     query["$top"] = min(
                         params.limit,

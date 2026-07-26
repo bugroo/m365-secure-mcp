@@ -4,12 +4,16 @@ import pytest
 from pydantic import ValidationError
 
 from m365_secure_mcp.config import Profile, Settings
+from m365_secure_mcp.security import SecurityError, SecurityPolicy
 
 from .conftest import CLIENT_ID, TENANT_ID, USER_ID
 
 APPLICATION_ID = "44444444-4444-4444-8444-444444444444"
 SERVICE_PRINCIPAL_ID = "55555555-5555-4555-8555-555555555555"
 CONDITIONAL_ACCESS_POLICY_ID = "66666666-6666-4666-8666-666666666666"
+RESOURCE_ID = "77777777-7777-4777-8777-777777777777"
+EDISCOVERY_CASE_ID = "88888888-8888-4888-8888-888888888888"
+RETENTION_LABEL_ID = "99999999-9999-4999-8999-999999999999"
 
 
 def make_settings(**overrides: object) -> Settings:
@@ -28,6 +32,26 @@ def test_default_is_minimal_read_profile() -> None:
     assert [module.value for module in settings.enabled_modules] == ["profile"]
     assert settings.scopes == ("User.Read",)
     assert settings.write_enabled is False
+    assert settings.permission_grant_mode == "admin_preconsented"
+
+
+def test_dynamic_user_consent_is_not_a_supported_mode() -> None:
+    with pytest.raises(ValidationError, match="admin_preconsented"):
+        make_settings(permission_grant_mode="dynamic")
+
+
+def test_customer_deployment_requires_exact_principal_binding() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="M365_ALLOWED_USER_OBJECT_IDS",
+    ):
+        make_settings(deployment_kind="customer")
+    settings = make_settings(
+        deployment_kind="customer",
+        allowed_user_object_ids=USER_ID,
+    )
+    assert settings.deployment_kind == "customer"
+    assert settings.cache_username != make_settings().cache_username
 
 
 def test_placeholder_uuid_is_rejected() -> None:
@@ -78,6 +102,10 @@ def test_write_scopes_derive_only_from_actions() -> None:
         ("teams", "M365_ALLOWED_TEAM_IDS"),
         ("planner", "M365_ALLOWED_PLAN_IDS"),
         ("groups", "M365_ALLOWED_GROUP_IDS"),
+        ("users_admin", "M365_ALLOWED_TARGET_USER_IDS"),
+        ("directory_devices", "M365_ALLOWED_DEVICE_IDS"),
+        ("windows365", "M365_ALLOWED_CLOUDPC_IDS"),
+        ("compliance", "M365_ALLOWED_EDISCOVERY_CASE_IDS"),
     ],
 )
 def test_sensitive_modules_require_resource_allowlists(module: str, message: str) -> None:
@@ -113,6 +141,17 @@ def test_principal_uuid_allowlist_is_normalized() -> None:
     assert settings.allowed_user_ids == frozenset({USER_ID})
 
 
+def test_planner_assignees_are_separate_from_operator_principals() -> None:
+    settings = make_settings(
+        allowed_user_object_ids=USER_ID,
+        allowed_planner_assignee_ids=RESOURCE_ID,
+    )
+    policy = SecurityPolicy(settings)
+    assert policy.authorize_assignee(RESOURCE_ID) == RESOURCE_ID
+    with pytest.raises(SecurityError, match="Planner assignee"):
+        policy.authorize_assignee(USER_ID)
+
+
 def test_privileged_modules_require_second_gate() -> None:
     with pytest.raises(ValidationError, match="M365_PRIVILEGED_MODULES_ENABLED"):
         make_settings(modules="profile,security")
@@ -121,6 +160,63 @@ def test_privileged_modules_require_second_gate() -> None:
         privileged_modules_enabled=True,
     )
     assert "SecurityIncident.Read.All" in settings.scopes
+
+
+def test_compliance_reads_require_exact_resource_allowlists() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="M365_ALLOWED_RETENTION_LABEL_IDS",
+    ):
+        make_settings(
+            modules="profile,compliance",
+            enabled_tools="m365_get_retention_label",
+            privileged_modules_enabled=True,
+        )
+    settings = make_settings(
+        modules="profile,compliance",
+        allowed_ediscovery_case_ids=EDISCOVERY_CASE_ID,
+        allowed_retention_label_ids=RETENTION_LABEL_ID,
+        privileged_modules_enabled=True,
+    )
+    assert settings.scopes == (
+        "RecordsManagement.Read.All",
+        "User.Read",
+        "eDiscovery.Read.All",
+    )
+    policy = SecurityPolicy(settings)
+    assert (
+        policy.authorize_ediscovery_case(EDISCOVERY_CASE_ID)
+        == EDISCOVERY_CASE_ID
+    )
+    assert (
+        policy.authorize_retention_label(RETENTION_LABEL_ID)
+        == RETENTION_LABEL_ID
+    )
+
+
+def test_powerbi_uses_a_separate_oauth_resource() -> None:
+    settings = make_settings(
+        modules="profile,powerbi",
+        enabled_tools="m365_get_powerbi_dataset",
+        allowed_powerbi_workspace_ids=RESOURCE_ID,
+        allowed_powerbi_dataset_ids=RESOURCE_ID,
+        privileged_modules_enabled=True,
+    )
+    assert settings.scopes == ("User.Read",)
+    assert settings.powerbi_scopes == (
+        "https://analysis.windows.net/powerbi/api/Dataset.Read.All",
+    )
+
+
+def test_office_content_modules_require_exact_item_allowlists() -> None:
+    with pytest.raises(ValidationError, match="M365_ALLOWED_DRIVE_IDS"):
+        make_settings(modules="profile,word")
+    word = make_settings(
+        modules="profile,word",
+        allowed_drive_ids="drive-1",
+        allowed_word_item_ids="word-1",
+    )
+    assert word.scopes == ("Files.Read", "User.Read")
 
 
 def test_tool_allowlist_and_denylist_cannot_overlap() -> None:
@@ -259,6 +355,35 @@ def test_privileged_writes_require_gate_scope_and_resource_allowlist() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("action", "allowlists"),
+    [
+        (
+            "users.update_profile",
+            {"allowed_target_user_ids": RESOURCE_ID},
+        ),
+        (
+            "groups.update",
+            {"allowed_group_ids": RESOURCE_ID},
+        ),
+    ],
+)
+def test_user_and_group_administration_require_privileged_write_gate(
+    action: str,
+    allowlists: dict[str, str],
+) -> None:
+    with pytest.raises(
+        ValidationError,
+        match="M365_PRIVILEGED_WRITES_ENABLED",
+    ):
+        make_settings(
+            profile="write",
+            write_enabled=True,
+            write_actions=action,
+            **allowlists,
+        )
+
+
 def test_entra_allowlists_accept_only_uuid_object_ids() -> None:
     with pytest.raises(ValidationError, match="invalid UUID"):
         make_settings(allowed_application_ids="not-an-object-id")
@@ -275,21 +400,29 @@ def test_entra_allowlists_accept_only_uuid_object_ids() -> None:
 def test_agent_security_posture_contains_counts_not_private_identifiers() -> None:
     settings = make_settings(
         allowed_user_object_ids=USER_ID,
+        allowed_planner_assignee_ids=RESOURCE_ID,
         allowed_upn_domains="private.example",
         allowed_application_ids=APPLICATION_ID,
         allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
         allowed_conditional_access_policy_ids=(
             CONDITIONAL_ACCESS_POLICY_ID
         ),
+        allowed_ediscovery_case_ids=EDISCOVERY_CASE_ID,
+        allowed_retention_label_ids=RETENTION_LABEL_ID,
     )
     summary = str(settings.agent_summary())
     assert TENANT_ID not in summary
     assert CLIENT_ID not in summary
     assert USER_ID not in summary
+    assert RESOURCE_ID not in summary
     assert APPLICATION_ID not in summary
     assert SERVICE_PRINCIPAL_ID not in summary
     assert CONDITIONAL_ACCESS_POLICY_ID not in summary
+    assert EDISCOVERY_CASE_ID not in summary
+    assert RETENTION_LABEL_ID not in summary
     assert "private.example" not in summary
     assert settings.agent_summary()[
         "entra_application_allowlist_count"
     ] == 1
+    assert settings.agent_summary()["ediscovery_case_allowlist_count"] == 1
+    assert settings.agent_summary()["retention_label_allowlist_count"] == 1

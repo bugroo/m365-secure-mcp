@@ -9,18 +9,29 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from typing import Any, Literal
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlparse
 
 import httpx
 
 from . import __version__
 from .auth import AuthenticationError, TokenProvider
 from .config import Settings
-from .security import Principal, SecurityPolicy, validate_graph_url
+from .security import (
+    Principal,
+    SecurityPolicy,
+    path_segment,
+    validate_graph_url,
+)
 
 GRAPH_BASE_URL = "https://graph.microsoft.com/v1.0/"
 RETRYABLE_STATUS_CODES = frozenset({429, 502, 503, 504})
 SAFE_WRITE_RETRY_STATUS_CODES = frozenset({429})
+DOWNLOAD_HOST_SUFFIXES = (
+    ".sharepoint.com",
+    ".sharepoint-df.com",
+    ".1drv.com",
+    ".onedrive.com",
+)
 ErrorCategory = Literal[
     "authentication",
     "authorization",
@@ -67,6 +78,18 @@ class AgentSafeError:
     graph_request_id: str | None = None
 
 
+@dataclass(frozen=True)
+class DriveItemDownload:
+    """Bounded drive-item metadata and bytes retrieved from a preauthorized URL."""
+
+    item_id: str
+    name: str
+    mime_type: str
+    etag: str
+    size: int
+    content: bytes
+
+
 class GraphClient:
     """Async Graph client that exposes no arbitrary URL or header capability."""
 
@@ -77,6 +100,7 @@ class GraphClient:
         policy: SecurityPolicy,
         *,
         transport: httpx.AsyncBaseTransport | None = None,
+        download_transport: httpx.AsyncBaseTransport | None = None,
     ) -> None:
         self.settings = settings
         self.tokens = tokens
@@ -96,9 +120,16 @@ class GraphClient:
                 "User-Agent": f"m365-secure-mcp/{__version__}",
             },
         )
+        self._download_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(settings.graph_timeout_seconds),
+            follow_redirects=False,
+            transport=download_transport,
+            headers={"User-Agent": f"m365-secure-mcp/{__version__}"},
+        )
 
     async def close(self) -> None:
         await self._client.aclose()
+        await self._download_client.aclose()
 
     @property
     def principal(self) -> Principal | None:
@@ -150,7 +181,7 @@ class GraphClient:
         endpoint: str,
         *,
         params: Mapping[str, str | int] | None = None,
-        json_body: Mapping[str, Any] | None = None,
+        json_body: Mapping[str, Any] | list[Mapping[str, Any]] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         await self.ensure_principal()
@@ -170,13 +201,334 @@ class GraphClient:
         await self.ensure_principal()
         return await self._request_json_internal("GET", validate_graph_url(url))
 
+    async def request_text(
+        self,
+        endpoint: str,
+        *,
+        accept: str,
+        max_bytes: int | None = None,
+    ) -> str:
+        """GET bounded non-JSON Graph content from one fixed internal endpoint."""
+
+        await self.ensure_principal()
+        if (
+            not endpoint.startswith("/")
+            or endpoint.startswith("//")
+            or "://" in endpoint
+        ):
+            raise GraphError("internal Graph endpoint failed validation")
+        url = validate_graph_url(
+            urljoin(GRAPH_BASE_URL, endpoint.lstrip("/"))
+        )
+        response = await self._request_response_internal(
+            "GET",
+            url,
+            headers={"Accept": accept},
+        )
+        limit = max_bytes or self.settings.max_response_bytes
+        self._validate_response_size(response, limit)
+        try:
+            return response.content.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            raise GraphError("Microsoft Graph returned invalid UTF-8 content") from exc
+
+    async def download_drive_item(
+        self,
+        drive_id: str,
+        item_id: str,
+    ) -> DriveItemDownload:
+        """Download one bounded allowlisted drive item without forwarding auth."""
+
+        await self.ensure_principal()
+        safe_drive_id = path_segment(drive_id)
+        safe_item_id = path_segment(item_id)
+        endpoint = (
+            f"/drives/{safe_drive_id}/items/{safe_item_id}"
+        )
+        metadata = await self.request_json(
+            "GET",
+            endpoint,
+            params={"$select": "id,name,size,eTag,file"},
+        )
+        try:
+            size = int(metadata.get("size", -1))
+        except (TypeError, ValueError) as exc:
+            raise GraphError("drive item returned an invalid size") from exc
+        if size < 0 or size > self.settings.max_office_file_bytes:
+            raise GraphError("drive item size is outside Office policy")
+        file_data = metadata.get("file")
+        if not isinstance(file_data, dict):
+            raise GraphError("drive item is not a file")
+        mime_type = str(file_data.get("mimeType", ""))
+        name = str(metadata.get("name", ""))
+        etag = str(metadata.get("eTag", ""))
+        resolved_item_id = str(metadata.get("id", ""))
+        if not name or not etag or resolved_item_id != item_id:
+            raise GraphError("drive item metadata failed identity validation")
+
+        content_url = validate_graph_url(
+            urljoin(
+                GRAPH_BASE_URL,
+                (
+                    f"drives/{safe_drive_id}/items/{safe_item_id}/content"
+                ),
+            )
+        )
+        graph_response = await self._request_response_internal(
+            "GET",
+            content_url,
+            headers={"Accept": "application/octet-stream"},
+            allow_redirect=True,
+        )
+        if graph_response.status_code == 200:
+            response = graph_response
+        else:
+            location = graph_response.headers.get("Location", "")
+            download_url = self._validate_download_url(location)
+            try:
+                response = await self._download_client.get(
+                    download_url,
+                    headers={"Accept": "application/octet-stream"},
+                )
+            except (httpx.TimeoutException, httpx.RequestError) as exc:
+                raise GraphError(
+                    "Microsoft file content could not be downloaded securely"
+                ) from exc
+            if response.status_code != 200:
+                if 300 <= response.status_code < 400:
+                    raise GraphError(
+                        "Microsoft file download returned an unexpected redirect"
+                    )
+                raise GraphError(
+                    "Microsoft file download failed without exposing its URL"
+                )
+
+        self._validate_response_size(
+            response,
+            self.settings.max_office_file_bytes,
+        )
+        if len(response.content) != size:
+            raise GraphError(
+                "downloaded Office content size does not match drive metadata"
+            )
+        return DriveItemDownload(
+            item_id=resolved_item_id,
+            name=name,
+            mime_type=mime_type,
+            etag=etag,
+            size=size,
+            content=bytes(response.content),
+        )
+
+    async def upload_drive_item(
+        self,
+        drive_id: str,
+        item_id: str,
+        content: bytes,
+        *,
+        etag: str,
+        content_type: str,
+    ) -> dict[str, Any]:
+        """Replace one existing file with If-Match and no ambiguous write retry."""
+
+        await self.ensure_principal()
+        if not content or len(content) > self.settings.max_office_file_bytes:
+            raise GraphError("Office upload size is outside policy")
+        safe_drive_id = path_segment(drive_id)
+        safe_item_id = path_segment(item_id)
+        endpoint = (
+            f"/drives/{safe_drive_id}/items/{safe_item_id}/content"
+        )
+        url = validate_graph_url(
+            urljoin(GRAPH_BASE_URL, endpoint.lstrip("/"))
+        )
+        token = await self.tokens.get_access_token()
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Accept": "application/json",
+            "Content-Type": content_type,
+            "If-Match": etag,
+        }
+        refreshed = False
+        for attempt in range(self.settings.graph_max_retries + 1):
+            self._write_attempt_count += 1
+            try:
+                response = await self._client.put(
+                    url,
+                    content=content,
+                    headers=headers,
+                )
+            except (httpx.TimeoutException, httpx.RequestError) as exc:
+                self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph file write lost its response; "
+                    "the external outcome is uncertain",
+                    write_may_have_committed=True,
+                ) from exc
+            if response.status_code == 401 and not refreshed:
+                refreshed = True
+                token = await self.tokens.get_access_token(
+                    force_refresh=True
+                )
+                headers["Authorization"] = f"Bearer {token}"
+                continue
+            if (
+                response.status_code == 429
+                and attempt < self.settings.graph_max_retries
+            ):
+                await asyncio.sleep(self._retry_delay(response, attempt))
+                continue
+            if response.status_code in {502, 503, 504}:
+                self._write_ambiguous_count += 1
+                error = self._safe_http_error(response)
+                raise GraphError(
+                    str(error),
+                    error.failure,
+                    write_may_have_committed=True,
+                )
+            if response.status_code >= 400:
+                raise self._safe_http_error(response)
+            if response.status_code >= 300:
+                self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph returned an unexpected file-write redirect",
+                    write_may_have_committed=True,
+                )
+            self._write_confirmed_count += 1
+            try:
+                self._validate_response_size(
+                    response,
+                    self.settings.max_response_bytes,
+                )
+            except GraphError as exc:
+                self._write_ambiguous_count += 1
+                raise GraphError(
+                    str(exc),
+                    exc.failure,
+                    write_may_have_committed=True,
+                ) from exc
+            try:
+                data = response.json()
+            except json.JSONDecodeError as exc:
+                self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph accepted the file but returned invalid JSON",
+                    write_may_have_committed=True,
+                ) from exc
+            if not isinstance(data, dict):
+                self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph accepted the file but returned an invalid shape",
+                    write_may_have_committed=True,
+                )
+            return dict(data)
+        raise GraphError("Microsoft Graph file write exhausted its retry budget")
+
+    async def _request_response_internal(
+        self,
+        method: str,
+        url: str,
+        *,
+        headers: Mapping[str, str] | None = None,
+        allow_redirect: bool = False,
+    ) -> httpx.Response:
+        """Return a bounded raw read response from Graph."""
+
+        if method != "GET":
+            raise GraphError("internal raw Graph method failed validation")
+        token = await self.tokens.get_access_token()
+        auth_headers = {"Authorization": f"Bearer {token}"}
+        if headers:
+            auth_headers.update(headers)
+        refreshed = False
+        for attempt in range(self.settings.graph_max_retries + 1):
+            try:
+                response = await self._client.get(
+                    url,
+                    headers=auth_headers,
+                )
+            except httpx.TimeoutException as exc:
+                if attempt < self.settings.graph_max_retries:
+                    await asyncio.sleep(min(2**attempt, 8))
+                    continue
+                raise GraphError(
+                    "Microsoft Graph timed out; retry with a narrower request"
+                ) from exc
+            except httpx.RequestError as exc:
+                raise GraphError(
+                    "Microsoft Graph could not be reached securely"
+                ) from exc
+            if response.status_code == 401 and not refreshed:
+                refreshed = True
+                token = await self.tokens.get_access_token(
+                    force_refresh=True
+                )
+                auth_headers["Authorization"] = f"Bearer {token}"
+                continue
+            if response.status_code in RETRYABLE_STATUS_CODES:
+                if attempt < self.settings.graph_max_retries:
+                    await asyncio.sleep(self._retry_delay(response, attempt))
+                    continue
+            if (
+                allow_redirect
+                and response.status_code in {301, 302, 303, 307, 308}
+            ):
+                return response
+            if response.status_code >= 400:
+                raise self._safe_http_error(response)
+            if response.status_code >= 300:
+                raise GraphError(
+                    "Microsoft Graph returned an unexpected redirect response"
+                )
+            return response
+        raise GraphError("Microsoft Graph request exhausted its retry budget")
+
+    @staticmethod
+    def _validate_response_size(
+        response: httpx.Response,
+        limit: int,
+    ) -> None:
+        declared = response.headers.get("Content-Length")
+        if declared:
+            try:
+                length = int(declared)
+            except ValueError as exc:
+                raise GraphError(
+                    "Microsoft response returned an invalid response length"
+                ) from exc
+            if length < 0 or length > limit:
+                raise GraphError("Microsoft response exceeded the byte limit")
+        if len(response.content) > limit:
+            raise GraphError("Microsoft response exceeded the byte limit")
+
+    @staticmethod
+    def _validate_download_url(url: str) -> str:
+        parsed = urlparse(url)
+        hostname = (parsed.hostname or "").lower()
+        if (
+            parsed.scheme != "https"
+            or not hostname
+            or parsed.port not in {None, 443}
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.fragment
+            or not any(
+                hostname.endswith(suffix)
+                for suffix in DOWNLOAD_HOST_SUFFIXES
+            )
+        ):
+            raise GraphError(
+                "Microsoft file download URL failed the egress allowlist"
+            )
+        return url
+
     async def _request_json_internal(
         self,
         method: str,
         url: str,
         *,
         params: Mapping[str, str | int] | None = None,
-        json_body: Mapping[str, Any] | None = None,
+        json_body: Mapping[str, Any] | list[Mapping[str, Any]] | None = None,
         headers: Mapping[str, str] | None = None,
     ) -> dict[str, Any]:
         method = method.upper()
@@ -271,23 +623,44 @@ class GraphClient:
                 try:
                     declared_length = int(content_length)
                 except ValueError as exc:
+                    if is_write:
+                        self._write_ambiguous_count += 1
                     raise GraphError(
-                        "Microsoft Graph returned an invalid response length"
+                        "Microsoft Graph returned an invalid response length",
+                        write_may_have_committed=is_write,
                     ) from exc
                 if declared_length > self.settings.max_response_bytes:
+                    if is_write:
+                        self._write_ambiguous_count += 1
                     raise GraphError(
-                        "Microsoft Graph response exceeded the configured byte limit"
+                        "Microsoft Graph response exceeded the configured byte limit",
+                        write_may_have_committed=is_write,
                     )
             if len(response.content) > self.settings.max_response_bytes:
-                raise GraphError("Microsoft Graph response exceeded the configured byte limit")
+                if is_write:
+                    self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph response exceeded the configured byte limit",
+                    write_may_have_committed=is_write,
+                )
             if response.status_code == 204 or not response.content:
                 return {}
             try:
                 data = response.json()
             except json.JSONDecodeError as exc:
-                raise GraphError("Microsoft Graph returned a non-JSON response") from exc
+                if is_write:
+                    self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph returned a non-JSON response",
+                    write_may_have_committed=is_write,
+                ) from exc
             if not isinstance(data, dict):
-                raise GraphError("Microsoft Graph returned an unexpected response shape")
+                if is_write:
+                    self._write_ambiguous_count += 1
+                raise GraphError(
+                    "Microsoft Graph returned an unexpected response shape",
+                    write_may_have_committed=is_write,
+                )
             return dict(data)
 
         raise GraphError("Microsoft Graph request exhausted its retry budget")

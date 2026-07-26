@@ -13,6 +13,7 @@ class ReadToolPermission:
 
     module: str
     scopes: frozenset[str]
+    resource: str = "graph"
 
 
 def _register(
@@ -21,11 +22,16 @@ def _register(
     module: str,
     scopes: frozenset[str],
     tools: tuple[str, ...],
+    resource: str = "graph",
 ) -> None:
     for tool in tools:
         if tool in target:
             raise RuntimeError(f"duplicate read-tool permission contract: {tool}")
-        target[tool] = ReadToolPermission(module=module, scopes=scopes)
+        target[tool] = ReadToolPermission(
+            module=module,
+            scopes=scopes,
+            resource=resource,
+        )
 
 
 _permissions: dict[str, ReadToolPermission] = {}
@@ -159,12 +165,27 @@ _register(
 )
 _register(
     _permissions,
+    module="users_admin",
+    scopes=frozenset({"User.Read.All"}),
+    tools=("m365_list_allowed_users", "m365_get_allowed_user"),
+)
+_register(
+    _permissions,
     module="groups",
     scopes=frozenset({"GroupMember.Read.All"}),
     tools=(
         "m365_get_group",
         "m365_list_group_members",
         "m365_list_group_owners",
+    ),
+)
+_register(
+    _permissions,
+    module="directory_devices",
+    scopes=frozenset({"Device.Read.All"}),
+    tools=(
+        "m365_list_allowed_directory_devices",
+        "m365_get_directory_device",
     ),
 )
 _register(
@@ -187,7 +208,70 @@ _register(
     _permissions,
     module="excel",
     scopes=frozenset({"Files.Read"}),
-    tools=("m365_list_workbook_worksheets", "m365_list_workbook_tables"),
+    tools=("m365_list_workbook_tables",),
+)
+_register(
+    _permissions,
+    module="excel_workbook",
+    scopes=frozenset({"Files.ReadWrite"}),
+    tools=(
+        "m365_list_workbook_worksheets",
+        "m365_get_workbook_range",
+    ),
+)
+_register(
+    _permissions,
+    module="word",
+    scopes=frozenset({"Files.Read"}),
+    tools=("m365_get_word_document_text",),
+)
+_register(
+    _permissions,
+    module="powerpoint",
+    scopes=frozenset({"Files.Read"}),
+    tools=("m365_get_powerpoint_presentation_text",),
+)
+_register(
+    _permissions,
+    module="onenote_content",
+    scopes=frozenset({"Notes.Read"}),
+    tools=("m365_get_onenote_page_text",),
+)
+_register(
+    _permissions,
+    module="powerbi",
+    scopes=frozenset({"Workspace.Read.All"}),
+    tools=("m365_list_allowed_powerbi_workspaces",),
+    resource="powerbi",
+)
+_register(
+    _permissions,
+    module="powerbi",
+    scopes=frozenset({"Report.Read.All"}),
+    tools=(
+        "m365_list_powerbi_reports",
+        "m365_get_powerbi_report",
+    ),
+    resource="powerbi",
+)
+_register(
+    _permissions,
+    module="powerbi",
+    scopes=frozenset({"Dataset.Read.All"}),
+    tools=(
+        "m365_list_powerbi_datasets",
+        "m365_get_powerbi_dataset",
+        "m365_list_powerbi_dataset_refreshes",
+        "m365_list_powerbi_dataset_datasources",
+    ),
+    resource="powerbi",
+)
+_register(
+    _permissions,
+    module="powerbi",
+    scopes=frozenset({"Dashboard.Read.All"}),
+    tools=("m365_list_powerbi_dashboards",),
+    resource="powerbi",
 )
 _register(
     _permissions,
@@ -224,6 +308,12 @@ _register(
     module="intune",
     scopes=frozenset({"DeviceManagementManagedDevices.Read.All"}),
     tools=("m365_list_managed_devices",),
+)
+_register(
+    _permissions,
+    module="windows365",
+    scopes=frozenset({"CloudPC.Read.All"}),
+    tools=("m365_list_allowed_cloudpcs", "m365_get_cloudpc"),
 )
 _register(
     _permissions,
@@ -302,6 +392,24 @@ _register(
     module="licensing",
     scopes=frozenset({"Domain.Read.All"}),
     tools=("m365_list_domains",),
+)
+_register(
+    _permissions,
+    module="compliance",
+    scopes=frozenset({"eDiscovery.Read.All"}),
+    tools=(
+        "m365_list_allowed_ediscovery_cases",
+        "m365_get_ediscovery_case",
+    ),
+)
+_register(
+    _permissions,
+    module="compliance",
+    scopes=frozenset({"RecordsManagement.Read.All"}),
+    tools=(
+        "m365_list_allowed_retention_labels",
+        "m365_get_retention_label",
+    ),
 )
 
 READ_TOOL_PERMISSIONS: Final = MappingProxyType(_permissions)

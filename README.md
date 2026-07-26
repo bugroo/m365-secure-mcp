@@ -10,12 +10,13 @@ controlled access to Microsoft 365 through fixed, reviewable tools.
 
 | Fixed contracts | Read profile | Opt-in writes | Delete tools | Modules |
 |---:|---:|---:|---:|---:|
-| 91 | 75 max | 15 | 0 | 23 |
+| 125 | 96 max | 27 | 0 | 32 |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
 [Capabilities](#capabilities) | [Planner details](#planner-task-details) |
 [Private policy](#private-policy-and-resource-discovery) |
+[MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
@@ -33,7 +34,8 @@ flowchart TB
     A["Codex or Claude Code"] -->|"local stdio"| B["M365 Secure MCP"]
     H["OS Keychain"] -->|"token cache"| B
     B --> C["Identity + tool surface + resource + action"]
-    C -->|"HTTPS only"| G["Microsoft Graph v1.0"]
+    C -->|"Graph token"| G["Microsoft Graph v1.0"]
+    C -->|"separate audience"| P["Power BI REST v1.0"]
     B --> I["Metadata audit log"]
     B --> J["Write receipt ledger"]
     B --> K["Versioned result envelope"]
@@ -42,7 +44,8 @@ flowchart TB
 ## Installation
 
 Requirements: Python 3.11+, [`uv`](https://docs.astral.sh/uv/), and a
-single-tenant Microsoft Entra public-client registration.
+single-tenant Microsoft Entra public-client registration whose delegated
+permissions were added and consented by an administrator.
 
 ```bash
 git clone https://github.com/bugroo/m365-secure-mcp.git
@@ -51,7 +54,8 @@ uv sync --frozen --python python3.13
 ```
 
 The committed `uv.lock` pins the resolved dependency graph. This project has no
-Node.js runtime, postinstall script, or client secret.
+Node.js runtime, postinstall script, client secret, permission-grant tool, or
+consent automation.
 
 ### Configure and seal the smallest profile
 
@@ -130,17 +134,23 @@ does not need before granting Graph consent.
 |---|---|---|
 | Identity | tenant, user object IDs, UPN domains | `/me` is verified before data access |
 | Surface | modules, exact tool allowlist and denylist | unknown or unavailable names stop startup |
-| Resources | sites, teams, chats, groups, plans, Entra apps and CA policies | non-allowlisted identifiers are rejected locally |
+| Resources | users, devices, Cloud PCs, files, sites, teams, plans, Office, Power BI, Purview and Entra | non-allowlisted identifiers are rejected locally |
 | Writes | individual non-delete actions | separate process, explicit action, approval, receipts |
-| Egress | Microsoft Graph target | HTTPS `graph.microsoft.com/v1.0` only |
+| Egress | Microsoft APIs | pinned Graph v1.0, Power BI REST and validated Office download hosts |
 | Evidence | every tool result | versioned schema, operation ID, explicit retry state |
 
 Additional controls:
 
-- delegated OAuth authorization code flow with PKCE
+- admin-preconsented delegated OAuth authorization code flow with PKCE
+- local JWT claim checks for tenant, issuer, audience, principal, lifetime and exact scope set
 - OS Keychain token cache, with no plaintext token file
+- one process, authority, token cache, audit namespace and receipt ledger per
+  tenant/deployment kind/profile
+- separate operator-principal, target-user and Planner-assignee allowlists
+- a distinct Power BI token and audience; Graph bearer tokens are never reused
 - no-follow, owner-only local audit and receipt files
-- Graph `v1.0` only, redirects disabled, bounded read retries and responses
+- Graph `v1.0` only; Office redirects are manually validated and never receive the bearer token
+- bounded OOXML parsing that rejects encrypted packages, traversal, entities, macros, ActiveX, OLE and ZIP bombs
 - signed pagination cursors bound to tool, principal, resource, and query
 - M365 content treated as untrusted input and converted to bounded plain text
 - separate read and write processes
@@ -223,7 +233,8 @@ uv run m365-secure-mcp --print-policy
 
 # Read-only candidate discovery; never changes allowlists or exposes an MCP tool
 uv run m365-secure-mcp --discover-resources \
-  planner applications service_principals conditional_access
+  planner applications service_principals conditional_access \
+  ediscovery_cases retention_labels
 ```
 
 The offline doctor never signs in or calls Graph. Live mode may open the normal
@@ -237,24 +248,25 @@ because a stdio server cannot prove the host's approval policy.
 |---|---|---|---|
 | Mail | Teams | OneDrive | Defender incidents |
 | Calendar | Chats | SharePoint | Security alerts |
-| Contacts | Channels | Excel structure | Entra audit |
+| Contacts | Channels | Word and PowerPoint | Entra audit |
 | To Do | Groups | OneNote metadata | Intune |
-| Planner | People and presence | Directory profiles | Service Health |
-| Entra applications | Conditional Access | Directory roles | Licenses and domains |
+| Planner | People and presence | Excel ranges | Windows 365 |
+| Entra users/devices/apps | Power BI | OneNote content | CA, RBAC, licenses |
+|  |  |  | Purview eDiscovery/retention |
 
 ### Read profile
 
-Up to **75 read tools** are selected by module and can be reduced to an exact
+Up to **96 read tools** are selected by module and can be reduced to an exact
 allowlist. Content-bearing responses are normalized, bounded, and marked as
 untrusted external data.
 
 ### Write profile
 
-The write process exposes **15 non-delete actions**, each separately enabled.
-They cover mail drafts, calendar events, contacts, To Do tasks, Teams messages,
-Planner tasks/details, allowlisted Entra application metadata, allowlisted
-service-principal controls, and the state/name of allowlisted Conditional
-Access policies. Exact tool contracts are listed in the
+The write process exposes **27 non-delete actions**, each separately enabled.
+They cover routine work, Planner details, bounded Entra user/group controls,
+Intune sync, Windows 365 reboot, Office/OneNote/Excel edits, Power BI
+refresh/rebind, application metadata, service-principal controls, and
+allowlisted Conditional Access state. Exact tool contracts are listed in the
 [tool catalog](docs/TOOL_CATALOG.md).
 
 Every write requires a UUID idempotency key. The local ledger commits before
@@ -265,109 +277,65 @@ exact tool/idempotency-key pair; it cannot enumerate the ledger and never calls
 Graph.
 
 <details>
-<summary><strong>Expand the complete 91-contract surface</strong></summary>
+<summary><strong>Expand the 125-contract capability map</strong></summary>
 
-The two common tools are always registered:
-`m365_get_security_posture` and `m365_get_my_profile`.
-The write profile also registers the local read-only
-`m365_get_write_operation` receipt tool.
-
-| Domain | Fixed read tools | State-changing tools |
+| Domain | Fixed reads | Opt-in writes |
 |---|---:|---:|
-| Mail | 4 | 2 |
-| Calendar | 4 | 2 |
-| OneDrive, SharePoint, Excel | 13 | 0 |
-| Contacts, people, presence, directory | 6 | 1 |
-| To Do and Planner | 8 | 5 |
-| Teams and groups | 9 | 2 |
-| OneNote | 3 | 0 |
-| Security, audit, Intune, service health | 10 | 0 |
-| Organization | 1 | 0 |
-| Entra applications and service principals | 8 | 2 |
-| Identity governance | 5 | 1 |
-| Licensing and domains | 2 | 0 |
-| Local write evidence | 0 | 0 + 1 receipt query |
+| Mail, calendar, contacts | 10 | 5 |
+| To Do, Planner, Teams | 14 | 7 |
+| OneDrive and selected SharePoint | 11 | 0 |
+| Word, PowerPoint, Excel and OneNote | 9 | 4 |
+| People, groups, Entra users and devices | 11 | 4 |
+| Defender, audit, Intune, Windows 365, health | 12 | 2 |
+| Entra apps, governance, licensing, compliance | 19 | 3 |
+| Power BI | 8 | 2 |
+| Profile and organization | 2 | 0 |
 
-<h4>Mail and calendar</h4>
-
-```text
-m365_search_mail                 m365_get_mail_message
-m365_list_mail_folders           m365_list_mail_attachment_metadata
-m365_create_mail_draft           m365_send_mail_draft
-m365_list_calendar               m365_find_schedule
-m365_list_calendars              m365_get_calendar_event
-m365_create_calendar_event       m365_update_calendar_event
-```
-
-<h4>Files, sites, Excel, and OneNote</h4>
-
-```text
-m365_search_files                m365_get_file_metadata
-m365_list_onedrive_root          m365_list_recent_files
-m365_list_shared_files           m365_list_file_children
-m365_list_allowed_sites          m365_list_site_lists
-m365_list_site_list_items        m365_list_site_drives
-m365_list_site_pages             m365_list_workbook_worksheets
-m365_list_workbook_tables        m365_list_onenote_notebooks
-m365_list_onenote_sections       m365_list_onenote_pages
-```
-
-<h4>People, tasks, Planner, Teams, and groups</h4>
-
-```text
-m365_search_contacts             m365_list_contact_folders
-m365_create_contact              m365_list_relevant_people
-m365_get_my_presence             m365_list_users
-m365_get_user                    m365_list_todo_lists
-m365_list_todo_tasks             m365_get_todo_task
-m365_create_todo_task            m365_update_todo_task
-m365_list_allowed_plans          m365_list_planner_tasks
-m365_list_planner_buckets        m365_get_planner_task
-m365_list_my_planner_tasks       m365_create_planner_task
-m365_update_planner_task         m365_update_planner_task_details
-m365_get_team                    m365_list_team_channels
-m365_list_channel_members        m365_list_channel_messages
-m365_list_allowed_chats          m365_list_chat_messages
-m365_send_channel_message        m365_send_chat_message
-m365_get_group                   m365_list_group_members
-m365_list_group_owners
-```
-
-<h4>Organization, security, audit, Intune, and service health</h4>
-
-```text
-m365_get_organization
-m365_list_security_incidents     m365_list_security_alerts
-m365_list_signins                m365_list_directory_audits
-m365_list_managed_devices        m365_list_device_compliance_policies
-m365_list_device_configurations  m365_list_service_health
-m365_list_service_issues         m365_list_service_messages
-```
-
-<h4>Entra applications, governance, licensing, and domains</h4>
-
-```text
-m365_list_allowed_applications
-m365_get_application
-m365_list_application_owners
-m365_list_allowed_service_principals
-m365_get_service_principal
-m365_list_service_principal_owners
-m365_list_service_principal_app_role_assignments
-m365_list_service_principal_delegated_grants
-m365_update_entra_application
-m365_update_entra_service_principal
-m365_list_conditional_access_policies
-m365_list_directory_role_definitions
-m365_list_directory_role_assignments
-m365_list_access_review_definitions
-m365_list_entitlement_catalogs
-m365_update_conditional_access_policy
-m365_list_subscribed_skus
-m365_list_domains
-```
+Common/local evidence adds `m365_get_security_posture` and the write-only
+receipt query. The full names, input bounds, permissions, and resource gates
+are maintained in [docs/TOOL_CATALOG.md](docs/TOOL_CATALOG.md).
 
 </details>
+
+## Host and customer tenants
+
+MSP operation uses one named process per tenant and privilege profile. A tool
+call never accepts `tenant_id`; changing customer means changing to a
+separately configured MCP entry.
+
+```text
+host-routine-read       customer-a-routine-read
+host-routine-write      customer-a-privileged-read
+host-privileged-read    customer-a-selected-write
+```
+
+Each customer profile binds the exact customer tenant, client registration,
+signed-in object ID, API audience, scopes, resource allowlists, keychain cache,
+audit namespace and idempotency ledger. A ledger opened under a different
+tenant/profile namespace is rejected.
+
+The admin must add delegated API permissions, grant admin consent, assign the
+enterprise application to approved operators, and assign any required Entra
+or workload role. The MCP can inspect grants but cannot create or modify API
+permissions, OAuth consent, app-role assignments, directory roles or PIM
+assignments. See [MSP multi-tenant deployment](docs/MSP_MULTI_TENANT.md).
+
+### Deliberate exclusions
+
+`Directory.AccessAsUser.All`, `Directory.ReadWrite.All`, RBAC writes,
+credential/password operations and application-only mailbox access are not
+shortcuts this server takes. [Agent Registry/Agent ID write
+APIs](https://learn.microsoft.com/en-us/graph/api/resources/agentid-platform-overview?view=graph-rest-beta)
+and `AiEnterpriseInteraction.*` are also quarantined: the relevant Graph
+surface is still beta. They will not be advertised as production tools until
+stable endpoints, least-privileged permissions and data boundaries can be
+tested.
+
+Microsoft Purview is intentionally narrower than the operational modules.
+The stable compliance surface can list/read only explicitly allowlisted
+eDiscovery case metadata and retention-label definitions. It exposes no case
+content, search execution, holds, exports, label assignment, policy mutation,
+close, or delete action.
 
 ## Private policy and resource discovery
 
@@ -380,7 +348,19 @@ uv run m365-secure-mcp --policy-file "/private/read-policy.json" \
   --discover-resources planner teams chats groups
 
 uv run m365-secure-mcp --policy-file "/private/admin-read-policy.json" \
-  --discover-resources applications service_principals conditional_access
+  --discover-resources users directory_devices managed_devices cloudpcs \
+  applications service_principals conditional_access \
+  ediscovery_cases retention_labels
+
+uv run m365-secure-mcp --policy-file "/private/routine-read-policy.json" \
+  --discover-resources drives planner teams chats groups
+
+uv run m365-secure-mcp --policy-file "/private/powerbi-read-policy.json" \
+  --discover-resources powerbi_workspaces
+
+# After approved workspace IDs are added to the private policy:
+uv run m365-secure-mcp --policy-file "/private/powerbi-read-policy.json" \
+  --discover-resources powerbi_content
 ```
 
 Discovery is deliberately outside the MCP tool surface. It prints untrusted
@@ -392,7 +372,7 @@ routine write, privileged read, and privileged write. See
 [Ownership and migration](docs/OWNERSHIP_AND_MIGRATION.md) for the staged
 replacement of third-party Graph proxies without losing break-glass coverage.
 
-## Privileged Entra writes
+## Selected administrative writes
 
 Administrative writes remain invisible until every layer agrees:
 
@@ -406,6 +386,9 @@ export M365_ALLOWED_SERVICE_PRINCIPAL_IDS="<approved-object-guid>"
 
 The corresponding Entra registration must also have the delegated Graph
 permission and the signed-in operator must hold a supported Entra role.
+User writes cannot touch passwords, authentication methods, identities or
+licenses. Role-assignable groups, and groups whose role status cannot be
+confirmed, are rejected before any metadata or membership write.
 Application and service-principal updates cannot touch secrets, certificates,
 owners, redirect URIs, app roles, or consent grants. Conditional Access updates
 can change only `state` and `displayName`; conditions and controls are
@@ -463,8 +446,10 @@ read. The result includes a durable receipt; it can be queried later with
 ## Entra registration
 
 Create a **single-tenant public desktop client**, add `http://localhost` as its
-redirect URI, and grant only the delegated Graph permissions used by the
-selected modules.
+redirect URI, then have an administrator add and consent only the delegated
+permissions printed by `--explain-permissions`. Runtime token requests use
+the preconsented `/.default` set; the MCP never starts a dynamic permission
+grant.
 
 > [!IMPORTANT]
 > Do not configure an `api://<guid>` scope for this local server. It requests
@@ -498,7 +483,8 @@ modules
 ```
 
 Administrative domains such as Defender, Entra audit, Intune, and Service
-Health, Entra applications, governance, licensing, and domains also require:
+Health, Entra applications, governance, licensing, domains, and Purview
+compliance also require:
 
 ```bash
 export M365_PRIVILEGED_MODULES_ENABLED=true
@@ -526,12 +512,12 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 89 passed |
+| Tests | 127 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
 | Package | wheel and source distribution |
-| Full read-profile smoke test | exactly 75 tools |
+| Full read-profile smoke test | 96 read contracts + security posture |
 
 Live Graph integration tests require a dedicated non-production tenant and
 explicit operator consent.
@@ -540,15 +526,25 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 91 contracts and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 125 contracts and their boundaries |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |
 | [Entra setup](docs/ENTRA_SETUP.md) | Registration, delegated scopes, consent |
 | [Authentication troubleshooting](docs/AUTH_TROUBLESHOOTING.md) | AADSTS diagnosis |
 | [Reference review](docs/REFERENCE_REVIEW.md) | Comparative engineering decisions |
 | [Ownership and migration](docs/OWNERSHIP_AND_MIGRATION.md) | Public core, private deployment, and Lokka transition |
+| [MSP multi-tenant deployment](docs/MSP_MULTI_TENANT.md) | Host/customer isolation, GDAP and admin-consent workflow |
 
 ## Engineering references
+
+Primary specifications:
+
+- [Model Context Protocol tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+- [Microsoft Graph permissions reference](https://learn.microsoft.com/en-us/graph/permissions-reference)
+- [Planner task details API](https://learn.microsoft.com/en-us/graph/api/plannertaskdetails-update?view=graph-rest-1.0)
+- [Microsoft Purview eDiscovery case API](https://learn.microsoft.com/en-us/graph/api/security-casesroot-list-ediscoverycases?view=graph-rest-1.0)
+- [Microsoft Purview retention labels API](https://learn.microsoft.com/en-us/graph/api/security-labelsroot-list-retentionlabel?view=graph-rest-1.0)
+- [Power BI REST API](https://learn.microsoft.com/en-us/rest/api/power-bi/)
 
 The architecture was informed by, but does not import runtime code from:
 

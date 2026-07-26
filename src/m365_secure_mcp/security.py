@@ -17,6 +17,7 @@ from html.parser import HTMLParser
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
+from uuid import UUID
 
 from .config import Settings
 
@@ -262,10 +263,83 @@ class SecurityPolicy:
             raise SecurityError("Microsoft 365 group is not allowlisted")
         return group_id
 
+    def authorize_target_user(self, user_id: str) -> str:
+        normalized = str(UUID(user_id))
+        if normalized not in self.settings.target_user_ids:
+            raise SecurityError("Microsoft Entra target user is not allowlisted")
+        return normalized
+
+    def authorize_device(self, device_id: str) -> str:
+        normalized = str(UUID(device_id))
+        if normalized not in self.settings.device_ids:
+            raise SecurityError("Microsoft Entra device is not allowlisted")
+        return normalized
+
+    def authorize_managed_device(self, device_id: str) -> str:
+        normalized = str(UUID(device_id))
+        if normalized not in self.settings.managed_device_ids:
+            raise SecurityError("Microsoft Intune device is not allowlisted")
+        return normalized
+
+    def authorize_cloudpc(self, cloudpc_id: str) -> str:
+        normalized = str(UUID(cloudpc_id))
+        if normalized not in self.settings.cloudpc_ids:
+            raise SecurityError("Windows 365 Cloud PC is not allowlisted")
+        return normalized
+
     def authorize_plan(self, plan_id: str) -> str:
         if plan_id not in self.settings.plan_ids:
             raise SecurityError("Planner plan is not allowlisted")
         return plan_id
+
+    def authorize_drive(self, drive_id: str) -> str:
+        if drive_id not in self.settings.drive_ids:
+            raise SecurityError("Microsoft drive is not allowlisted")
+        return drive_id
+
+    def authorize_word_item(self, item_id: str) -> str:
+        if item_id not in self.settings.word_item_ids:
+            raise SecurityError("Word document is not allowlisted")
+        return item_id
+
+    def authorize_powerpoint_item(self, item_id: str) -> str:
+        if item_id not in self.settings.powerpoint_item_ids:
+            raise SecurityError("PowerPoint presentation is not allowlisted")
+        return item_id
+
+    def authorize_excel_item(self, item_id: str) -> str:
+        if item_id not in self.settings.excel_item_ids:
+            raise SecurityError("Excel workbook is not allowlisted")
+        return item_id
+
+    def authorize_onenote_page(self, page_id: str) -> str:
+        if page_id not in self.settings.onenote_page_ids:
+            raise SecurityError("OneNote page is not allowlisted")
+        return page_id
+
+    def authorize_powerbi_workspace(self, workspace_id: str) -> str:
+        normalized = str(UUID(workspace_id))
+        if normalized not in self.settings.powerbi_workspace_ids:
+            raise SecurityError("Power BI workspace is not allowlisted")
+        return normalized
+
+    def authorize_powerbi_report(self, report_id: str) -> str:
+        normalized = str(UUID(report_id))
+        if normalized not in self.settings.powerbi_report_ids:
+            raise SecurityError("Power BI report is not allowlisted")
+        return normalized
+
+    def authorize_powerbi_dataset(self, dataset_id: str) -> str:
+        normalized = str(UUID(dataset_id))
+        if normalized not in self.settings.powerbi_dataset_ids:
+            raise SecurityError("Power BI dataset is not allowlisted")
+        return normalized
+
+    def authorize_powerbi_dashboard(self, dashboard_id: str) -> str:
+        normalized = str(UUID(dashboard_id))
+        if normalized not in self.settings.powerbi_dashboard_ids:
+            raise SecurityError("Power BI dashboard is not allowlisted")
+        return normalized
 
     def authorize_application(self, application_id: str) -> str:
         if application_id not in self.settings.application_ids:
@@ -282,12 +356,29 @@ class SecurityPolicy:
             raise SecurityError("Conditional Access policy is not allowlisted")
         return policy_id
 
+    def authorize_ediscovery_case(self, case_id: str) -> str:
+        normalized = str(UUID(case_id))
+        if normalized not in self.settings.ediscovery_case_ids:
+            raise SecurityError("Microsoft Purview eDiscovery case is not allowlisted")
+        return normalized
+
+    def authorize_retention_label(self, label_id: str) -> str:
+        normalized = str(UUID(label_id))
+        if normalized not in self.settings.retention_label_ids:
+            raise SecurityError("Microsoft Purview retention label is not allowlisted")
+        return normalized
+
     def authorize_assignee(self, object_id: str) -> str:
-        if not self.settings.allowed_user_ids:
-            raise SecurityError("Planner assignments require an object-ID allowlist")
-        if object_id not in self.settings.allowed_user_ids:
-            raise SecurityError("Planner assignee is not in the object-ID allowlist")
-        return object_id
+        normalized = str(UUID(object_id))
+        if not self.settings.planner_assignee_ids:
+            raise SecurityError(
+                "Planner assignments require a separate assignee allowlist"
+            )
+        if normalized not in self.settings.planner_assignee_ids:
+            raise SecurityError(
+                "Planner assignee is not in the Planner assignee allowlist"
+            )
+        return normalized
 
     def require_write_action(self, action: str) -> None:
         if not self.settings.write_enabled or action not in self.settings.enabled_write_actions:
@@ -297,8 +388,14 @@ class SecurityPolicy:
 class AuditLogger:
     """Append-only metadata audit log that excludes M365 content and identifiers."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        deployment_namespace: str | None = None,
+    ) -> None:
         self.path = path
+        self.deployment_namespace = deployment_namespace
         self._hash_key = secrets.token_bytes(32)
 
     def record(
@@ -327,6 +424,7 @@ class AuditLogger:
             "request_id": request_id,
             "operation_id": operation_id,
             "duration_ms": duration_ms,
+            "deployment_namespace": self.deployment_namespace,
         }
         descriptor = open_private_file(self.path, os.O_APPEND | os.O_WRONLY)
         try:

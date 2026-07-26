@@ -18,6 +18,8 @@ from .conftest import CLIENT_ID, TENANT_ID
 
 APPLICATION_ID = "44444444-4444-4444-8444-444444444444"
 SERVICE_PRINCIPAL_ID = "55555555-5555-4555-8555-555555555555"
+EDISCOVERY_CASE_ID = "88888888-8888-4888-8888-888888888888"
+RETENTION_LABEL_ID = "99999999-9999-4999-8999-999999999999"
 
 
 def _services() -> SimpleNamespace:
@@ -27,6 +29,8 @@ def _services() -> SimpleNamespace:
         token_cache_mode="memory",  # noqa: S106
         allowed_application_ids=APPLICATION_ID,
         allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
+        allowed_ediscovery_case_ids=EDISCOVERY_CASE_ID,
+        allowed_retention_label_ids=RETENTION_LABEL_ID,
     )
     return SimpleNamespace(
         settings=settings,
@@ -76,3 +80,28 @@ def test_license_endpoints_do_not_send_unsupported_top_parameter() -> None:
     for name in ("m365_list_subscribed_skus", "m365_list_domains"):
         spec = _spec(name)
         assert spec.supports_top is False
+
+
+def test_compliance_reads_fail_closed_and_avoid_unsupported_query_parameters() -> None:
+    services = _services()
+    _apply_policies(
+        _spec("m365_get_ediscovery_case"),
+        CatalogReadInput(ediscovery_case_id=EDISCOVERY_CASE_ID),
+        services,
+    )
+    _apply_policies(
+        _spec("m365_get_retention_label"),
+        CatalogReadInput(retention_label_id=RETENTION_LABEL_ID),
+        services,
+    )
+    with pytest.raises(SecurityError, match="not allowlisted"):
+        _apply_policies(
+            _spec("m365_get_retention_label"),
+            CatalogReadInput(
+                retention_label_id="77777777-7777-4777-8777-777777777777"
+            ),
+            services,
+        )
+    retention = _spec("m365_list_allowed_retention_labels")
+    assert retention.select is None
+    assert retention.supports_top is False
