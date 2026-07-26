@@ -26,14 +26,11 @@ identity, module, tool, resource, and action. Unknown or out-of-policy
 configuration fails before the server starts.
 
 ```mermaid
-flowchart LR
+flowchart TB
     A["Codex or Claude Code"] -->|"local stdio"| B["M365 Secure MCP"]
-    B --> C["Identity"]
-    C --> D["Tool surface"]
-    D --> E["Resource"]
-    E --> F["Action"]
-    F -->|"HTTPS only"| G["Microsoft Graph v1.0"]
     H["OS Keychain"] -->|"token cache"| B
+    B --> C["Identity + tool surface + resource + action"]
+    C -->|"HTTPS only"| G["Microsoft Graph v1.0"]
     B --> I["Metadata audit log"]
     B --> J["Write idempotency ledger"]
 ```
