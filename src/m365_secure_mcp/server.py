@@ -15,10 +15,38 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
 
+from .assurance import AssuranceSnapshotStore
 from .auth import TokenProvider
 from .catalog import register_catalog_tools
 from .config import Module, Profile, Settings
+from .contract_manifest import (
+    ContractManifest,
+    load_global_manifest,
+    sha256_digest,
+)
+from .entra_operations import (
+    CONTRACT_ID as ENTRA_OPERATIONAL_PROFILE_CONTRACT_ID,
+)
+from .entra_operations import (
+    EntraOperationalProfileService,
+    render_operation,
+)
+from .entra_permission_drift import (
+    TOOL_NAME as ENTRA_PERMISSION_DRIFT_TOOL_NAME,
+)
+from .entra_permission_drift import EntraPermissionGrantDriftService
+from .entra_posture import (
+    TOOL_NAME as ENTRA_POSTURE_TOOL_NAME,
+)
+from .entra_posture import (
+    EntraIdentityGovernancePostureService,
+)
 from .formatting import addresses, render_collection, render_record
+from .governance import (
+    VerifiedGovernancePolicy,
+    load_verified_governance_policy,
+    validate_policy_against_manifest,
+)
 from .graph import GraphClient, classify_agent_error
 from .models import (
     AddUserToGroupInput,
@@ -59,7 +87,7 @@ from .models import (
     UpdateApplicationInput,
     UpdateConditionalAccessPolicyInput,
     UpdateDirectoryGroupInput,
-    UpdateDirectoryUserInput,
+    UpdateEntraUserOperationalProfileInput,
     UpdateEventInput,
     UpdatePlannerTaskDetailsInput,
     UpdatePlannerTaskInput,
@@ -75,8 +103,10 @@ from .ooxml import (
     extract_word_text,
     replace_ooxml_text,
 )
+from .operations import OperationRecord
 from .powerbi import PowerBIClient
 from .protocol import ToolResponse, error_response, success_response
+from .recovery import RecoveryCapsuleStore
 from .security import (
     AuditLogger,
     CursorCodec,
@@ -113,7 +143,9 @@ WRITE_TOOL_ACTIONS = {
     "m365_create_planner_task": "planner.create_task",
     "m365_update_planner_task": "planner.update_task",
     "m365_update_planner_task_details": "planner.update_task_details",
-    "m365_update_directory_user": "users.update_profile",
+    "m365_update_entra_user_operational_profile": (
+        ENTRA_OPERATIONAL_PROFILE_CONTRACT_ID
+    ),
     "m365_set_directory_user_account_enabled": (
         "users.set_account_enabled"
     ),
@@ -170,6 +202,9 @@ class Services:
     idempotency: IdempotencyStore
     write_limiter: WriteRateLimiter
     powerbi: PowerBIClient | None = None
+    governance: VerifiedGovernancePolicy | None = None
+    recovery: RecoveryCapsuleStore | None = None
+    assurance_snapshots: AssuranceSnapshotStore | None = None
 
     @property
     def write_attempt_count(self) -> int:
@@ -203,8 +238,10 @@ class ToolRunner:
         operation: Callable[[], Awaitable[str]],
         *,
         write: bool = False,
+        operation_id: UUID | None = None,
+        operation_record: Callable[[], OperationRecord | None] | None = None,
     ) -> ToolResponse:
-        operation_id = uuid4()
+        operation_id = operation_id or uuid4()
         started = time.monotonic()
         receipt = None
         try:
@@ -295,6 +332,11 @@ class ToolRunner:
                 text=result,
                 receipt=receipt,
                 audit_recorded=audit_recorded,
+                operation_record=(
+                    operation_record()
+                    if operation_record is not None
+                    else None
+                ),
             )
         except Exception as exc:
             if isinstance(exc, WriteStateError):
@@ -479,6 +521,98 @@ def _register_common_tools(mcp: FastMCP, services: Services, runner: ToolRunner)
 
         return await runner.call(
             "m365_get_my_profile",
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+
+def _register_assurance_read(
+    mcp: FastMCP,
+    services: Services,
+    runner: ToolRunner,
+    *,
+    manifest: ContractManifest,
+) -> None:
+    if services.governance is None or services.assurance_snapshots is None:
+        raise ValueError(
+            "Assurance requires a signed Governance policy and snapshot store"
+        )
+    posture = EntraIdentityGovernancePostureService(
+        graph=services.graph,
+        settings=services.settings,
+        manifest=manifest,
+        governance=services.governance,
+        snapshots=services.assurance_snapshots,
+    )
+    permission_drift = EntraPermissionGrantDriftService(
+        graph=services.graph,
+        settings=services.settings,
+        manifest=manifest,
+        governance=services.governance,
+        snapshots=services.assurance_snapshots,
+    )
+
+    @mcp.tool(
+        name=ENTRA_POSTURE_TOOL_NAME,
+        annotations=_read_annotations(
+            "Get Entra Identity Governance Posture"
+        ),
+    )
+    async def get_entra_identity_governance_posture(
+        params: BasicInput,
+    ) -> ToolResponse:
+        """Collect complete CA and directory-role posture without changing Graph.
+
+        The response contains only metrics, findings, and deployment-local HMAC
+        digests. Raw policy and principal identifiers are encrypted in the local
+        tenant-specific snapshot and are never returned through MCP.
+        """
+
+        async def operation() -> str:
+            report = await posture.collect()
+            return render_record(
+                title="Entra Identity Governance Posture",
+                record=report.model_dump(mode="json"),
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+                external_content=False,
+            )
+
+        return await runner.call(
+            ENTRA_POSTURE_TOOL_NAME,
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name=ENTRA_PERMISSION_DRIFT_TOOL_NAME,
+        annotations=_read_annotations(
+            "Get Entra Permission Grant Drift"
+        ),
+    )
+    async def get_entra_permission_grant_drift(
+        params: BasicInput,
+    ) -> ToolResponse:
+        """Compare signed app-permission expectations with complete Entra grants.
+
+        Target service principals come only from signed Governance and the
+        local runtime allowlist. The tool accepts no IDs, performs no writes,
+        and returns opaque references while retaining raw evidence only in the
+        encrypted tenant-local Assurance snapshot.
+        """
+
+        async def operation() -> str:
+            report = await permission_drift.collect()
+            return render_record(
+                title="Entra Permission Grant Drift",
+                record=report.model_dump(mode="json"),
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+                external_content=False,
+            )
+
+        return await runner.call(
+            ENTRA_PERMISSION_DRIFT_TOOL_NAME,
             params.model_dump(mode="json"),
             operation,
         )
@@ -1906,76 +2040,51 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         )
 
     @mcp.tool(
-        name="m365_update_directory_user",
+        name="m365_update_entra_user_operational_profile",
         annotations=_write_annotations(
-            "Update Allowlisted Microsoft Entra User",
-            destructive=True,
+            "Update Allowlisted Entra User Operational Profile",
+            destructive=False,
         ),
     )
-    async def update_directory_user(
-        params: UpdateDirectoryUserInput,
+    async def update_entra_user_operational_profile(
+        params: UpdateEntraUserOperationalProfileInput,
     ) -> ToolResponse:
-        """Update bounded profile fields on one allowlisted Entra user."""
+        """Update only department, jobTitle, and officeLocation on one safe target.
+
+        The signed governance policy supplies standing authorization by default.
+        A stricter explicit-plan override returns AWAITING_APPROVAL without
+        accepting approval as a model-controlled argument.
+        """
+
+        if services.governance is None or services.recovery is None:
+            raise RuntimeError(
+                "signed governance policy or recovery capsule was not initialized"
+            )
+        operation_id = uuid4()
+        governed_record: OperationRecord | None = None
+        workflow = EntraOperationalProfileService(
+            settings=services.settings,
+            graph=services.graph,
+            runtime_policy=services.policy,
+            governance=services.governance,
+            recovery=services.recovery,
+        )
 
         async def operation() -> str:
-            services.policy.require_write_action("users.update_profile")
-            user_id = services.policy.authorize_target_user(
-                str(params.user_id)
+            nonlocal governed_record
+            governed_record = await workflow.execute(
+                params,
+                operation_id=operation_id,
             )
-            body: dict[str, Any] = {}
-            for key, value in (
-                ("displayName", params.display_name),
-                ("jobTitle", params.job_title),
-                ("department", params.department),
-                ("officeLocation", params.office_location),
-                ("usageLocation", params.usage_location),
-            ):
-                if value is not None:
-                    body[key] = value
-            endpoint = f"/users/{path_segment(user_id)}"
-            await services.graph.request_json(
-                "PATCH",
-                endpoint,
-                json_body=body,
-            )
-            current = await services.graph.request_json(
-                "GET",
-                endpoint,
-                params={
-                    "$select": (
-                        "id,displayName,userPrincipalName,jobTitle,"
-                        "department,officeLocation,usageLocation"
-                    )
-                },
-            )
-            _verify_exact_field(
-                current,
-                field="id",
-                expected=user_id,
-                resource="Entra user",
-            )
-            for field, expected in body.items():
-                _verify_exact_field(
-                    current,
-                    field=field,
-                    expected=expected,
-                    resource="Entra user",
-                )
-            return render_record(
-                title="Microsoft Entra User Updated",
-                record={
-                    **_safe_api_value(current),
-                    "idempotency_key": str(params.idempotency_key),
-                },
-                response_format=ResponseFormat.JSON,
-                character_limit=services.settings.max_tool_characters,
-            )
+            return render_operation(governed_record)
 
         return await runner.call(
-            "m365_update_directory_user",
+            "m365_update_entra_user_operational_profile",
             params.model_dump(mode="json"),
             operation,
             write=True,
+            operation_id=operation_id,
+            operation_record=lambda: governed_record,
         )
 
     @mcp.tool(
@@ -3636,6 +3745,39 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
 def create_server(settings: Settings) -> FastMCP:
     """Build one MCP server with only the tools allowed by the selected profile."""
 
+    manifest = load_global_manifest()
+    governance: VerifiedGovernancePolicy | None = None
+    assurance_enabled = (
+        settings.profile is Profile.READ
+        and Module.ASSURANCE in settings.enabled_modules
+    )
+    governance_required = (
+        ENTRA_OPERATIONAL_PROFILE_CONTRACT_ID
+        in settings.enabled_write_actions
+        or assurance_enabled
+    )
+    if (
+        settings.governance_policy_path is not None
+        and settings.governance_public_key_path is not None
+    ):
+        governance = load_verified_governance_policy(
+            settings.governance_policy_path,
+            settings.governance_public_key_path,
+        )
+        if governance.policy.contract_manifest_digest != sha256_digest(manifest):
+            raise ValueError(
+                "governance policy is bound to a different contract manifest"
+            )
+        validate_policy_against_manifest(governance.policy, manifest)
+    elif governance_required:
+        if (
+            settings.governance_policy_path is None
+            or settings.governance_public_key_path is None
+        ):
+            raise ValueError(
+                "compiled Governance operations require a signed governance "
+                "policy and trusted public key"
+            )
     policy = SecurityPolicy(settings)
     tokens = TokenProvider(settings)
     graph = GraphClient(settings, tokens, policy)
@@ -3666,6 +3808,13 @@ def create_server(settings: Settings) -> FastMCP:
             deployment_namespace=settings.deployment_namespace,
         ),
         write_limiter=WriteRateLimiter(settings.write_rate_limit_per_minute),
+        governance=governance,
+        recovery=RecoveryCapsuleStore(settings),
+        assurance_snapshots=(
+            AssuranceSnapshotStore(settings)
+            if assurance_enabled
+            else None
+        ),
         powerbi=powerbi,
     )
     runner = ToolRunner(services)
@@ -3708,6 +3857,13 @@ def create_server(settings: Settings) -> FastMCP:
             _register_office_read(mcp, services, runner)
         if Module.POWERBI in settings.enabled_modules:
             _register_powerbi_read(mcp, services, runner)
+        if assurance_enabled:
+            _register_assurance_read(
+                mcp,
+                services,
+                runner,
+                manifest=manifest,
+            )
         register_catalog_tools(mcp, services, runner)
     else:
         _register_write_tools(mcp, services, runner)

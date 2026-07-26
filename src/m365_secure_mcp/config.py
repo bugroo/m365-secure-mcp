@@ -56,6 +56,7 @@ class Module(StrEnum):
     SERVICE_HEALTH = "service_health"
     ENTRA_APPS = "entra_apps"
     GOVERNANCE = "governance"
+    ASSURANCE = "assurance"
     LICENSING = "licensing"
     COMPLIANCE = "compliance"
 
@@ -81,6 +82,7 @@ PRIVILEGED_MODULES = frozenset(
         Module.SERVICE_HEALTH,
         Module.ENTRA_APPS,
         Module.GOVERNANCE,
+        Module.ASSURANCE,
         Module.LICENSING,
         Module.WINDOWS365,
         Module.POWERBI,
@@ -104,6 +106,9 @@ ENTRA_SERVICE_PRINCIPAL_TOOLS = frozenset(
         "m365_list_service_principal_delegated_grants",
     }
 )
+ASSURANCE_SERVICE_PRINCIPAL_TOOLS = frozenset(
+    {"m365_get_entra_permission_grant_drift"}
+)
 USERS_ADMIN_TOOLS = frozenset(
     {"m365_list_allowed_users", "m365_get_allowed_user"}
 )
@@ -125,7 +130,6 @@ RETENTION_LABEL_TOOLS = frozenset(
         "m365_get_retention_label",
     }
 )
-
 POWERBI_RESOURCE = "https://analysis.windows.net/powerbi/api"
 POWERBI_WORKSPACE_TOOLS = frozenset(
     {
@@ -168,7 +172,13 @@ WRITE_ACTION_SCOPES: dict[str, frozenset[str]] = {
     "planner.create_task": frozenset({"Tasks.ReadWrite"}),
     "planner.update_task": frozenset({"Tasks.ReadWrite"}),
     "planner.update_task_details": frozenset({"Tasks.ReadWrite"}),
-    "users.update_profile": frozenset({"User.ReadWrite.All"}),
+    "entra.user.operational_profile.update": frozenset(
+        {
+            "GroupMember.Read.All",
+            "RoleManagement.Read.Directory",
+            "User.ReadUpdate.All",
+        }
+    ),
     "users.set_account_enabled": frozenset(
         {"User.EnableDisableAccount.All", "User.Read.All"}
     ),
@@ -205,7 +215,6 @@ PRIVILEGED_WRITE_ACTIONS = frozenset(
         "entra.update_application",
         "entra.update_service_principal",
         "governance.update_conditional_access_policy",
-        "users.update_profile",
         "users.set_account_enabled",
         "groups.update",
         "groups.add_user_member",
@@ -311,6 +320,31 @@ class Settings(BaseSettings):
     )
     audit_log_path: Path | None = None
     idempotency_db_path: Path | None = None
+    governance_policy_path: Path | None = None
+    governance_public_key_path: Path | None = None
+    assurance_snapshot_path: Path | None = None
+    assurance_max_pages_per_domain: int = Field(default=100, ge=1, le=500)
+    assurance_max_records_per_domain: int = Field(
+        default=5_000,
+        ge=100,
+        le=50_000,
+    )
+    assurance_max_snapshot_bytes: int = Field(
+        default=64_000_000,
+        ge=1_000_000,
+        le=128_000_000,
+    )
+    assurance_snapshot_ttl_seconds: int = Field(
+        default=2_592_000,
+        ge=86_400,
+        le=31_536_000,
+    )
+    recovery_capsule_path: Path | None = None
+    recovery_capsule_ttl_seconds: int = Field(
+        default=604_800,
+        ge=3_600,
+        le=2_592_000,
+    )
     write_rate_limit_per_minute: int = Field(default=10, ge=1, le=120)
     idempotency_pending_seconds: int = Field(default=86_400, ge=300, le=604_800)
 
@@ -492,6 +526,20 @@ class Settings(BaseSettings):
                     "Entra service-principal tools require "
                     "M365_ALLOWED_SERVICE_PRINCIPAL_IDS"
                 )
+        if Module.ASSURANCE.value in module_names:
+            selected_permission_drift_tools = (
+                ASSURANCE_SERVICE_PRINCIPAL_TOOLS
+                if not enabled_tools
+                else ASSURANCE_SERVICE_PRINCIPAL_TOOLS & enabled_tools
+            ) - disabled_tools
+            if (
+                selected_permission_drift_tools
+                and not self.service_principal_ids
+            ):
+                raise ValueError(
+                    "Entra permission-grant drift requires "
+                    "M365_ALLOWED_SERVICE_PRINCIPAL_IDS"
+                )
         if Module.COMPLIANCE.value in module_names:
             selected_ediscovery_tools = (
                 EDISCOVERY_TOOLS
@@ -529,6 +577,30 @@ class Settings(BaseSettings):
         unknown_actions = actions - KNOWN_WRITE_ACTIONS
         if unknown_actions:
             raise ValueError(f"unknown write actions: {sorted(unknown_actions)}")
+        if (self.governance_policy_path is None) != (
+            self.governance_public_key_path is None
+        ):
+            raise ValueError(
+                "governance policy and trusted public-key paths must be configured together"
+            )
+        if (
+            self.profile is Profile.READ
+            and Module.ASSURANCE.value in module_names
+            and self.governance_policy_path is None
+        ):
+            raise ValueError(
+                "assurance posture requires M365_GOVERNANCE_POLICY_PATH and "
+                "M365_GOVERNANCE_PUBLIC_KEY_PATH"
+            )
+        if (
+            "entra.user.operational_profile.update" in actions
+            and self.governance_policy_path is None
+        ):
+            raise ValueError(
+                "entra.user.operational_profile.update requires "
+                "M365_GOVERNANCE_POLICY_PATH and "
+                "M365_GOVERNANCE_PUBLIC_KEY_PATH"
+            )
 
         if self.profile is Profile.WRITE:
             if not self.write_enabled:
@@ -562,7 +634,11 @@ class Settings(BaseSettings):
         if "teams.send_chat_message" in actions and not self.chat_ids:
             raise ValueError("Teams chat writes require M365_ALLOWED_CHAT_IDS")
         if (
-            {"users.update_profile", "users.set_account_enabled"} & actions
+            {
+                "entra.user.operational_profile.update",
+                "users.set_account_enabled",
+            }
+            & actions
             and not self.target_user_ids
         ):
             raise ValueError(
@@ -952,6 +1028,36 @@ class Settings(BaseSettings):
             )
         )
 
+    @property
+    def effective_recovery_capsule_path(self) -> Path:
+        if self.recovery_capsule_path is not None:
+            return self.recovery_capsule_path.expanduser()
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "m365-secure-mcp"
+            / (
+                f"recovery-{self.deployment_kind}-{self.profile.value}-"
+                f"{self.deployment_namespace}.jsonl"
+            )
+        )
+
+    @property
+    def effective_assurance_snapshot_path(self) -> Path:
+        if self.assurance_snapshot_path is not None:
+            return self.assurance_snapshot_path.expanduser()
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "m365-secure-mcp"
+            / (
+                f"assurance-{self.deployment_kind}-{self.profile.value}-"
+                f"{self.deployment_namespace}.jsonl"
+            )
+        )
+
     def public_summary(self) -> dict[str, object]:
         """Return a configuration summary that never includes credentials or tokens."""
 
@@ -1003,6 +1109,22 @@ class Settings(BaseSettings):
             "explicit_tool_denylist": sorted(self.tool_denylist),
             "write_enabled": self.write_enabled,
             "write_actions": sorted(self.enabled_write_actions),
+            "signed_governance_policy_configured": bool(
+                self.governance_policy_path
+                and self.governance_public_key_path
+            ),
+            "assurance_snapshot_local_encryption": (
+                "ephemeral"
+                if self.token_cache_mode == "memory"  # noqa: S105
+                else "os_keychain"
+            ),
+            "assurance_max_pages_per_domain": (
+                self.assurance_max_pages_per_domain
+            ),
+            "assurance_max_records_per_domain": (
+                self.assurance_max_records_per_domain
+            ),
+            "assurance_max_snapshot_bytes": self.assurance_max_snapshot_bytes,
             "token_cache_mode": self.token_cache_mode,
             "auth_flow": self.auth_flow,
             "write_rate_limit_per_minute": self.write_rate_limit_per_minute,
@@ -1078,6 +1200,22 @@ class Settings(BaseSettings):
             "explicit_tool_denylist_count": len(self.tool_denylist),
             "write_enabled": self.write_enabled,
             "write_action_count": len(self.enabled_write_actions),
+            "signed_governance_policy_configured": bool(
+                self.governance_policy_path
+                and self.governance_public_key_path
+            ),
+            "assurance_snapshot_local_encryption": (
+                "ephemeral"
+                if self.token_cache_mode == "memory"  # noqa: S105
+                else "os_keychain"
+            ),
+            "assurance_max_pages_per_domain": (
+                self.assurance_max_pages_per_domain
+            ),
+            "assurance_max_records_per_domain": (
+                self.assurance_max_records_per_domain
+            ),
+            "assurance_max_snapshot_bytes": self.assurance_max_snapshot_bytes,
             "token_cache_mode": self.token_cache_mode,
             "auth_flow": self.auth_flow,
             "write_rate_limit_per_minute": self.write_rate_limit_per_minute,
@@ -1161,6 +1299,31 @@ class Settings(BaseSettings):
             "idempotency_pending_seconds": self.idempotency_pending_seconds,
             "audit_log_path": str(self.effective_audit_log_path),
             "idempotency_db_path": str(self.effective_idempotency_db_path),
+            "governance_policy_path": (
+                str(self.governance_policy_path.expanduser())
+                if self.governance_policy_path is not None
+                else None
+            ),
+            "governance_public_key_path": (
+                str(self.governance_public_key_path.expanduser())
+                if self.governance_public_key_path is not None
+                else None
+            ),
+            "assurance_snapshot_path": str(
+                self.effective_assurance_snapshot_path
+            ),
+            "assurance_max_pages_per_domain": (
+                self.assurance_max_pages_per_domain
+            ),
+            "assurance_max_records_per_domain": (
+                self.assurance_max_records_per_domain
+            ),
+            "assurance_max_snapshot_bytes": self.assurance_max_snapshot_bytes,
+            "assurance_snapshot_ttl_seconds": (
+                self.assurance_snapshot_ttl_seconds
+            ),
+            "recovery_capsule_path": str(self.effective_recovery_capsule_path),
+            "recovery_capsule_ttl_seconds": self.recovery_capsule_ttl_seconds,
         }
 
     def permission_explanation(self) -> dict[str, object]:

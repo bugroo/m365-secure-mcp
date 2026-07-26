@@ -162,6 +162,54 @@ def test_privileged_modules_require_second_gate() -> None:
     assert "SecurityIncident.Read.All" in settings.scopes
 
 
+def test_assurance_requires_signed_governance_and_exact_read_scopes() -> None:
+    with pytest.raises(ValidationError, match="M365_GOVERNANCE_POLICY_PATH"):
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_identity_governance_posture",
+        )
+    settings = make_settings(
+        modules="profile,assurance",
+        privileged_modules_enabled=True,
+        enabled_tools="m365_get_entra_identity_governance_posture",
+        governance_policy_path="/private/governance-policy.signed.json",
+        governance_public_key_path="/private/governance-policy.pub",
+    )
+    assert settings.scopes == (
+        "Policy.Read.All",
+        "RoleManagement.Read.Directory",
+        "User.Read",
+    )
+    assert settings.write_enabled is False
+
+
+def test_permission_grant_drift_requires_exact_targets_and_scope() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="M365_ALLOWED_SERVICE_PRINCIPAL_IDS",
+    ):
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_permission_grant_drift",
+            governance_policy_path="/private/governance-policy.signed.json",
+            governance_public_key_path="/private/governance-policy.pub",
+        )
+    settings = make_settings(
+        modules="profile,assurance",
+        privileged_modules_enabled=True,
+        enabled_tools="m365_get_entra_permission_grant_drift",
+        allowed_service_principal_ids=RESOURCE_ID,
+        governance_policy_path="/private/governance-policy.signed.json",
+        governance_public_key_path="/private/governance-policy.pub",
+    )
+    assert settings.scopes == (
+        "Directory.Read.All",
+        "User.Read",
+    )
+
+
 def test_compliance_reads_require_exact_resource_allowlists() -> None:
     with pytest.raises(
         ValidationError,
@@ -359,10 +407,6 @@ def test_privileged_writes_require_gate_scope_and_resource_allowlist() -> None:
     ("action", "allowlists"),
     [
         (
-            "users.update_profile",
-            {"allowed_target_user_ids": RESOURCE_ID},
-        ),
-        (
             "groups.update",
             {"allowed_group_ids": RESOURCE_ID},
         ),
@@ -382,6 +426,30 @@ def test_user_and_group_administration_require_privileged_write_gate(
             write_actions=action,
             **allowlists,
         )
+
+
+def test_operational_profile_update_is_bounded_t1_not_privileged_write() -> None:
+    with pytest.raises(ValidationError, match="M365_GOVERNANCE_POLICY_PATH"):
+        make_settings(
+            profile="write",
+            write_enabled=True,
+            write_actions="entra.user.operational_profile.update",
+            allowed_target_user_ids=RESOURCE_ID,
+        )
+    settings = make_settings(
+        profile="write",
+        write_enabled=True,
+        write_actions="entra.user.operational_profile.update",
+        allowed_target_user_ids=RESOURCE_ID,
+        governance_policy_path="/private/governance-policy.signed.json",
+        governance_public_key_path="/private/governance-policy.pub",
+    )
+    assert settings.scopes == (
+        "GroupMember.Read.All",
+        "RoleManagement.Read.Directory",
+        "User.Read",
+        "User.ReadUpdate.All",
+    )
 
 
 def test_entra_allowlists_accept_only_uuid_object_ids() -> None:

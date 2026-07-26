@@ -716,6 +716,41 @@ def classify_agent_error(exc: Exception) -> AgentSafeError:
             action="Re-authenticate with the configured tenant and delegated Graph scopes.",
         )
     if isinstance(exc, SecurityError):
+        operation_record = getattr(exc, "operation_record", None)
+        if operation_record is not None:
+            operation_status = str(
+                getattr(operation_record, "status", "DENIED_BY_POLICY")
+            )
+            code = operation_status.rsplit(".", 1)[-1]
+            return AgentSafeError(
+                code=code,
+                category=(
+                    "conflict"
+                    if code
+                    in {
+                        "PLAN_EXPIRED",
+                        "EXECUTED_UNCERTAIN",
+                        "FAILED_RETRYABLE",
+                    }
+                    else "authorization"
+                ),
+                message=str(exc),
+                action=str(
+                    getattr(
+                        operation_record,
+                        "operator_action",
+                        "Follow the governed operation guidance.",
+                    )
+                ),
+                safe_to_retry=bool(
+                    getattr(operation_record, "safe_to_retry", False)
+                ),
+                retry_after_seconds=getattr(
+                    operation_record,
+                    "retry_after",
+                    None,
+                ),
+            )
         if getattr(exc, "private_state_error", False):
             return AgentSafeError(
                 code="PRIVATE_STATE_REJECTED",

@@ -1,0 +1,7 @@
+{
+  "algorithm": "ed25519",
+  "key_id": "assurance-2026-07",
+  "manifest_digest": "sha256:f97d7c081cbdd98331e57832dd1dddaf0d3694da2293c59e7fcc1f574f81d91f",
+  "schema_version": "1.0",
+  "signature": "TZucq7Szt9JxTAlBJlBF2AEOr8OGLDQ1iNWfVUBVjVqZCY5+AU7Nr55WbAQjNdSGnptJ1ygcEn9MvbAFI5LfBw=="
+}

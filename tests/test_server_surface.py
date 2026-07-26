@@ -3,10 +3,12 @@ from __future__ import annotations
 import pytest
 
 from m365_secure_mcp.config import KNOWN_WRITE_ACTIONS, Settings
+from m365_secure_mcp.contract_manifest import AuthorizationMode
 from m365_secure_mcp.permissions import READ_TOOL_PERMISSIONS
 from m365_secure_mcp.server import WRITE_TOOL_ACTIONS, create_server
 
 from .conftest import CLIENT_ID, TENANT_ID, USER_ID
+from .governance_helpers import write_signed_governance
 
 APPLICATION_ID = "44444444-4444-4444-8444-444444444444"
 SERVICE_PRINCIPAL_ID = "55555555-5555-4555-8555-555555555555"
@@ -66,6 +68,126 @@ async def test_write_actions_control_tool_discovery() -> None:
     assert "m365_send_mail_draft" not in names
     assert "m365_create_calendar_event" not in names
     assert "m365_create_planner_task" not in names
+
+
+@pytest.mark.asyncio
+async def test_governed_t1_tool_has_no_endpoint_or_approval_argument(
+    tmp_path,
+) -> None:
+    governance_policy, governance_key = write_signed_governance(
+        tmp_path,
+        tenant_id=TENANT_ID,
+        user_id=RESOURCE_ID,
+    )
+    server = create_server(
+        make_settings(
+            profile="write",
+            write_enabled=True,
+            write_actions="entra.user.operational_profile.update",
+            allowed_target_user_ids=RESOURCE_ID,
+            governance_policy_path=governance_policy,
+            governance_public_key_path=governance_key,
+        )
+    )
+    tool = next(
+        item
+        for item in await server.list_tools()
+        if item.name == "m365_update_entra_user_operational_profile"
+    )
+    params_schema = tool.inputSchema["properties"]["params"]
+    schema_name = params_schema["$ref"].removeprefix("#/$defs/")
+    fields = set(tool.inputSchema["$defs"][schema_name]["properties"])
+    assert fields == {
+        "user_id",
+        "department",
+        "job_title",
+        "office_location",
+        "idempotency_key",
+    }
+    assert fields.isdisjoint(
+        {"endpoint", "method", "approved", "approval", "tenant_id"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_assurance_tool_is_static_read_only_and_argument_free(
+    tmp_path,
+) -> None:
+    governance_policy, governance_key = write_signed_governance(
+        tmp_path,
+        tenant_id=TENANT_ID,
+        user_id=RESOURCE_ID,
+    )
+    server = create_server(
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_identity_governance_posture",
+            governance_policy_path=governance_policy,
+            governance_public_key_path=governance_key,
+        )
+    )
+    tool = next(
+        item
+        for item in await server.list_tools()
+        if item.name == "m365_get_entra_identity_governance_posture"
+    )
+    annotations = tool.annotations
+    assert annotations is not None
+    assert annotations.readOnlyHint is True
+    assert annotations.destructiveHint is False
+    params_schema = tool.inputSchema["properties"]["params"]
+    schema_name = params_schema["$ref"].removeprefix("#/$defs/")
+    fields = set(tool.inputSchema["$defs"][schema_name]["properties"])
+    assert fields == {"response_format"}
+    assert fields.isdisjoint(
+        {"endpoint", "method", "url", "approved", "tenant_id"}
+    )
+
+
+@pytest.mark.asyncio
+async def test_permission_drift_tool_accepts_no_target_or_graph_arguments(
+    tmp_path,
+) -> None:
+    governance_policy, governance_key = write_signed_governance(
+        tmp_path,
+        tenant_id=TENANT_ID,
+        user_id=RESOURCE_ID,
+        service_principal_id=SERVICE_PRINCIPAL_ID,
+    )
+    server = create_server(
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_permission_grant_drift",
+            allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
+            governance_policy_path=governance_policy,
+            governance_public_key_path=governance_key,
+        )
+    )
+    tool = next(
+        item
+        for item in await server.list_tools()
+        if item.name == "m365_get_entra_permission_grant_drift"
+    )
+    annotations = tool.annotations
+    assert annotations is not None
+    assert annotations.readOnlyHint is True
+    assert annotations.destructiveHint is False
+    params_schema = tool.inputSchema["properties"]["params"]
+    schema_name = params_schema["$ref"].removeprefix("#/$defs/")
+    fields = set(tool.inputSchema["$defs"][schema_name]["properties"])
+    assert fields == {"response_format"}
+    assert fields.isdisjoint(
+        {
+            "service_principal_id",
+            "endpoint",
+            "method",
+            "filter",
+            "permission",
+            "consent",
+        }
+    )
 
 
 @pytest.mark.asyncio
@@ -151,7 +273,15 @@ def test_every_configured_write_action_has_an_exposed_tool_contract() -> None:
 
 
 @pytest.mark.asyncio
-async def test_all_write_actions_are_independently_discoverable() -> None:
+async def test_all_write_actions_are_independently_discoverable(
+    tmp_path,
+) -> None:
+    governance_policy, governance_key = write_signed_governance(
+        tmp_path,
+        tenant_id=TENANT_ID,
+        user_id=RESOURCE_ID,
+        authorization_mode=AuthorizationMode.STANDING_POLICY,
+    )
     server = create_server(
         make_settings(
             profile="write",
@@ -179,6 +309,8 @@ async def test_all_write_actions_are_independently_discoverable() -> None:
                 CONDITIONAL_ACCESS_POLICY_ID
             ),
             privileged_writes_enabled=True,
+            governance_policy_path=governance_policy,
+            governance_public_key_path=governance_key,
         )
     )
     names = {tool.name for tool in await server.list_tools()}
@@ -265,13 +397,21 @@ async def test_every_tool_advertises_the_versioned_result_schema() -> None:
 
 
 @pytest.mark.asyncio
-async def test_every_read_graph_tool_has_an_exact_permission_contract() -> None:
+async def test_every_read_graph_tool_has_an_exact_permission_contract(
+    tmp_path,
+) -> None:
+    governance_policy, governance_key = write_signed_governance(
+        tmp_path,
+        tenant_id=TENANT_ID,
+        user_id=RESOURCE_ID,
+    )
     server = create_server(
         make_settings(
             modules=(
                 "profile,mail,calendar,files,sites,contacts,todo,planner,teams,"
                 "directory,groups,organization,onenote,excel,people,presence,"
                 "security,audit,intune,service_health,entra_apps,governance,"
+                "assurance,"
                 "licensing,users_admin,directory_devices,windows365,"
                 "word,powerpoint,excel_workbook,onenote_content,powerbi,"
                 "compliance"
@@ -299,6 +439,8 @@ async def test_every_read_graph_tool_has_an_exact_permission_contract() -> None:
             allowed_ediscovery_case_ids=EDISCOVERY_CASE_ID,
             allowed_retention_label_ids=RETENTION_LABEL_ID,
             privileged_modules_enabled=True,
+            governance_policy_path=governance_policy,
+            governance_public_key_path=governance_key,
         )
     )
     graph_tools = {

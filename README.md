@@ -9,9 +9,9 @@ A local-first Microsoft Graph control plane for Codex, Claude Code, and
 compatible MCP clients. Every operation is a fixed, reviewable contract bound
 to an identity, permission set, resource policy, and evidence trail.
 
-| Fixed contracts | Read profile | Opt-in writes | Delete tools | Modules |
+| Fixed tools | Compiled governance contracts | Read profile | Opt-in writes | Delete tools |
 |---:|---:|---:|---:|---:|
-| 125 | 96 max | 27 | 0 | 32 |
+| 127 | 7 Entra contracts | 99 max | 27 | 0 |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
@@ -41,13 +41,43 @@ configuration fails before the server starts.
 flowchart TB
     A["Codex or Claude Code"] -->|"local stdio"| B["M365 Secure MCP"]
     H["OS Keychain"] -->|"token cache"| B
-    B --> C["Identity + tool surface + resource + action"]
+    M["Signed global manifest"] -->|"contract digest"| B
+    Y["Signed tenant policy"] -->|"profile + fences"| B
+    B --> C["Identity + contract + policy + resource"]
     C -->|"Graph token"| G["Microsoft Graph v1.0"]
     C -->|"separate audience"| P["Power BI REST v1.0"]
     B --> I["Metadata audit log"]
     B --> J["Write receipt ledger"]
-    B --> K["Versioned result envelope"]
+    B --> K["Receipt + change record"]
 ```
+
+### Four-plane design
+
+| Plane | Authority | Runtime behavior |
+|---|---|---|
+| Build | signed global manifest, compiler, schemas, digests, SBOM and provenance | never generates tools at runtime |
+| Governance | tenant-private signed profiles, allowlists and authorization overrides | may tighten a contract, never weaken it |
+| Runtime | fixed MCP handlers, Graph v1.0 calls, preconditions, TOCTOU checks and verification | cannot edit or sign policy |
+| Assurance | posture, findings, audit, receipts, drift and release checks | produces evidence; does not remediate autonomously |
+
+The first compiled vertical slices are Entra Identity & Governance. Their
+signed manifest contains six bounded reads and one T1 write. The wider pre-existing
+catalog remains statically coded while it is migrated contract by contract;
+the runtime never translates tenant metadata into a new tool.
+
+```bash
+# Fails when generated definitions, permission matrix, digests,
+# provenance, or CycloneDX SBOM are stale.
+uv run m365-compile-contracts --check
+```
+
+The build inputs and outputs are
+[global-manifest.json](src/m365_secure_mcp/contract_data/global-manifest.json),
+[the compiled permission matrix](docs/CONTRACT_MATRIX.md), and
+[contract-artifacts](contract-artifacts/). The manifest is verified with a
+pinned Ed25519 trust anchor before server construction. Editing the manifest,
+signature, or a signed tenant policy without the corresponding signer fails
+closed.
 
 ## Installation
 
@@ -108,13 +138,18 @@ export M365_ENABLED_TOOLS="m365_search_mail,m365_list_calendar,m365_search_files
 <summary><strong>Codex</strong></summary>
 
 Merge [examples/codex-read.toml](examples/codex-read.toml) into a trusted
-project's `.codex/config.toml`, point it at the private policy file, and keep:
+project's `.codex/config.toml` and point it at the private policy file.
+Routine reads do not need a confirmation dialog per operation. For writes
+outside the compiled T1 standing-policy flow, keep:
 
 ```toml
 default_tools_approval_mode = "prompt"
 ```
 
-Do not combine a write profile with automatic tool approval.
+The compiled T1 Entra contract can use host allowlisting without a prompt on
+every call only when its signed tenant policy keeps `standing_policy`.
+Governance overrides to `explicit_plan`, T2/T3 actions, dual control and
+break-glass remain deliberate host gates.
 
 </details>
 
@@ -143,7 +178,7 @@ does not need before granting Graph consent.
 | Identity | tenant, user object IDs, UPN domains | `/me` is verified before data access |
 | Surface | modules, exact tool allowlist and denylist | unknown or unavailable names stop startup |
 | Resources | users, devices, Cloud PCs, files, sites, teams, plans, Office, Power BI, Purview and Entra | non-allowlisted identifiers are rejected locally |
-| Writes | individual non-delete actions | separate process, explicit action, approval, receipts |
+| Writes | signed authorization floor plus exact non-delete action | standing T1 or host gate, TOCTOU revalidation, receipts |
 | Egress | Microsoft APIs | pinned Graph v1.0, Power BI REST and validated Office download hosts |
 | Evidence | every tool result | versioned schema, operation ID, explicit retry state |
 
@@ -162,11 +197,31 @@ Additional controls:
 - signed pagination cursors bound to tool, principal, resource, and query
 - M365 content treated as untrusted input and converted to bounded plain text
 - separate read and write processes
+- signed build manifest plus tenant-private signed Governance policy
+- complete-or-fail Entra posture snapshots, deployment-keyed drift digests,
+  and encrypted tenant-local raw evidence
+- authorization overrides can only move toward `explicit_plan`,
+  `dual_control`, `break_glass_only`, or `prohibited`
 - SQLite write reservation and durable metadata-only receipt before Graph is called
 - resource-specific ETag concurrency on updates and per-tool rate limits
 - no automatic retry after an ambiguous write response or transport failure
 - post-write reads verify the exact requested fields before success is reported
 - metadata-only audit events correlated by operation ID
+
+### Authorization without approval fatigue
+
+| Tier | Default path | Human friction |
+|---|---|---|
+| T0 | `automatic_read` after contract, identity, policy, fences and limits | none per call |
+| T1 | `standing_policy` after signed tenant approval and full preflight | none per call by default |
+| T2 | `explicit_plan` | approve the exact expiring plan |
+| T3 | `dual_control` or `break_glass_only` | hard gate |
+| T4 | `prohibited` | cannot execute |
+
+The host retains override and halt authority. Approval is never accepted as a
+tool argument or model-controlled boolean. A policy can harden the T1 contract
+to `explicit_plan`; the current vertical slice then returns
+`AWAITING_APPROVAL` without issuing a PATCH.
 
 Read the complete threat model, assumptions, and residual risks in
 [SECURITY.md](SECURITY.md).
@@ -259,14 +314,15 @@ because a stdio server cannot prove the host's approval policy.
 | Contacts | Channels | Word and PowerPoint | Entra audit |
 | To Do | Groups | OneNote metadata | Intune |
 | Planner | People and presence | Excel ranges | Windows 365 |
-| Entra users/devices/apps | Power BI | OneNote content | CA, RBAC, licenses |
+| Entra users/devices/apps | Power BI | OneNote content | CA, RBAC, drift, licenses |
 |  |  |  | Purview eDiscovery/retention |
 
 ### Read profile
 
-Up to **96 read tools** are selected by module and can be reduced to an exact
-allowlist. Content-bearing responses are normalized, bounded, and marked as
-untrusted external data.
+Up to **98 API read tools** (90 Microsoft Graph and 8 Power BI) are selected by
+module and can be reduced to an exact allowlist. The local security-posture
+tool remains visible, for a maximum read process of 99 tools. Content-bearing
+responses are normalized, bounded, and marked as untrusted external data.
 
 ### Write profile
 
@@ -286,7 +342,7 @@ exact tool/idempotency-key pair; it cannot enumerate the ledger and never calls
 Graph.
 
 <details>
-<summary><strong>Expand the 125-contract capability map</strong></summary>
+<summary><strong>Expand the 127-contract capability map</strong></summary>
 
 | Domain | Fixed reads | Opt-in writes |
 |---|---:|---:|
@@ -296,7 +352,7 @@ Graph.
 | Word, PowerPoint, Excel and OneNote | 9 | 4 |
 | People, groups, Entra users and devices | 11 | 4 |
 | Defender, audit, Intune, Windows 365, health | 12 | 2 |
-| Entra apps, governance, licensing, compliance | 19 | 3 |
+| Entra apps, governance, assurance, licensing, compliance | 21 | 3 |
 | Power BI | 8 | 2 |
 | Profile and organization | 2 | 0 |
 
@@ -380,6 +436,256 @@ Use separate private policy files and app registrations for routine read,
 routine write, privileged read, and privileged write. See
 [Ownership and migration](docs/OWNERSHIP_AND_MIGRATION.md) for the staged
 replacement of third-party Graph proxies without losing break-glass coverage.
+
+## Entra Assurance: posture snapshot and drift
+
+`m365_get_entra_identity_governance_posture` is the first Assurance vertical
+slice. It is a compiled T0 `automatic_read` contract that observes four complete
+domains:
+
+- Conditional Access policy security configuration;
+- permanent directory-role assignments;
+- active PIM role-assignment instances;
+- eligible PIM role-assignment instances.
+
+The tool has no target, tenant, URL, method, approval, or write parameter. It
+requests only `Policy.Read.All` and `RoleManagement.Read.Directory` in addition
+to the server's base `User.Read`; the operator needs the `Global Reader` role.
+An administrator must add and consent those delegated permissions manually.
+The MCP cannot request them, grant consent, assign the role, or activate PIM.
+
+Enable it in a separate privileged-read process:
+
+```bash
+export M365_PROFILE="read"
+export M365_MODULES="profile,assurance"
+export M365_ENABLED_TOOLS="m365_get_entra_identity_governance_posture"
+export M365_PRIVILEGED_MODULES_ENABLED="true"
+export M365_GOVERNANCE_POLICY_PATH="/private/m365/governance-policy.signed.json"
+export M365_GOVERNANCE_PUBLIC_KEY_PATH="/private/m365/governance-signing.pub"
+```
+
+The active signed profile must be `privileged-read` and include
+`entra.identity_governance.posture.snapshot`. There is no per-call approval:
+contract, identity, scopes, signed policy, tenant fence, pagination bounds and
+collection shape are checked automatically. Any incomplete page, pagination
+loop, unknown Conditional Access state, size overflow, or policy change fails
+the whole operation; partial data is never labeled as a valid snapshot.
+
+The MCP response contains only counts, deterministic findings, coverage,
+tenant-local HMAC digests and an opaque snapshot reference. Policy names,
+conditions, resource IDs and principal IDs are not returned. The full
+normalized evidence is encrypted into an owner-only tenant-specific local file;
+its key stays in the OS Keychain. There is deliberately no MCP tool to retrieve
+or decrypt that file.
+
+### Establish a signed tenant baseline
+
+The first successful run returns four `hmac-sha256:` domain digests and reports
+the baseline as `not_evaluated`. After reviewing the tenant, copy those digests
+into the private unsigned Governance policy:
+
+```json
+{
+  "identity_governance_baseline": {
+    "baseline_id": "approved-entra-governance",
+    "version": 1,
+    "captured_at": "<captured_at from the posture result>",
+    "source_snapshot_reference": "snapshot:<snapshot UUID>",
+    "domains": {
+      "conditional_access": {
+        "expected_digest": "<hmac-sha256 digest>",
+        "drift_severity": "critical"
+      },
+      "permanent_role_assignments": {
+        "expected_digest": "<hmac-sha256 digest>",
+        "drift_severity": "high"
+      },
+      "active_role_assignments": {
+        "expected_digest": "<hmac-sha256 digest>",
+        "drift_severity": "high"
+      },
+      "eligible_role_assignments": {
+        "expected_digest": "<hmac-sha256 digest>",
+        "drift_severity": "high"
+      }
+    },
+    "exceptions": []
+  }
+}
+```
+
+Review and sign a new policy version with `m365-governance sign`. Runtime
+cannot edit or promote a baseline. A later mismatch becomes a deterministic
+`DRIFT.*` finding using the severity in the signed policy. Exceptions must also
+be signed, domain/control-specific and expiring. Assurance never remediates,
+retries a write, or changes Governance.
+
+The digests are deliberately bound to the deployment's local key and tenant.
+They cannot be reused across customers or after losing/rotating that key; in
+that case the administrator must review and sign a new baseline.
+
+### Permission-grant drift for allowlisted applications
+
+`m365_get_entra_permission_grant_drift` is the next compiled T0 Assurance
+slice. It reads the complete delegated grants and application-role assignments
+of service principals selected in signed Governance, resolves their resource
+catalogs, and compares the result with permissions derived from exact compiled
+contract IDs. The fixed runtime base scope `User.Read` is included
+automatically. The tool never accepts a service-principal ID, URL, method,
+filter, permission name, consent action, or remediation command.
+
+Use a separate `privileged-read` process with the exact tool allowlist:
+
+```bash
+export M365_PROFILE="read"
+export M365_MODULES="profile,assurance"
+export M365_ENABLED_TOOLS="m365_get_entra_permission_grant_drift"
+export M365_PRIVILEGED_MODULES_ENABLED="true"
+export M365_ALLOWED_SERVICE_PRINCIPAL_IDS="<approved object ID[,object ID...]>"
+export M365_GOVERNANCE_POLICY_PATH="/private/m365/governance-policy.signed.json"
+export M365_GOVERNANCE_PUBLIC_KEY_PATH="/private/m365/governance-signing.pub"
+```
+
+The Entra administrator manually adds and consents `Directory.Read.All`; the
+operator must hold a supported read role such as `Directory Readers` or
+`Global Reader`. The MCP cannot add permissions, grant or revoke consent,
+assign roles, or edit the app registration.
+
+The same target IDs must be present in both
+`resources.service_principals` and `M365_ALLOWED_SERVICE_PRINCIPAL_IDS`.
+Expected permissions come only from `contract_ids` in the signed private
+baseline:
+
+```json
+{
+  "permission_grant_baseline": {
+    "baseline_id": "approved-msp-runtime-apps",
+    "version": 1,
+    "targets": [
+      {
+        "service_principal_id": "<approved object ID>",
+        "contract_ids": [
+          "entra.permission_grants.drift.snapshot"
+        ],
+        "allowed_delegated_consent_types": [
+          "AllPrincipals"
+        ]
+      }
+    ],
+    "exceptions": []
+  },
+  "resources": {
+    "service_principals": [
+      "<same approved object ID>"
+    ]
+  }
+}
+```
+
+Extra delegated permissions are high-severity findings. Application
+permissions are critical because this product's compiled contracts use
+delegated access only. Missing expected permissions and consent-type mismatches
+are reported separately. An exception must identify the exact target,
+permission kind, resource app, permission value and consent type; it must be
+signed, justified and expiring. There is no automatic revocation or baseline
+promotion.
+
+The public MCP result uses opaque deployment-keyed references and public
+permission names. Tenant IDs, object IDs, grant IDs, principal IDs and resource
+catalog IDs remain in the encrypted tenant-local snapshot. Coverage is stated
+as `complete_for_signed_targets`: this first slice intentionally evaluates only
+service principals whose expected capabilities are already represented by the
+compiled global manifest.
+
+Upgrading to `0.7.0` changes the signed global-manifest digest. Existing tenant
+policies remain fail-closed until the Governance owner reviews the new contract
+matrix, updates `contract_manifest_digest`, and explicitly signs a new private
+policy version. Runtime never migrates or re-signs tenant policy.
+
+## First governed T1 write: Entra operational profile
+
+`m365_update_entra_user_operational_profile` updates exactly one allowlisted
+cloud-managed `Member` user and accepts only:
+
+- `department`
+- `job_title` → Graph `jobTitle`
+- `office_location` → Graph `officeLocation`
+
+Password, authentication, account state, identity, license, role, phone,
+address, mail, UPN and usage-location fields are not in the schema. Before
+PATCH, the handler verifies the tenant and both user allowlists, rejects
+synced/guest/protected users, and checks direct, eligible and
+role-assignable-group-derived directory roles. It then revalidates the signed
+manifest, policy, target state and privilege fences immediately before the
+write.
+
+In addition to the server's base `User.Read` identity check, the contract
+permissions are deliberately narrower than `Directory.ReadWrite.All`:
+
+```text
+User.ReadUpdate.All
+RoleManagement.Read.Directory
+GroupMember.Read.All
+```
+
+An administrator must add and consent these permissions manually in Entra.
+The MCP has no consent or permission-grant command.
+For this first strict privilege fence, the delegated operator needs both the
+`User Administrator` and `Global Reader` roles: one authorizes the bounded user
+update, while the other permits the direct/PIM role-status preflight.
+
+### Create the private signed Governance policy
+
+Copy [the tenant-neutral template](examples/governance-policy.template.json)
+to an owner-only private directory, replace its placeholders, and use the
+current `manifest_digest` from
+[contract-digests.json](contract-artifacts/contract-digests.json).
+Do not commit the completed policy or signer.
+The key-generation command creates an owner-only, passphrase-encrypted Ed25519
+signer and prompts only in this Governance-plane operation—not during MCP
+runtime.
+
+```bash
+uv run m365-governance generate-key \
+  --signer "/private/m365/governance-signing.pem" \
+  --verifier "/private/m365/governance-signing.pub"
+
+uv run m365-governance sign \
+  --input "/private/m365/governance-policy.json" \
+  --signer "/private/m365/governance-signing.pem" \
+  --output "/private/m365/governance-policy.signed.json" \
+  --key-id "customer-a-governance-2026"
+
+uv run m365-governance verify \
+  --policy "/private/m365/governance-policy.signed.json" \
+  --verifier "/private/m365/governance-signing.pub"
+```
+
+Enable the exact action and the same target in the local runtime fence:
+
+```bash
+export M365_PROFILE="write"
+export M365_WRITE_ENABLED="true"
+export M365_WRITE_ACTIONS="entra.user.operational_profile.update"
+export M365_ALLOWED_TARGET_USER_IDS="<approved-user-guid>"
+export M365_GOVERNANCE_POLICY_PATH="/private/m365/governance-policy.signed.json"
+export M365_GOVERNANCE_PUBLIC_KEY_PATH="/private/m365/governance-signing.pub"
+```
+
+`standing_policy` follows this deterministic sequence without a per-call
+dialog:
+
+```text
+preflight → Permission Impact Preview → fences → standing authorization
+→ policy/contract/user revalidation → PATCH → post-read → receipt/change record
+```
+
+The public receipt and change record contain digests, field names, a
+non-reversible target fingerprint and recovery guidance—not the old or new
+Microsoft 365 values. Those values exist only in an encrypted, tenant-local
+recovery capsule backed by the OS Keychain. Any post-write ambiguity returns
+`EXECUTED_UNCERTAIN` and forbids automatic retry.
 
 ## Selected administrative writes
 
@@ -521,12 +827,12 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 127 passed |
+| Tests | 172 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
 | Package | wheel and source distribution |
-| Full read-profile smoke test | 96 read contracts + security posture |
+| Full read-profile smoke test | 98 read contracts + security posture |
 
 Live Graph integration tests require a dedicated non-production tenant and
 explicit operator consent.
@@ -535,7 +841,7 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 125 contracts and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 127 fixed tools and their boundaries |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |
 | [Entra setup](docs/ENTRA_SETUP.md) | Registration, delegated scopes, consent |
@@ -550,6 +856,10 @@ Primary specifications:
 
 - [Model Context Protocol tools](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
 - [Microsoft Graph permissions reference](https://learn.microsoft.com/en-us/graph/permissions-reference)
+- [Conditional Access policy list](https://learn.microsoft.com/en-us/graph/api/conditionalaccessroot-list-policies?view=graph-rest-1.0)
+- [Directory role assignments](https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignments?view=graph-rest-1.0)
+- [Active role schedule instances](https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignmentscheduleinstances?view=graph-rest-1.0)
+- [Eligible role schedule instances](https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0)
 - [Planner task details API](https://learn.microsoft.com/en-us/graph/api/plannertaskdetails-update?view=graph-rest-1.0)
 - [Microsoft Purview eDiscovery case API](https://learn.microsoft.com/en-us/graph/api/security-casesroot-list-ediscoverycases?view=graph-rest-1.0)
 - [Microsoft Purview retention labels API](https://learn.microsoft.com/en-us/graph/api/security-labelsroot-list-retentionlabel?view=graph-rest-1.0)

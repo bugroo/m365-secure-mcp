@@ -83,6 +83,57 @@ def open_private_file(path: Path, flags: int) -> int:
     return descriptor
 
 
+def read_private_file(
+    path: Path,
+    *,
+    max_bytes: int,
+    label: str = "private state",
+) -> bytes:
+    """Read an owner-only regular file without following symlinks."""
+
+    expanded = path.expanduser()
+    parent = expanded.parent
+    try:
+        parent_stat = parent.lstat()
+    except OSError as exc:
+        raise PrivateStateError(f"{label} parent directory does not exist") from exc
+    if (
+        not stat.S_ISDIR(parent_stat.st_mode)
+        or parent.is_symlink()
+        or (hasattr(os, "getuid") and parent_stat.st_uid != os.getuid())
+        or stat.S_IMODE(parent_stat.st_mode) & 0o077
+    ):
+        raise PrivateStateError(
+            f"{label} parent must be a current-user-owned mode-0700 directory"
+        )
+
+    try:
+        descriptor = os.open(
+            expanded,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise PrivateStateError(f"{label} file could not be opened safely") from exc
+    try:
+        file_stat = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(file_stat.st_mode)
+            or (hasattr(os, "getuid") and file_stat.st_uid != os.getuid())
+            or stat.S_IMODE(file_stat.st_mode) & 0o077
+        ):
+            raise PrivateStateError(
+                f"{label} must be a current-user-owned regular mode-0600 file"
+            )
+        if file_stat.st_size > max_bytes:
+            raise PrivateStateError(f"{label} exceeds the configured byte limit")
+        content = os.read(descriptor, max_bytes + 1)
+        if len(content) > max_bytes:
+            raise PrivateStateError(f"{label} exceeds the configured byte limit")
+        return content
+    finally:
+        os.close(descriptor)
+
+
 class _PlainTextExtractor(HTMLParser):
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)

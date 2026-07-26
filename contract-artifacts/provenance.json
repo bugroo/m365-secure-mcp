@@ -1,0 +1,11 @@
+{
+  "builder": "m365_secure_mcp.contract_compiler",
+  "compiler_version": "1.0",
+  "dependency_lock_digest": "sha256:cc8bea0db40e46ddccfc76b97239567d6eb94f7a576f397804b52ff5ae338d0b",
+  "manifest_digest": "sha256:f97d7c081cbdd98331e57832dd1dddaf0d3694da2293c59e7fcc1f574f81d91f",
+  "manifest_signature_required": true,
+  "runtime_tool_generation": false,
+  "schema_version": "1.0",
+  "source_repository": "https://github.com/bugroo/m365-secure-mcp",
+  "source_revision": "release-attestation-required"
+}

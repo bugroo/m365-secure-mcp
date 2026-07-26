@@ -383,6 +383,23 @@ _register(
 )
 _register(
     _permissions,
+    module="assurance",
+    scopes=frozenset(
+        {
+            "Policy.Read.All",
+            "RoleManagement.Read.Directory",
+        }
+    ),
+    tools=("m365_get_entra_identity_governance_posture",),
+)
+_register(
+    _permissions,
+    module="assurance",
+    scopes=frozenset({"Directory.Read.All"}),
+    tools=("m365_get_entra_permission_grant_drift",),
+)
+_register(
+    _permissions,
     module="licensing",
     scopes=frozenset({"LicenseAssignment.Read.All"}),
     tools=("m365_list_subscribed_skus",),

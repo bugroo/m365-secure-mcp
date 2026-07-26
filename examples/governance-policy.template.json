@@ -1,0 +1,66 @@
+{
+  "active_profile": "routine-write",
+  "authorization_overrides": {},
+  "contract_manifest_digest": "sha256:<generated-by-m365-compile-contracts>",
+  "expires_at": null,
+  "issued_at": "2026-07-26T00:00:00Z",
+  "profiles": {
+    "break-glass": {
+      "break_glass_ttl_seconds": 900,
+      "enabled_contracts": [],
+      "maximum_targets_per_operation": 1,
+      "write_window_utc": null
+    },
+    "privileged-read": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [
+        "entra.conditional_access.policies.read",
+        "entra.identity_governance.posture.snapshot",
+        "entra.permission_grants.drift.snapshot",
+        "entra.role_assignments.read"
+      ],
+      "maximum_targets_per_operation": 50,
+      "write_window_utc": null
+    },
+    "routine-read": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [
+        "entra.organization.summary.read",
+        "entra.user.operational_profile.read"
+      ],
+      "maximum_targets_per_operation": 50,
+      "write_window_utc": null
+    },
+    "routine-write": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [
+        "entra.user.operational_profile.update"
+      ],
+      "maximum_targets_per_operation": 1,
+      "write_window_utc": null
+    },
+    "selected-write": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [
+        "entra.user.operational_profile.update"
+      ],
+      "maximum_targets_per_operation": 1,
+      "write_window_utc": null
+    }
+  },
+  "identity_governance_baseline": null,
+  "permission_grant_baseline": null,
+  "resources": {
+    "groups": [],
+    "protected_user_ids": [],
+    "service_principals": [],
+    "tenants": [
+      "<tenant-guid>"
+    ],
+    "users": [
+      "<allowlisted-user-guid>"
+    ]
+  },
+  "schema_version": "1.0",
+  "tenant_id": "<tenant-guid>"
+}

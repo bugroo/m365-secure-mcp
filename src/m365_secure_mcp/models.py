@@ -499,35 +499,23 @@ class SendChatMessageInput(StrictInput):
     idempotency_key: UUID
 
 
-class UpdateDirectoryUserInput(StrictInput):
+class UpdateEntraUserOperationalProfileInput(StrictInput):
+    """Closed T1 input: three operational metadata fields and no identity controls."""
+
     user_id: UUID
-    display_name: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=256,
-    )
-    job_title: str | None = Field(default=None, max_length=128)
-    department: str | None = Field(default=None, max_length=128)
-    office_location: str | None = Field(default=None, max_length=128)
-    usage_location: str | None = Field(
-        default=None,
-        pattern=r"^[A-Z]{2}$",
-    )
+    job_title: str | None = Field(default=None, min_length=1, max_length=128)
+    department: str | None = Field(default=None, min_length=1, max_length=128)
+    office_location: str | None = Field(default=None, min_length=1, max_length=128)
     idempotency_key: UUID
 
     @model_validator(mode="after")
-    def validate_update(self) -> UpdateDirectoryUserInput:
-        if all(
-            value is None
-            for value in (
-                self.display_name,
-                self.job_title,
-                self.department,
-                self.office_location,
-                self.usage_location,
-            )
-        ):
-            raise ValueError("at least one user profile field is required")
+    def validate_update(self) -> UpdateEntraUserOperationalProfileInput:
+        profile_fields = {"job_title", "department", "office_location"}
+        supplied = self.model_fields_set & profile_fields
+        if not supplied:
+            raise ValueError("at least one operational profile field is required")
+        if any(getattr(self, field) is None for field in supplied):
+            raise ValueError("operational profile fields cannot be null")
         return self
 
 

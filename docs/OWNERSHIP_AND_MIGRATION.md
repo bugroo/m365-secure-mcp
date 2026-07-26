@@ -95,7 +95,8 @@ m365-secure-mcp --policy-file "/private/policy.json" --explain-permissions
 4. Select resources deliberately and configure their allowlists.
 5. Export the final configuration to a new owner-only policy file.
 6. Point Codex or Claude Code at the policy path, not at inline identifiers.
-7. Require a client approval prompt for every write tool.
+7. Permit prompt-free calls only for exact compiled T1 tools under a signed
+   `standing_policy`; require host approval for higher-risk or legacy writes.
 8. Record the reviewed source commit and update it only through a controlled
    dependency review.
 
@@ -114,8 +115,8 @@ the private policy and restarts the corresponding process.
 - every tenant-wide resource is allowlisted where technically possible;
 - routine read, routine write, privileged read, and privileged write use
   separate processes or registrations;
-- writes have idempotency, rate limiting, postcondition evidence, and human
-  approval;
+- writes have idempotency, rate limiting, postcondition evidence, and an
+  authorization floor appropriate to their tier;
 - timeout/ambiguous-write recovery has been rehearsed;
 - tests, lint, strict typecheck, dependency audit, and package build pass from
   the locked dependency graph;

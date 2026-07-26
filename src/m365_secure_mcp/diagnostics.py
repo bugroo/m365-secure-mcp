@@ -17,6 +17,7 @@ from .config import (
     PRIVILEGED_WRITE_ACTIONS,
     WRITE_ACTION_RESOURCES,
     WRITE_ACTION_SCOPES,
+    Module,
     Profile,
     Settings,
 )
@@ -244,15 +245,22 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
         _private_path_check("audit", settings.effective_audit_log_path),
         _private_path_check("write_receipts", settings.effective_idempotency_db_path),
     ]
+    if Module.ASSURANCE in settings.enabled_modules:
+        state_paths.append(
+            _private_path_check(
+                "assurance_snapshots",
+                settings.effective_assurance_snapshot_path,
+            )
+        )
     state_issues = [issue for item in state_paths for issue in item["issues"]]
     checks.append(
         _check(
             "private_state_paths",
             "pass" if not state_issues else "fail",
             (
-                "Local audit and receipt paths satisfy owner-only requirements."
+                "Local state paths satisfy owner-only requirements."
                 if not state_issues
-                else "Local audit or receipt path metadata is unsafe."
+                else "Local state path metadata is unsafe."
             ),
             evidence={"paths": state_paths},
         )

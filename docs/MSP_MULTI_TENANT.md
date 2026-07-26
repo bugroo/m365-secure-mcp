@@ -33,7 +33,7 @@ Create separately named entries:
 | MSP host | routine write | selected routine actions |
 | MSP host | privileged read | Defender, audit, Entra, Intune |
 | Customer | routine read | approved service-delivery resources |
-| Customer | privileged read | approved tenant posture modules |
+| Customer | privileged read | signed Entra Assurance baseline and approved posture modules |
 | Customer | selected write | only the change actions in the contract |
 
 Use a customer-owned, single-tenant public-client app registration for each
@@ -119,7 +119,10 @@ Use both:
   Conditional Access, Power BI, eDiscovery-case, and retention-label
   allowlists;
 - a separate write process with only named `M365_WRITE_ACTIONS`;
-- client approval set to prompt for every write tool.
+- a signed tenant Governance policy; routine T1 may use `standing_policy`,
+  while T2/T3, dual-control and break-glass flows retain hard host gates.
+- one tenant-specific Assurance baseline and snapshot key; never copy a host or
+  another customer's HMAC digests into this policy.
 
 Operator-only discovery can identify candidates without editing the policy:
 
@@ -144,6 +147,9 @@ remain private.
 - Graph and Power BI use different access tokens and audiences.
 - Customer profiles require an exact signed-in object-ID allowlist.
 - Default audit and ledger paths include a hash-derived deployment namespace.
+- Encrypted Assurance snapshots and their Keychain material use the same
+  tenant/client/deployment/profile namespace, but a cryptographically separate
+  key from audit parameter fingerprints and OAuth token caches.
 - A receipt database stamped by one namespace refuses another
   tenant/profile.
 - Audit records contain the namespace but not tenant IDs, resource IDs or
@@ -160,9 +166,18 @@ remain private.
 5. Administrator adds permissions and grants consent.
 6. Administrator assigns operator and workload roles.
 7. Run `--doctor live`.
-8. Discover candidates and manually place approved IDs in the policy.
-9. Run offline doctor again and compare the policy digest.
-10. Connect named MCP entries with write approval set to prompt.
+8. For privileged-read Assurance, run the initial complete snapshot, review it,
+   place only its keyed domain digests in the private Governance baseline and
+   sign a new policy version.
+9. For permission-grant drift, select service principals in both the local and
+   signed allowlists, map each one to exact compiled contract IDs, then sign the
+   private baseline. Use a separate privileged-read app and manual
+   `Directory.Read.All` consent.
+10. Discover candidates and manually place approved IDs in the policy.
+11. Run offline doctor again and compare the policy digest.
+12. Connect named MCP entries. Allow prompt-free execution only for exact T1
+    tools covered by signed `standing_policy`; keep host approval for all
+    higher-risk or not-yet-compiled write contracts.
 
 The MCP never edits the policy after discovery and never selects customer
 resources on the administrator's behalf.

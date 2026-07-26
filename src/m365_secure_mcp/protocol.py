@@ -10,6 +10,7 @@ from mcp.types import CallToolResult, TextContent
 from pydantic import BaseModel, ConfigDict
 
 from .graph import classify_agent_error
+from .operations import OperationRecord
 
 RESULT_SCHEMA_VERSION: Literal["1.0"] = "1.0"
 
@@ -69,6 +70,7 @@ class ToolEvidence(BaseModel):
     policy_enforced: bool = True
     audit_recorded: bool = True
     write_receipt: WriteReceipt | None = None
+    operation: OperationRecord | None = None
 
 
 class ToolEnvelope(BaseModel):
@@ -107,6 +109,7 @@ def success_response(
     text: str,
     receipt: WriteReceipt | None = None,
     audit_recorded: bool = True,
+    operation_record: OperationRecord | None = None,
 ) -> CallToolResult:
     """Build a successful result while preserving the legacy text response."""
 
@@ -124,6 +127,7 @@ def success_response(
         evidence=ToolEvidence(
             audit_recorded=audit_recorded,
             write_receipt=receipt,
+            operation=operation_record,
         ),
     )
     return CallToolResult(
@@ -145,6 +149,9 @@ def error_response(
 
     details = classify_agent_error(exc)
     uncertain_write = receipt is not None and receipt.uncertain_commit
+    operation_record = getattr(exc, "operation_record", None)
+    if not isinstance(operation_record, OperationRecord):
+        operation_record = None
     action = details.action
     if uncertain_write:
         action = (
@@ -173,6 +180,7 @@ def error_response(
         evidence=ToolEvidence(
             audit_recorded=audit_recorded,
             write_receipt=receipt,
+            operation=operation_record,
         ),
     )
     return CallToolResult(

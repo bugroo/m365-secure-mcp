@@ -25,7 +25,17 @@ the blast radius of:
    considered attacker-controlled.
 5. **Write server → external people/data.** A write can affect recipients,
    calendars, Planner, applications, service principals, or Conditional Access
-   and therefore needs independent local gates and MCP-client approval.
+   and therefore needs independent local gates. T1 can use an administrator-
+   signed standing policy; higher tiers require host approval or stronger
+   authorization.
+6. **Build/Governance → runtime.** A pinned signed global manifest defines
+   contract floors. A separate signed tenant policy can select resources and
+   harden authorization, but runtime cannot edit or sign either authority.
+7. **Assurance evidence → operator.** Conditional Access, directory roles and
+   application permission grants are sensitive. Runtime returns only metrics,
+   deterministic findings, public permission values and deployment-keyed
+   references/digests; full normalized snapshots are encrypted in a
+   tenant-local owner-only file with no MCP read/decrypt surface.
 
 ## Implemented controls
 
@@ -67,8 +77,17 @@ the blast radius of:
 - Administrative users, Entra devices, Intune devices, Cloud PCs, Office
   items, OneNote pages and every Power BI resource use separate allowlists.
 - Organization, Defender, Entra audit, Intune, service health, Entra
-  applications, governance, licensing, domains, and Purview compliance
+  applications, governance, Assurance, licensing, domains, and Purview compliance
   require an independent privileged-module gate.
+- The Assurance vertical slice requests only `Policy.Read.All` and
+  `RoleManagement.Read.Directory`, requires a signed `privileged-read` tenant
+  profile and performs four fixed GET workflows. It cannot accept a tenant,
+  endpoint, method, query, approval or resource ID from the model.
+- Permission-grant drift is a separate fixed T0 Assurance contract using
+  `Directory.Read.All`. Targets must appear in a signed contract-derived
+  baseline and a separate local UUID allowlist. It accepts no target/filter,
+  treats app-only grants as critical unless exactly excepted, and has no
+  consent, revocation or remediation tool.
 - Purview eDiscovery cases and retention labels use independent UUID
   allowlists. Only metadata/definition reads exist; case content, searches,
   holds, exports, label assignment, mutation, close, and delete are absent.
@@ -94,14 +113,62 @@ the blast radius of:
 - Every content-bearing response includes a provenance warning that embedded
   instructions are data, not authorization.
 - There is no arbitrary URL/method/body Graph tool.
+- No tenant metadata, remote schema or runtime policy can generate or register
+  an MCP tool. There is no in-process updater.
 - Pagination links are validated against the Graph v1.0 egress allowlist and
   wrapped in a process-local HMAC cursor bound to the originating tool.
 - Tool outputs are capped below common MCP client warning thresholds.
+- Assurance snapshots fail closed unless every fixed collection selected by
+  the contract is complete and within page, record, catalog, nesting and
+  encrypted-byte bounds. Graph-derived IDs and policy conditions never enter
+  MCP output.
+
+### Assurance and drift
+
+- The optional Entra Identity Governance baseline is part of the signed private
+  Governance policy. It stores keyed domain digests and administrator-selected
+  severity, not raw tenant configuration.
+- The permission-grant baseline is independently signed and maps allowlisted
+  targets to exact compiled contract IDs. Expected scopes are derived
+  deterministically; runtime cannot accept arbitrary permission expectations.
+- HMAC keys are deployment/tenant-profile local, kept in OS Keychain and
+  cryptographically separated from the Fernet encryption operation. Digests
+  cannot be compared across customer deployments.
+- Runtime can compare a snapshot with a signed baseline but cannot promote,
+  edit, sign or learn a baseline, change severity, create an exception or
+  remediate drift.
+- Exceptions are signed, exact and expiring. Posture exceptions bind a
+  control/domain; permission exceptions bind target, kind, resource app,
+  permission value and consent type. Expired exceptions stop affecting
+  classification automatically.
+- A policy change during collection invalidates the result. A missing baseline
+  is `not_evaluated`, never silently `aligned`.
+- The encrypted append-only snapshot contains raw normalized IDs/conditions
+  needed for local investigation. Its outer record contains only timestamps,
+  domain counts, an opaque snapshot ID and ciphertext; there is no MCP
+  retrieval tool.
 
 ### Writes
 
 - Write profile refuses startup unless `M365_WRITE_ENABLED=true` and at least
   one action is explicitly allowlisted.
+- The compiled authorization matrix is `automatic_read` for T0,
+  `standing_policy` for bounded T1, `explicit_plan` for T2, dual control or
+  break glass for T3, and `prohibited` for T4. Tenant policy may tighten but
+  never lower the contract floor.
+- Approval is never a tool parameter or model-controlled boolean. The T1 Entra
+  vertical slice needs no per-call prompt under a valid signed standing policy;
+  an `explicit_plan` override returns `AWAITING_APPROVAL` before mutation.
+- `entra.user.operational_profile.update` accepts only `department`,
+  `jobTitle`, and `officeLocation`. It rejects guests, synchronized users,
+  protected users, active/eligible directory-role principals and members of
+  role-assignable groups.
+- The T1 handler repeats manifest, policy, tenant, target, source-of-authority,
+  privilege and current-value checks immediately before PATCH to prevent
+  time-of-check/time-of-use substitution.
+- Public receipts and change records are metadata-only. Previous/requested
+  profile values are written only to a tenant-local encrypted recovery capsule
+  whose key material is kept in the OS Keychain.
 - Mail recipients and calendar attendees are locally restricted. Planner
   assignees use a separate UUID allowlist from the principals authorized to
   operate the MCP.
@@ -155,6 +222,21 @@ the blast radius of:
 - No delete tools are implemented.
 - Every tool logs an attempt and result metadata correlated by operation ID.
 
+### Contract and supply-chain assurance
+
+- The tenant-neutral manifest and signature are packaged separately and
+  verified against a pinned Ed25519 public key before server construction.
+- The deterministic build compiler emits internal definitions, a permission
+  matrix, per-contract SHA-256 digests, contract assertions, provenance and a
+  CycloneDX 1.6 SBOM.
+- CI runs the compiler in `--check` mode. A manifest or generated-artifact
+  change without an updated valid signature fails closed.
+- Tenant Governance policies use an external Ed25519 trust anchor and
+  owner-only files. Runtime re-reads and verifies policy and manifest before
+  the write, and rejects any digest change after preflight.
+- The MCP has no auto-update, dynamic tool registration, dynamic consent,
+  arbitrary Graph proxy, or learned policy mutation path.
+
 ### Network and response handling
 
 - Exact Graph and Power BI hostnames, HTTPS, standard ports, fixed API roots,
@@ -184,6 +266,10 @@ the blast radius of:
 - Tool annotations alone do not stop a malicious client.
 - A local process with the user's OS privileges may access Keychain subject to
   OS policy.
+- Assurance snapshots remain sensitive encrypted evidence. Compromise of both
+  the owner-only file and its Keychain material exposes normalized tenant
+  configuration; loss or rotation of that material requires a newly reviewed
+  and signed baseline.
 - A pending or uncertain idempotency record requires manual verification after
   a crash, timeout, or ambiguous transport failure. This deliberately prefers
   a blocked retry over a duplicate write.

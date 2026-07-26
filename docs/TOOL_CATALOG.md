@@ -4,10 +4,12 @@ Microsoft Graph is the primary product surface. Planner is one workload in the
 catalog, not a separate architectural boundary or the project's central use
 case.
 
-The source defines 125 fixed contracts. A maximally enabled read process exposes
-96; a write process exposes the two common tools, the local receipt query, and
-only its selected write actions. The default process exposes only the two
-common tools.
+The source defines 127 fixed tools; the build-plane manifest compiles seven Entra
+Governance/Assurance contracts while the remaining static catalog is migrated
+incrementally. A maximally enabled read process exposes 99 tools: 90 Microsoft
+Graph reads, 8 Power BI reads, plus the local security-posture tool. A write
+process exposes the two common tools, the local receipt query, and only its
+selected write actions. The default process exposes only the two common tools.
 
 ## Common
 
@@ -93,14 +95,18 @@ before Graph receives HTML.
 - `m365_get_allowed_user`
 - `m365_list_allowed_directory_devices`
 - `m365_get_directory_device`
-- `m365_update_directory_user` (write)
+- `m365_update_entra_user_operational_profile` (governed T1 write)
 - `m365_set_directory_user_account_enabled` (write)
 
 Directory tools use the constrained `User.ReadBasic.All` permission instead of
-`Directory.Read.All`. Administrative user/device tools are separate privileged
-modules with exact UUID allowlists. User updates cannot touch passwords,
-authentication methods, identities, phones, licenses or custom security
-attributes.
+`Directory.Read.All`. Administrative user/device tools use exact UUID
+allowlists. The compiled operational-profile contract can change only
+`department`, `jobTitle`, and `officeLocation` on a cloud-managed,
+non-privileged Member user. It requires a signed tenant policy and the
+least-privileged write permission `User.ReadUpdate.All`; role and
+role-assignable-group reads are preconditions, not write capabilities.
+Passwords, authentication methods, identities, account state, phones,
+licenses and custom security attributes are absent.
 
 ## To Do and Planner
 
@@ -191,6 +197,49 @@ These tools require both their module and
 `M365_PRIVILEGED_MODULES_ENABLED=true`. Microsoft admin consent, licensing, and
 the signed-in user's RBAC roles remain authoritative. Application and service
 principal results are narrowed by separate local UUID allowlists.
+
+## Entra Assurance
+
+- `m365_get_entra_identity_governance_posture`
+- `m365_get_entra_permission_grant_drift`
+
+This compiled T0 tool is a fixed, read-only workflow over Conditional Access,
+permanent directory-role assignments, active PIM assignments and PIM
+eligibilities. It requires the `assurance` module, the privileged-module gate,
+an active signed `privileged-read` Governance profile, `Policy.Read.All`,
+`RoleManagement.Read.Directory`, and a `Global Reader` operator.
+
+It accepts only `response_format`; tenant, Graph path, method, filters, approval
+and resource IDs are not inputs. The operation returns no policy/principal IDs,
+names or conditions. It emits counts, findings, complete-coverage evidence and
+deployment-keyed HMAC digests. Full normalized values are stored only in an
+encrypted, owner-only tenant-local snapshot with no MCP retrieval tool.
+
+The optional drift baseline is part of the signed private Governance policy.
+Baseline promotion and exceptions are operator actions outside runtime.
+Exceptions are control/domain-specific and expiring. A pagination loop, record
+or byte overflow, unknown state, malformed page, or policy change rejects the
+whole snapshot rather than reporting partial posture. The tool has no
+remediation path and performs no Graph write.
+
+The permission-grant drift tool is a separate fixed T0 workflow. It accepts
+only `response_format` and scans service principals present in both the signed
+Governance baseline and `M365_ALLOWED_SERVICE_PRINCIPAL_IDS`. It requires
+`Directory.Read.All` plus a supported read role such as `Directory Readers` or
+`Global Reader`; consent and role assignment remain manual Entra actions.
+
+For each signed target it reads `/oauth2PermissionGrants`, the target's
+`appRoleAssignments`, and the referenced resource service-principal catalogs.
+Expected delegated scopes are derived from exact compiled contract IDs plus
+the runtime base `User.Read`. Extra delegated grants, app-only permissions,
+missing expected scopes and consent-type mismatches become deterministic
+findings. Runtime never changes grants or promotes a baseline.
+
+MCP output contains public permission values and opaque keyed references, not
+tenant, service-principal, grant, resource or principal IDs. Complete raw
+evidence is encrypted in the same owner-only tenant-local Assurance store.
+Coverage is explicitly limited to the signed target set and fails closed on
+pagination, shape, size, policy or resource-fence ambiguity.
 
 ## Microsoft Purview compliance
 

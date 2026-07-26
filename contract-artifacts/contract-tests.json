@@ -1,0 +1,100 @@
+{
+  "assertions": [
+    {
+      "authorization_mode": "automatic_read",
+      "contract_id": "entra.organization.summary.read",
+      "delegated_scopes": [
+        "Organization.Read.All"
+      ],
+      "endpoint": "/organization",
+      "input_fields": [],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
+      "authorization_mode": "automatic_read",
+      "contract_id": "entra.user.operational_profile.read",
+      "delegated_scopes": [
+        "User.Read.All"
+      ],
+      "endpoint": "/users/{user_id}",
+      "input_fields": [
+        "user_id"
+      ],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
+      "authorization_mode": "automatic_read",
+      "contract_id": "entra.conditional_access.policies.read",
+      "delegated_scopes": [
+        "Policy.Read.All"
+      ],
+      "endpoint": "/identity/conditionalAccess/policies",
+      "input_fields": [
+        "cursor",
+        "limit"
+      ],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
+      "authorization_mode": "automatic_read",
+      "contract_id": "entra.role_assignments.read",
+      "delegated_scopes": [
+        "RoleManagement.Read.Directory"
+      ],
+      "endpoint": "/roleManagement/directory/roleAssignments",
+      "input_fields": [
+        "cursor",
+        "limit"
+      ],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
+      "authorization_mode": "automatic_read",
+      "contract_id": "entra.identity_governance.posture.snapshot",
+      "delegated_scopes": [
+        "Policy.Read.All",
+        "RoleManagement.Read.Directory"
+      ],
+      "endpoint": "/identity/conditionalAccess/policies",
+      "input_fields": [],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
+      "authorization_mode": "automatic_read",
+      "contract_id": "entra.permission_grants.drift.snapshot",
+      "delegated_scopes": [
+        "Directory.Read.All"
+      ],
+      "endpoint": "/oauth2PermissionGrants",
+      "input_fields": [],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
+      "authorization_mode": "standing_policy",
+      "contract_id": "entra.user.operational_profile.update",
+      "delegated_scopes": [
+        "GroupMember.Read.All",
+        "RoleManagement.Read.Directory",
+        "User.ReadUpdate.All"
+      ],
+      "endpoint": "/users/{user_id}",
+      "input_fields": [
+        "department",
+        "idempotency_key",
+        "job_title",
+        "office_location",
+        "user_id"
+      ],
+      "method": "PATCH",
+      "risk_tier": "T1"
+    }
+  ],
+  "manifest_digest": "sha256:f97d7c081cbdd98331e57832dd1dddaf0d3694da2293c59e7fcc1f574f81d91f",
+  "schema_version": "1.0"
+}

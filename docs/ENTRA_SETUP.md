@@ -60,6 +60,8 @@ Start with `User.Read`. Add modules independently:
 | Service-principal delegated grants | `Directory.Read.All` |
 | Conditional Access read | `Policy.Read.All` |
 | Directory role definitions/assignments | `RoleManagement.Read.Directory` |
+| Compiled Entra governance posture snapshot | `Policy.Read.All`, `RoleManagement.Read.Directory` |
+| Compiled Entra permission-grant drift | `Directory.Read.All` |
 | Access reviews | `AccessReview.Read.All` |
 | Entitlement catalogs | `EntitlementManagement.Read.All` |
 | License inventory | `LicenseAssignment.Read.All` |
@@ -75,7 +77,7 @@ Start with `User.Read`. Add modules independently:
 | Send Teams channel message | `ChannelMessage.Send` |
 | Send Teams chat message | `ChatMessage.Send` |
 | Planner task and task-details create/update | `Tasks.ReadWrite` |
-| User profile update | `User.ReadWrite.All` |
+| Governed user operational-profile update | `User.ReadUpdate.All`, `RoleManagement.Read.Directory`, `GroupMember.Read.All` |
 | Enable/disable allowlisted user | `User.EnableDisableAccount.All`, `User.Read.All` |
 | Group metadata update | `Group.ReadWrite.All` |
 | Add allowlisted user to non-role group | `GroupMember.ReadWrite.All` |
@@ -110,6 +112,22 @@ Microsoft 365/Entra/Purview roles still apply; the MCP never bypasses Graph or
 Purview RBAC. For delegated eDiscovery reads, assign only the supported Purview
 role needed by the operator; an eDiscovery Manager is narrower than an
 eDiscovery Administrator.
+
+The compiled Assurance snapshot uses one `Global Reader` operator because that
+role is supported across its Conditional Access, permanent-role and PIM
+readbacks. The two delegated permissions above must still be added and
+admin-consented manually. The MCP does not create the app registration, add
+permissions, grant consent, assign Global Reader, activate PIM or edit the
+signed Governance baseline.
+
+The separate compiled permission-grant drift process requests
+`Directory.Read.All` and should use `Directory Readers` or `Global Reader`.
+That scope is required by Graph to list delegated permission grants and also
+covers its fixed service-principal and app-role-assignment reads. Configure
+only `m365_get_entra_permission_grant_drift`, place every approved target
+service-principal object ID in both the local allowlist and signed Governance,
+and sign a contract-derived `permission_grant_baseline`. The MCP never creates,
+updates, revokes or consents a grant.
 
 For `Sites.Selected`, an administrator must additionally grant the application
 access to each approved site. Configure the same site IDs and hostnames in the
