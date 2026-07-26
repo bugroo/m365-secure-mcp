@@ -1,109 +1,75 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="440" viewBox="0 0 1200 440" role="img" aria-labelledby="title description">
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="520" viewBox="0 0 1200 520" role="img" aria-labelledby="title description">
   <title id="title">M365 Secure MCP</title>
-  <desc id="description">A secure Microsoft 365 control plane for AI coding agents.</desc>
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#07111f"/>
-      <stop offset="0.55" stop-color="#0b1930"/>
-      <stop offset="1" stop-color="#102746"/>
-    </linearGradient>
-    <linearGradient id="accent" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0" stop-color="#5eead4"/>
-      <stop offset="1" stop-color="#60a5fa"/>
-    </linearGradient>
-    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0" stop-color="#142943"/>
-      <stop offset="1" stop-color="#0d1c31"/>
-    </linearGradient>
-    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-      <feGaussianBlur stdDeviation="16"/>
-    </filter>
-  </defs>
+  <desc id="description">Policy-bound Microsoft 365 access for local AI clients.</desc>
+  <style>
+    .surface { fill: #f2f3f1; }
+    .ink { fill: #191b1f; }
+    .muted { fill: #62676f; }
+    .rule { stroke: #858a85; }
+    .accent-fill { fill: #b4412f; }
+    .accent-text { fill: #b4412f; }
+    .sans { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
-  <rect width="1200" height="440" rx="28" fill="url(#bg)"/>
-  <circle cx="1015" cy="50" r="180" fill="#1d4ed8" opacity=".13" filter="url(#glow)"/>
-  <circle cx="110" cy="415" r="170" fill="#14b8a6" opacity=".10" filter="url(#glow)"/>
+    @media (prefers-color-scheme: dark) {
+      .surface { fill: #191b1f; }
+      .ink { fill: #f0f1ed; }
+      .muted { fill: #a8aca5; }
+      .rule { stroke: #70757c; }
+      .accent-fill { fill: #e97a62; }
+      .accent-text { fill: #e97a62; }
+    }
+  </style>
 
-  <g opacity=".15" stroke="#93c5fd">
-    <path d="M0 84h1200M0 164h1200M0 244h1200M0 324h1200M0 404h1200"/>
-    <path d="M80 0v440M160 0v440M240 0v440M320 0v440M400 0v440M480 0v440M560 0v440M640 0v440M720 0v440M800 0v440M880 0v440M960 0v440M1040 0v440M1120 0v440"/>
+  <rect class="surface" width="1200" height="520"/>
+  <rect class="accent-fill" x="0" y="0" width="1200" height="12"/>
+
+  <g class="sans">
+    <text class="muted" x="64" y="68" font-size="14" font-weight="700" letter-spacing="2.6">MICROSOFT 365 / MODEL CONTEXT PROTOCOL</text>
+
+    <text class="ink" x="60" y="180" font-size="94" font-weight="800" letter-spacing="-5">M365</text>
+    <text class="ink" x="60" y="270" font-size="94" font-weight="800" letter-spacing="-5">SECURE MCP</text>
+
+    <text class="muted" x="66" y="326" font-size="22" font-weight="450">Policy-bound access for Codex, Claude Code,</text>
+    <text class="muted" x="66" y="357" font-size="22" font-weight="450">and other local MCP clients.</text>
   </g>
 
-  <g transform="translate(72 58)">
-    <rect width="54" height="54" rx="15" fill="url(#accent)"/>
-    <path d="M17 28l7 7 15-17" fill="none" stroke="#07111f" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
-    <text x="72" y="18" fill="#99f6e4" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="14" font-weight="700" letter-spacing="2.5">SECURE CONTROL PLANE</text>
-    <text x="72" y="53" fill="#f8fafc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="36" font-weight="750">M365 Secure MCP</text>
+  <g transform="translate(716 64)">
+    <text class="accent-text mono" x="0" y="2" font-size="13" font-weight="700" letter-spacing="1.8">REQUEST BOUNDARY</text>
+    <text class="ink sans" x="0" y="45" font-size="23" font-weight="650">The model cannot choose</text>
+    <text class="ink sans" x="0" y="74" font-size="23" font-weight="650">an arbitrary Graph request.</text>
 
-    <text x="0" y="124" fill="#dbeafe" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="24" font-weight="500">Microsoft 365 access for AI agents,</text>
-    <text x="0" y="157" fill="#dbeafe" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="24" font-weight="500">governed like production infrastructure.</text>
+    <g class="sans" transform="translate(0 118)">
+      <line class="rule" x1="0" y1="0" x2="420" y2="0"/>
+      <text class="ink" x="0" y="37" font-size="15" font-weight="700">Identity</text>
+      <text class="muted" x="146" y="37" font-size="15">tenant and principal</text>
 
-    <g transform="translate(0 198)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="13" font-weight="650">
-      <rect width="128" height="34" rx="17" fill="#123646" stroke="#2dd4bf" stroke-opacity=".45"/>
-      <circle cx="19" cy="17" r="5" fill="#5eead4"/>
-      <text x="32" y="22" fill="#ccfbf1">Graph v1.0</text>
+      <line class="rule" x1="0" y1="58" x2="420" y2="58"/>
+      <text class="ink" x="0" y="95" font-size="15" font-weight="700">Surface</text>
+      <text class="muted" x="146" y="95" font-size="15">module and fixed tool</text>
 
-      <rect x="140" width="142" height="34" rx="17" fill="#122d4b" stroke="#60a5fa" stroke-opacity=".45"/>
-      <circle cx="159" cy="17" r="5" fill="#60a5fa"/>
-      <text x="172" y="22" fill="#dbeafe">OAuth + PKCE</text>
+      <line class="rule" x1="0" y1="116" x2="420" y2="116"/>
+      <text class="ink" x="0" y="153" font-size="15" font-weight="700">Resource</text>
+      <text class="muted" x="146" y="153" font-size="15">local allowlist</text>
 
-      <rect x="294" width="142" height="34" rx="17" fill="#2a2441" stroke="#c084fc" stroke-opacity=".45"/>
-      <circle cx="313" cy="17" r="5" fill="#c084fc"/>
-      <text x="326" y="22" fill="#f3e8ff">Local stdio</text>
-    </g>
+      <line class="rule" x1="0" y1="174" x2="420" y2="174"/>
+      <text class="ink" x="0" y="211" font-size="15" font-weight="700">Action</text>
+      <text class="muted" x="146" y="211" font-size="15">read or explicit write</text>
 
-    <g transform="translate(0 278)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-      <text x="0" y="0" fill="#64748b" font-size="12" font-weight="700" letter-spacing="1.4">BUILT FOR</text>
-      <text x="0" y="34" fill="#f1f5f9" font-size="16" font-weight="650">Codex</text>
-      <text x="80" y="34" fill="#475569" font-size="18">•</text>
-      <text x="103" y="34" fill="#f1f5f9" font-size="16" font-weight="650">Claude Code</text>
-      <text x="224" y="34" fill="#475569" font-size="18">•</text>
-      <text x="247" y="34" fill="#f1f5f9" font-size="16" font-weight="650">Any MCP client</text>
+      <line class="rule" x1="0" y1="232" x2="420" y2="232"/>
+      <text class="ink" x="0" y="269" font-size="15" font-weight="700">Egress</text>
+      <text class="muted" x="146" y="269" font-size="15">Graph v1.0 only</text>
+      <line class="rule" x1="0" y1="290" x2="420" y2="290"/>
     </g>
   </g>
 
-  <g transform="translate(724 56)">
-    <rect width="408" height="328" rx="22" fill="url(#panel)" stroke="#3b82f6" stroke-opacity=".26"/>
-    <rect x="18" y="18" width="372" height="38" rx="11" fill="#091729"/>
-    <circle cx="39" cy="37" r="5" fill="#5eead4"/>
-    <text x="54" y="42" fill="#cbd5e1" font-family="ui-monospace,SFMono-Regular,Menlo,monospace" font-size="12">policy://m365-secure-mcp</text>
-    <rect x="316" y="29" width="55" height="17" rx="8.5" fill="#123f37"/>
-    <text x="329" y="41" fill="#6ee7b7" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="9" font-weight="800">ACTIVE</text>
-
-    <g transform="translate(18 74)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-      <rect width="114" height="86" rx="14" fill="#0b1c30" stroke="#1e3a5f"/>
-      <text x="14" y="24" fill="#64748b" font-size="10" font-weight="700" letter-spacing="1">TOOLS</text>
-      <text x="14" y="58" fill="#f8fafc" font-size="28" font-weight="750">71</text>
-      <text x="14" y="75" fill="#5eead4" font-size="10">fixed contracts</text>
-
-      <rect x="129" width="114" height="86" rx="14" fill="#0b1c30" stroke="#1e3a5f"/>
-      <text x="143" y="24" fill="#64748b" font-size="10" font-weight="700" letter-spacing="1">DOMAINS</text>
-      <text x="143" y="58" fill="#f8fafc" font-size="28" font-weight="750">20</text>
-      <text x="143" y="75" fill="#60a5fa" font-size="10">independent gates</text>
-
-      <rect x="258" width="114" height="86" rx="14" fill="#0b1c30" stroke="#1e3a5f"/>
-      <text x="272" y="24" fill="#64748b" font-size="10" font-weight="700" letter-spacing="1">DELETE</text>
-      <text x="272" y="58" fill="#f8fafc" font-size="28" font-weight="750">0</text>
-      <text x="272" y="75" fill="#c084fc" font-size="10">tools exposed</text>
-    </g>
-
-    <g transform="translate(18 178)" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif">
-      <text x="0" y="0" fill="#94a3b8" font-size="11" font-weight="700" letter-spacing="1">ENFORCEMENT STACK</text>
-
-      <rect y="16" width="372" height="34" rx="9" fill="#0b1c30"/>
-      <rect y="16" width="5" height="34" rx="2.5" fill="#5eead4"/>
-      <text x="18" y="38" fill="#dbeafe" font-size="12">Principal + tenant boundary</text>
-      <text x="336" y="38" fill="#6ee7b7" font-size="11" font-weight="800">01</text>
-
-      <rect y="58" width="372" height="34" rx="9" fill="#0b1c30"/>
-      <rect y="58" width="5" height="34" rx="2.5" fill="#60a5fa"/>
-      <text x="18" y="80" fill="#dbeafe" font-size="12">Module + tool allowlist</text>
-      <text x="336" y="80" fill="#93c5fd" font-size="11" font-weight="800">02</text>
-
-      <rect y="100" width="372" height="34" rx="9" fill="#0b1c30"/>
-      <rect y="100" width="5" height="34" rx="2.5" fill="#c084fc"/>
-      <text x="18" y="122" fill="#dbeafe" font-size="12">Resource + action policy</text>
-      <text x="336" y="122" fill="#d8b4fe" font-size="11" font-weight="800">03</text>
-    </g>
+  <g class="mono" font-size="13">
+    <text class="ink" x="66" y="461" font-weight="700">71 FIXED TOOLS</text>
+    <text class="muted" x="232" y="461">60 READ</text>
+    <text class="muted" x="348" y="461">11 OPT-IN WRITE</text>
+    <text class="accent-text" x="530" y="461" font-weight="700">0 DELETE</text>
+    <text class="muted" x="66" y="490">LOCAL STDIO</text>
+    <text class="muted" x="232" y="490">OAUTH + PKCE</text>
+    <text class="muted" x="394" y="490">OS KEYCHAIN</text>
   </g>
 </svg>
