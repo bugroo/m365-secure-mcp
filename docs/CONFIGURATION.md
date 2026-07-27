@@ -383,3 +383,4 @@ Graph rejects the operation before an encrypted snapshot is written.
 | `m365-secure-mcp --export-policy PATH` | no | Create a new owner-only private policy; never overwrite |
 | `m365-secure-mcp --policy-file PATH` | depends on action | Load all settings from one strictly protected policy |
 | `m365-secure-mcp --discover-resources KIND...` | read-only APIs | List candidates for drives, Planner, Teams/chats/groups, users, directory/Intune devices, Cloud PCs, Power BI, Entra apps/service principals, Conditional Access, eDiscovery cases, or retention labels without changing policy |
+| `m365-msp-radar --config PATH` | isolated read-only MCP children | Run fixed Assurance per unique private tenant/profile policy and emit only minimized aggregate metadata |

@@ -240,9 +240,7 @@ Completion evidence:
 - one deterministic `operator_action` on every diagnostic check; no check
   mutates files, permissions, configuration or the installed release.
 
-#### 6. Multi-tenant drift radar — 8 points
-
-**Current implementation target.**
+#### 6. Multi-tenant drift radar — completed in `0.13.0`
 
 Provide an external orchestrator pattern for scheduled, read-only Assurance
 across MSP customers. Every customer run launches the same single-tenant
@@ -260,7 +258,23 @@ Acceptance:
 
 Depends on: item 4 and stable Assurance output schemas.
 
+Completion evidence:
+
+- external `m365-msp-radar` process launches one fixed MCP child per private
+  policy rather than switching tenant inside one runtime;
+- owner-only configuration accepts only five fixed read-only Assurance tools,
+  unique opaque deployment references and unique policy files;
+- concurrency is bounded to four and a child failure cannot stop or expose
+  another deployment;
+- aggregate output retains only status, coverage, severity/alignment counts
+  and evidence availability—never Graph content, tenant/resource IDs, paths or
+  child errors;
+- the report asserts zero writes, no remediation route and no shared token
+  pool.
+
 #### 7. Posture control library — 5 points
+
+**Current implementation target.**
 
 Generalize deterministic controls and baseline exceptions across Entra first,
 then sharing, endpoint and security domains. Map evidence to current Microsoft

@@ -199,6 +199,22 @@ the blast radius of:
   surface. A missing or excessive scope fails with one operator action; doctor
   never edits Entra consent or local configuration.
 
+### External MSP radar
+
+- The radar is an external orchestrator, not a tenant selector inside MCP.
+  Every deployment launches a separate child from a distinct owner-only policy
+  file and therefore retains its own identity, token cache, baseline and
+  evidence boundary.
+- Configuration accepts only fixed read-only Assurance tool names, unique
+  opaque deployment references and unique policy files. It cannot configure a
+  command, Graph URL, write tool or remediation.
+- Child stderr and exception bodies are not copied into aggregate output.
+  Results are reduced to status, coverage, severity/alignment counts and
+  evidence availability; raw findings, IDs, paths and Graph content are
+  discarded.
+- Parallelism is bounded to four. A failed child becomes an isolated result
+  and cannot cancel or expose another tenant.
+
 ### Writes
 
 - Write profile refuses startup unless `M365_WRITE_ENABLED=true` and at least

@@ -1,0 +1,18 @@
+{
+  "deployments": [
+    {
+      "deployment_reference": "msp:customer-a",
+      "policy_file": "/private/m365/customer-a-privileged-read.json",
+      "timeout_seconds": 120,
+      "tool_name": "m365_get_entra_profile_debt_posture"
+    },
+    {
+      "deployment_reference": "msp:customer-b",
+      "policy_file": "/private/m365/customer-b-privileged-read.json",
+      "timeout_seconds": 120,
+      "tool_name": "m365_get_entra_profile_debt_posture"
+    }
+  ],
+  "maximum_parallel": 2,
+  "schema_version": "1.0"
+}

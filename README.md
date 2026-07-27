@@ -93,9 +93,10 @@ and bounded runtime self-checks are implemented. The debt view correlates the
 active profile with validated token scopes, the current App Registration's
 signed grant posture, policy lifecycle, recent metadata-only audit evidence
 and resource fences. Offline doctor now verifies packaged release evidence,
-profile isolation, private-path metadata and effective scope closure. The next
-official vertical slice is the multi-tenant drift radar, followed by the first
-compiled T2 contract.
+profile isolation, private-path metadata and effective scope closure. The
+external multi-tenant radar is also implemented without a central token pool.
+The next official vertical slice is the posture control library, followed by
+the first compiled T2 contract.
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -417,6 +418,27 @@ enterprise application to approved operators, and assign any required Entra
 or workload role. The MCP can inspect grants but cannot create or modify API
 permissions, OAuth consent, app-role assignments, directory roles or PIM
 assignments. See [MSP multi-tenant deployment](docs/MSP_MULTI_TENANT.md).
+
+### External MSP radar
+
+`m365-msp-radar` runs fixed read-only Assurance across customers without
+turning the MCP into a multi-tenant runtime. Its owner-only config contains one
+opaque `msp:*` reference, one distinct private policy file and one fixed
+Assurance tool per deployment:
+
+```bash
+cp examples/msp-radar.template.json /private/m365/radar.json
+chmod 600 /private/m365/radar.json
+uv run m365-msp-radar --config /private/m365/radar.json
+```
+
+Each entry launches a separate MCP child with its own tenant, App
+Registration, keychain namespace, policy, baseline, audit and snapshot. At
+most four children run concurrently. One failure is isolated and the
+aggregate keeps only opaque deployment reference, operation/coverage status,
+severity/alignment counts and evidence availability. It contains no Graph
+content, tenant/resource ID, private path or child error body and exposes no
+write or remediation route.
 
 ### Deliberate exclusions
 
@@ -1001,6 +1023,9 @@ Distribution signature/attestation verification remains an external install
 or release-pipeline responsibility; doctor verifies installed consistency and
 never self-updates or repairs files.
 
+Version `0.13.0` adds the external read-only MSP radar. It changes no contract
+or playbook manifest digest and adds no Graph permission.
+
 ## Selected administrative writes
 
 Administrative writes remain invisible until every layer agrees:
@@ -1141,12 +1166,12 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 200 passed |
+| Tests | 217 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
 | Package | wheel and source distribution |
-| Full read-profile smoke test | 100 read contracts + security posture |
+| Full read-profile smoke test | 101 API reads + security posture |
 
 Live Graph integration tests require a dedicated non-production tenant and
 explicit operator consent.

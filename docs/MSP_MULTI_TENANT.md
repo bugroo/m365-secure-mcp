@@ -217,10 +217,13 @@ incident offboarding should also follow the tenant's token-revocation process.
 
 ## Planned MSP operations
 
-Workload Identity Readiness and Profile Scope & Contract Debt are implemented
-as signed, read-only Assurance workflows. The
-[official implementation roadmap](ROADMAP.md) is the canonical plan for the
-runtime self-check and multi-tenant drift radar. These workflows retain
+Workload Identity Readiness, Profile Scope & Contract Debt and the external
+`m365-msp-radar` are implemented as read-only Assurance workflows. The radar
+loads an owner-only config with one opaque reference and one unique private
+policy file per child, accepts only fixed Assurance tool names, bounds
+parallelism to four and minimizes aggregate output to status/coverage/counts.
+The [official implementation roadmap](ROADMAP.md) is the canonical plan for
+the posture control library and later operations. These workflows retain
 the topology in this document: an external orchestrator may schedule runs, but
 every customer still uses an isolated single-tenant MCP process, registration,
 private policy, token cache, baseline and evidence store. No implemented or

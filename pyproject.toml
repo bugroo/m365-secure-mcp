@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "m365-secure-mcp"
-version = "0.12.0"
+version = "0.13.0"
 description = "Policy-bound Microsoft Graph MCP server for Codex and Claude Code"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,7 @@ m365-secure-mcp = "m365_secure_mcp.__main__:main"
 m365-compile-contracts = "m365_secure_mcp.contract_compiler:main"
 m365-governance = "m365_secure_mcp.governance_cli:main"
 m365-approval = "m365_secure_mcp.approval_cli:main"
+m365-msp-radar = "m365_secure_mcp.msp_radar:main"
 
 [dependency-groups]
 dev = [
