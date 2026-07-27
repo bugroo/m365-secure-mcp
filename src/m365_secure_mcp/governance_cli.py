@@ -22,6 +22,7 @@ from .governance import (
     sign_governance_policy,
     validate_policy_against_manifest,
 )
+from .playbook_manifest import load_global_playbook_manifest
 from .security import PrivateStateError, open_private_file, read_private_file
 
 MAX_UNSIGNED_POLICY_BYTES = 512_000
@@ -133,12 +134,13 @@ def _sign(args: argparse.Namespace) -> None:
     except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
         raise PrivateStateError("unsigned governance policy is invalid") from exc
     manifest = load_global_manifest()
+    playbooks = load_global_playbook_manifest(manifest)
     expected_manifest_digest = sha256_digest(manifest)
     if policy.contract_manifest_digest != expected_manifest_digest:
         raise PrivateStateError(
             "governance policy is not bound to the current signed contract manifest"
         )
-    validate_policy_against_manifest(policy, manifest)
+    validate_policy_against_manifest(policy, manifest, playbooks)
     bundle = sign_governance_policy(
         policy,
         load_policy_signer(
@@ -178,11 +180,12 @@ def _verify(args: argparse.Namespace) -> None:
         Path(args.verifier),
     )
     manifest = load_global_manifest()
+    playbooks = load_global_playbook_manifest(manifest)
     if verified.policy.contract_manifest_digest != sha256_digest(manifest):
         raise PrivateStateError(
             "governance policy is not bound to the current signed contract manifest"
         )
-    validate_policy_against_manifest(verified.policy, manifest)
+    validate_policy_against_manifest(verified.policy, manifest, playbooks)
     print(
         json.dumps(
             {

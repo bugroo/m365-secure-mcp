@@ -236,6 +236,55 @@ async def test_app_credential_posture_accepts_no_target_or_graph_arguments(
 
 
 @pytest.mark.asyncio
+async def test_workload_readiness_is_static_read_only_and_argument_free(
+    tmp_path,
+) -> None:
+    governance_policy, governance_key = write_signed_governance(
+        tmp_path,
+        tenant_id=TENANT_ID,
+        user_id=RESOURCE_ID,
+        application_id=APPLICATION_ID,
+        service_principal_id=SERVICE_PRINCIPAL_ID,
+        enable_workload_identity_readiness=True,
+    )
+    server = create_server(
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_workload_identity_readiness",
+            allowed_application_ids=APPLICATION_ID,
+            allowed_service_principal_ids=SERVICE_PRINCIPAL_ID,
+            governance_policy_path=governance_policy,
+            governance_public_key_path=governance_key,
+        )
+    )
+    tool = next(
+        item
+        for item in await server.list_tools()
+        if item.name == "m365_get_entra_workload_identity_readiness"
+    )
+    annotations = tool.annotations
+    assert annotations is not None
+    assert annotations.readOnlyHint is True
+    assert annotations.destructiveHint is False
+    assert annotations.idempotentHint is True
+    params_schema = tool.inputSchema["properties"]["params"]
+    schema_name = params_schema["$ref"].removeprefix("#/$defs/")
+    fields = set(tool.inputSchema["$defs"][schema_name]["properties"])
+    assert fields == {"response_format"}
+    assert fields.isdisjoint(
+        {
+            "application_id",
+            "service_principal_id",
+            "endpoint",
+            "method",
+            "tenant_id",
+            "approved",
+        }
+    )
+
+
+@pytest.mark.asyncio
 async def test_catalog_is_broad_and_module_scoped() -> None:
     server = create_server(
         make_settings(

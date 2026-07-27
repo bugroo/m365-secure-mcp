@@ -1,0 +1,22 @@
+{
+  "assertions": [
+    {
+      "authorization_mode": "automatic_read",
+      "delegated_scope_closure": [
+        "Application.Read.All",
+        "Directory.Read.All"
+      ],
+      "node_contract_ids": [
+        "entra.app_credentials.posture.snapshot",
+        "entra.permission_grants.drift.snapshot"
+      ],
+      "playbook_id": "entra.workload_identity.readiness.playbook",
+      "risk_tier": "T0",
+      "tool_name": "m365_get_entra_workload_identity_readiness",
+      "writes_permitted": false
+    }
+  ],
+  "contract_manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
+  "playbook_manifest_digest": "sha256:13a3dada2e106bc8f56f35301e4b57e601a75668adebe73be07b829d39819ca4",
+  "schema_version": "1.0"
+}

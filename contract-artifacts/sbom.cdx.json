@@ -1072,10 +1072,10 @@
     "component": {
       "name": "m365-secure-mcp",
       "type": "application",
-      "version": "0.8.0"
+      "version": "0.9.0"
     }
   },
-  "serialNumber": "urn:uuid:cad9547c-11d4-5ad6-ad3a-1b1fa19f3a0c",
+  "serialNumber": "urn:uuid:a160d3a6-aebf-56b2-a82a-c75094de022e",
   "specVersion": "1.6",
   "version": 1
 }

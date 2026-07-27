@@ -2,12 +2,14 @@
   "active_profile": "routine-write",
   "authorization_overrides": {},
   "contract_manifest_digest": "sha256:<generated-by-m365-compile-contracts>",
+  "playbook_manifest_digest": "sha256:<generated-by-m365-compile-contracts>",
   "expires_at": null,
   "issued_at": "2026-07-26T00:00:00Z",
   "profiles": {
     "break-glass": {
       "break_glass_ttl_seconds": 900,
       "enabled_contracts": [],
+      "enabled_playbooks": [],
       "maximum_targets_per_operation": 1,
       "write_window_utc": null
     },
@@ -20,6 +22,7 @@
         "entra.permission_grants.drift.snapshot",
         "entra.role_assignments.read"
       ],
+      "enabled_playbooks": [],
       "maximum_targets_per_operation": 50,
       "write_window_utc": null
     },
@@ -29,6 +32,7 @@
         "entra.organization.summary.read",
         "entra.user.operational_profile.read"
       ],
+      "enabled_playbooks": [],
       "maximum_targets_per_operation": 50,
       "write_window_utc": null
     },
@@ -37,6 +41,7 @@
       "enabled_contracts": [
         "entra.user.operational_profile.update"
       ],
+      "enabled_playbooks": [],
       "maximum_targets_per_operation": 1,
       "write_window_utc": null
     },
@@ -45,6 +50,7 @@
       "enabled_contracts": [
         "entra.user.operational_profile.update"
       ],
+      "enabled_playbooks": [],
       "maximum_targets_per_operation": 1,
       "write_window_utc": null
     }

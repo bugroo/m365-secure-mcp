@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <qa_pair>
+    <question>In the sanitized healthy workload-identity fixture, what is the exact parent playbook status? Answer with the status token only.</question>
+    <answer>PLAYBOOK_COMPLETED_VERIFIED</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>In the sanitized healthy fixture, what is the exact overall target alignment? Answer with the alignment token only.</question>
+    <answer>aligned</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>When permission and credential evidence use different opaque workload references, what exact alignment is assigned to each unmatched target?</question>
+    <answer>not_evaluated</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>When the same workload identity has both unexpected application permission and insufficient ownership findings, what is the severity of the correlated finding?</question>
+    <answer>critical</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>If application-owner pagination cannot prove completeness, what exact parent playbook status is returned?</question>
+    <answer>PLAYBOOK_HALTED</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>If a playbook node halts before the other node runs, what exact alignment is used for the unexecuted node finding?</question>
+    <answer>not_evaluated</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many Microsoft Graph write calls are permitted by the signed Workload Identity Readiness playbook? Answer with one integer.</question>
+    <answer>0</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many delegated scopes are in the playbook contract closure, excluding the common local-session User.Read scope? Answer with one integer.</question>
+    <answer>2</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which governance profile is required to execute the Workload Identity Readiness playbook? Answer with the exact profile token.</question>
+    <answer>privileged-read</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Does the Workload Identity Readiness playbook automatically remediate a finding? Answer true or false.</question>
+    <answer>false</answer>
+  </qa_pair>
+</evaluation>

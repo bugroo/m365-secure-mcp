@@ -30,16 +30,22 @@ The following foundations are implemented:
 
 | Plane | Implemented baseline |
 |---|---|
-| Build | signed tenant-neutral contract manifest, strict compiler, closed schemas, per-contract digests, contract assertions, provenance and CycloneDX SBOM |
-| Governance | signed tenant-private policies, deployment profiles, resource allowlists, contract selection, authorization overrides that may only tighten the global floor |
+| Build | independently signed tenant-neutral contract and playbook manifests, strict compiler, closed schemas, DAG validation, permission closure, per-artifact digests, evaluation fixtures, provenance and CycloneDX SBOM |
+| Governance | signed tenant-private policies, deployment profiles, resource allowlists, contract/playbook selection, authorization overrides that may only tighten the global floor |
 | Runtime | static tools, exact Graph v1.0 calls, token/identity checks, T1 preflight and TOCTOU revalidation, bounded retries, post-read verification, receipts and change records |
-| Assurance | Identity Governance posture, application-permission drift and application-credential posture, with minimized encrypted tenant-local snapshots |
+| Assurance | Identity Governance posture, application-permission drift, application-credential posture and signed Workload Identity Readiness, with minimized encrypted tenant-local snapshots |
 
 The compiled Entra surface contains seven T0 reads and one T1 write:
 `entra.user.operational_profile.update`. The T1 contract changes only
 `department`, `jobTitle` and `officeLocation` for an allowlisted,
 cloud-managed, non-privileged member. It uses `standing_policy` by default and
 can be hardened by Governance to `explicit_plan`.
+
+The first signed playbook,
+`entra.workload_identity.readiness.playbook`, composes the permission-grant and
+application-credential T0 contracts. It introduces no Graph endpoint or scope,
+uses `automatic_read`, correlates both views with opaque tenant-local HMAC
+references, and fails closed on incomplete nodes or stale Governance.
 
 The wider fixed catalog remains available under its existing static controls.
 It will be migrated to compiled contracts incrementally; migration never
@@ -63,11 +69,11 @@ precondition checks. An in-contract action is not automatically executable.
 The host must retain an operator-visible halt/override capability, but that
 capability is never exposed as a model-controlled tool argument.
 
-## Next vertical slice: Workload Identity Readiness
+## Completed vertical slice: Workload Identity Readiness
 
-The next implementation target is
+Implemented in `0.9.0`:
 `entra.workload_identity.readiness.playbook`, a signed T0 read-only playbook.
-It should combine existing application-permission drift, application
+It combines existing application-permission drift, application
 credential posture and ownership evidence into one operator-focused result.
 
 ### Scope
@@ -106,7 +112,7 @@ credential posture and ownership evidence into one operator-focused result.
 - Compiler check, Ruff, strict mypy, tests, dependency audit and package build
   pass.
 
-**Estimate:** 8 points.
+**Status:** completed in `0.9.0`.
 
 **Dependencies:** existing three Entra Assurance contracts and encrypted
 snapshot store.
@@ -118,7 +124,7 @@ closure, evaluation fixtures and documentation.
 
 ### P0 — Complete the governed workflow foundation
 
-#### 1. Signed playbook compiler and evaluation harness — 8 points
+#### 1. Signed playbook compiler and evaluation harness — completed in `0.9.0`
 
 Create the reusable build-time playbook schema/compiler used by the readiness
 vertical. Add realistic, sanitized workflow evaluations for authorization,
@@ -135,7 +141,7 @@ Acceptance:
 
 Depends on: current contract compiler and operation/playbook schemas.
 
-#### 2. Workload Identity Readiness T0 playbook — 8 points
+#### 2. Workload Identity Readiness T0 playbook — completed in `0.9.0`
 
 Implement the vertical slice above. This is the first product workflow that is
 more valuable than invoking isolated Graph reads while adding no write scope.
@@ -143,6 +149,8 @@ more valuable than invoking isolated Graph reads while adding no write scope.
 Depends on: item 1.
 
 #### 3. Reusable Change-safe operator engine — 8 points
+
+**Current implementation target.**
 
 Extract the existing T1 flow into a contract-independent deterministic engine:
 

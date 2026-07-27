@@ -105,11 +105,15 @@ def test_public_contract_artifacts_contain_no_test_tenant_identifiers() -> None:
     root = Path(__file__).resolve().parents[1]
     public_paths = [
         root / "src/m365_secure_mcp/contract_data/global-manifest.json",
+        root / "src/m365_secure_mcp/contract_data/global-playbooks.json",
         root / "contract-artifacts/contract-digests.json",
         root / "contract-artifacts/contract-tests.json",
+        root / "contract-artifacts/playbook-digests.json",
+        root / "contract-artifacts/playbook-tests.json",
         root / "contract-artifacts/provenance.json",
         root / "contract-artifacts/sbom.cdx.json",
         root / "docs/CONTRACT_MATRIX.md",
+        root / "docs/PLAYBOOK_MATRIX.md",
     ]
     payload = "\n".join(path.read_text() for path in public_paths)
     assert "11111111-1111-4111-8111-111111111111" not in payload

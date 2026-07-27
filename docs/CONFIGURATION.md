@@ -54,14 +54,15 @@ selected-write
 break-glass
 ```
 
-It also binds one tenant, enabled contract IDs, user/group allowlists,
-protected users, optional UTC write windows, authorization overrides and an
-optional Entra Identity Governance drift baseline. The baseline contains only
-tenant-local keyed digests, severity and expiring exceptions; raw Conditional
-Access or role data is not stored in the policy. An override can only increase
-the authorization floor. Unknown contracts,
-read-profile writes, T2+ contracts in `routine-write`, expired policies,
-invalid signatures, changed digests and cross-tenant use fail closed.
+It also binds one tenant, enabled contract and playbook IDs, user/group
+allowlists, protected users, optional UTC write windows, authorization
+overrides and optional Assurance baselines. `contract_manifest_digest` is
+always required. `playbook_manifest_digest` is required whenever any profile
+enables a playbook. An override can only increase the authorization floor.
+Unknown contracts/playbooks, a playbook whose child contracts are not enabled
+in the same profile, read-profile writes, T2+ contracts in `routine-write`,
+expired policies, invalid signatures, changed digests and cross-tenant use
+fail closed.
 
 The MCP runtime can verify this policy but cannot create, edit, activate or
 sign it. `m365-governance` is an explicit local operator CLI; it never calls
@@ -79,6 +80,35 @@ limits. Its targets must also exist under `resources.applications` and in
 credential kind/key ID; application-level controls use separate exceptions.
 All exceptions are signed, justified and expiring. Runtime cannot promote a
 baseline, rotate credentials, assign owners or grant consent.
+
+The current
+`entra.workload_identity.readiness.playbook` is valid only in
+`privileged-read`. Its profile must enable both
+`entra.permission_grants.drift.snapshot` and
+`entra.app_credentials.posture.snapshot`, and must include:
+
+```json
+{
+  "playbook_manifest_digest": "sha256:<from playbook-digests.json>",
+  "profiles": {
+    "privileged-read": {
+      "enabled_contracts": [
+        "entra.app_credentials.posture.snapshot",
+        "entra.permission_grants.drift.snapshot"
+      ],
+      "enabled_playbooks": [
+        "entra.workload_identity.readiness.playbook"
+      ]
+    }
+  }
+}
+```
+
+The complete profile still needs its other required fields, both private
+baselines, and application/service-principal resource fences. Copy the
+tenant-neutral template instead of using this excerpt as a full policy.
+Governance must sign a new policy version after any selection, fence, baseline
+or digest changes.
 
 ## Surface selection
 
@@ -108,6 +138,12 @@ The `assurance` module is a privileged read module. It requires a signed
 Governance policy and external public key even though the Graph operation is
 T0 `automatic_read`; that signature authorizes the tenant/profile and any
 baseline or exception once, without a prompt on each snapshot.
+
+Workload Identity Readiness additionally requires both
+`M365_ALLOWED_APPLICATION_IDS` and
+`M365_ALLOWED_SERVICE_PRINCIPAL_IDS`. Each target must also be present in the
+corresponding signed baseline and `resources` fence. Runtime does not infer,
+discover or add the missing relationship.
 
 ## Resource boundaries
 

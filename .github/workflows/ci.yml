@@ -37,7 +37,7 @@ jobs:
       - name: Install locked environment
         run: uv sync --frozen --python python3.13
 
-      - name: Verify signed contract artifacts
+      - name: Verify signed contract and playbook artifacts
         run: uv run m365-compile-contracts --check
 
       - name: Test

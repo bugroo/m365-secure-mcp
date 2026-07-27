@@ -1,0 +1,7 @@
+{
+  "algorithm": "ed25519",
+  "key_id": "workload-readiness-2026-07",
+  "playbook_manifest_digest": "sha256:13a3dada2e106bc8f56f35301e4b57e601a75668adebe73be07b829d39819ca4",
+  "schema_version": "1.0",
+  "signature": "Phfn412LsnzLIZVyJbFhAQD9B0LhBhI7QSt428RNLImKb4DWS3f8tz/6szVBeKHNcnhvYcyJt3wK148mPHCUAA=="
+}

@@ -176,9 +176,14 @@ remain private.
 10. For application credential posture, select application object IDs in both
     the local and signed allowlists, define owner/expiry/secret/count limits,
     and sign the private baseline. Consent only `Application.Read.All`.
-11. Discover candidates and manually place approved IDs in the policy.
-12. Run offline doctor again and compare the policy digest.
-13. Connect named MCP entries. Allow prompt-free execution only for exact T1
+11. To enable Workload Identity Readiness, select both application and service
+    principal targets, enable both child contracts and the signed playbook in
+    `privileged-read`, pin the playbook-manifest digest, and sign the next
+    policy version. Consent its exact union: `Application.Read.All` and
+    `Directory.Read.All`.
+12. Discover candidates and manually place approved IDs in the policy.
+13. Run offline doctor again and compare the policy and manifest digests.
+14. Connect named MCP entries. Allow prompt-free execution only for exact T1
     tools covered by signed `standing_policy`; keep host approval for all
     higher-risk or not-yet-compiled write contracts.
 
@@ -203,10 +208,11 @@ incident offboarding should also follow the tenant's token-revocation process.
 
 ## Planned MSP operations
 
-The [official implementation roadmap](ROADMAP.md) is the canonical plan for
-Workload Identity Readiness, profile/scope drift and the multi-tenant drift
-radar. These workflows retain the topology in this document: an external
-orchestrator may schedule runs, but every customer still uses an isolated
-single-tenant MCP process, registration, private policy, token cache, baseline
-and evidence store. No planned feature creates a central token pool or allows a
-tool call to select a tenant.
+Workload Identity Readiness is now implemented as a signed T0 playbook. The
+[official implementation roadmap](ROADMAP.md) is the canonical plan for
+profile/scope drift and the multi-tenant drift radar. These workflows retain
+the topology in this document: an external orchestrator may schedule runs, but
+every customer still uses an isolated single-tenant MCP process, registration,
+private policy, token cache, baseline and evidence store. No implemented or
+planned feature creates a central token pool or allows a tool call to select a
+tenant.

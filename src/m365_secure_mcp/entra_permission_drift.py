@@ -61,6 +61,7 @@ class StrictModel(BaseModel):
 
 class PermissionGrantTargetPosture(StrictModel):
     target_reference: str = Field(pattern=r"^sp:[0-9a-f]{24}$")
+    workload_identity_reference: str = Field(pattern=r"^wi:[0-9a-f]{24}$")
     baseline_reference: str = Field(min_length=3, max_length=128)
     contract_ids: list[str]
     digest: str = Field(pattern=r"^hmac-sha256:[0-9a-f]{64}$")
@@ -623,6 +624,7 @@ class EntraPermissionGrantDriftService:
         observed: list[ObservedPermission],
         snapshot_reference: str,
         target_reference: str,
+        workload_identity_reference: str,
         baseline_reference: str,
         active_exceptions: set[
             tuple[str, PermissionGrantKind, str, str, str | None]
@@ -790,6 +792,7 @@ class EntraPermissionGrantDriftService:
         return (
             PermissionGrantTargetPosture(
                 target_reference=target_reference,
+                workload_identity_reference=workload_identity_reference,
                 baseline_reference=baseline_reference,
                 contract_ids=target.contract_ids,
                 digest=digest,
@@ -830,6 +833,7 @@ class EntraPermissionGrantDriftService:
             tuple[dict[str, Any], dict[str, str]],
         ] = {}
         observed_by_target: dict[str, list[ObservedPermission]] = {}
+        application_id_by_target: dict[str, str] = {}
         for target in baseline.targets:
             (
                 target_record,
@@ -852,6 +856,9 @@ class EntraPermissionGrantDriftService:
                 application
             )
             observed_by_target[str(target.service_principal_id)] = observed
+            application_id_by_target[
+                str(target.service_principal_id)
+            ] = str(target_record["appId"])
 
         domains[PermissionGrantSnapshotDomain.RESOURCE_CATALOG] = sorted(
             (
@@ -912,11 +919,17 @@ class EntraPermissionGrantDriftService:
                 category="sp",
                 resource_id=target_id,
             )
+            workload_identity_reference = self.snapshots.resource_reference(
+                tenant_id=self.settings.tenant_id,
+                category="wi",
+                resource_id=application_id_by_target[target_id],
+            )
             result, target_findings = self._classify_target(
                 target=target,
                 observed=observed_by_target[target_id],
                 snapshot_reference=snapshot_reference,
                 target_reference=target_reference,
+                workload_identity_reference=workload_identity_reference,
                 baseline_reference=baseline_reference,
                 active_exceptions=active_exceptions,
             )

@@ -4,17 +4,18 @@ Microsoft Graph is the primary product surface. Planner is one workload in the
 catalog, not a separate architectural boundary or the project's central use
 case.
 
-The source defines 128 fixed tools; the build-plane manifest compiles eight Entra
-Governance/Assurance contracts while the remaining static catalog is migrated
-incrementally. A maximally enabled read process exposes 100 tools: 91 Microsoft
-Graph reads, 8 Power BI reads, plus the local security-posture tool. A write
+The source defines 129 fixed tools; the build plane compiles eight Entra
+Governance/Assurance contracts and one signed T0 playbook while the remaining
+static catalog is migrated incrementally. A maximally enabled read process
+exposes 101 tools: 92 Microsoft Graph reads, 8 Power BI reads, plus the local
+security-posture tool. A write
 process exposes the two common tools, the local receipt query, and only its
 selected write actions. The default process exposes only the two common tools.
 
-This catalog and the [compiled contract matrix](CONTRACT_MATRIX.md) describe
-the active surface. Items in the [official implementation roadmap](ROADMAP.md)
-are planned only; a roadmap name is never a runtime-discovered or dynamically
-registered tool.
+This catalog, the [compiled contract matrix](CONTRACT_MATRIX.md), and the
+[compiled playbook matrix](PLAYBOOK_MATRIX.md) describe the active surface.
+Items in the [official implementation roadmap](ROADMAP.md) are planned only; a
+roadmap name is never a runtime-discovered or dynamically registered tool.
 
 ## Common
 
@@ -208,6 +209,7 @@ principal results are narrowed by separate local UUID allowlists.
 - `m365_get_entra_identity_governance_posture`
 - `m365_get_entra_permission_grant_drift`
 - `m365_get_entra_app_credential_posture`
+- `m365_get_entra_workload_identity_readiness`
 
 This compiled T0 tool is a fixed, read-only workflow over Conditional Access,
 permanent directory-role assignments, active PIM assignments and PIM
@@ -267,6 +269,29 @@ returns `key` or `secretText`. MCP output contains only counts, findings and
 opaque HMAC references. The encrypted snapshot contains normalized IDs and
 validity metadata only. Credential rotation, removal and owner changes are
 absent.
+
+Workload Identity Readiness is a separately signed, fixed T0 playbook. Its
+acyclic build-time DAG invokes exactly the permission-grant drift and
+application-credential posture contracts. It introduces no Graph call or
+permission beyond their exact closure:
+`Application.Read.All` and `Directory.Read.All`, plus the common runtime
+`User.Read`.
+
+The active signed `privileged-read` profile must enable the playbook and both
+child contracts, pin the current playbook-manifest digest, and configure both
+signed baselines. Applications and service principals must pass their separate
+local and Governance allowlists. There is no approval parameter or per-call
+dialog under `automatic_read`.
+
+The workflow correlates both evidence streams through an opaque,
+deployment-keyed workload reference. A combined excess-permission and
+credential/ownership weakness is classified deterministically. If a node is
+incomplete, the policy changes mid-run, or an application/service-principal
+mapping is unavailable, the playbook halts or marks the affected target
+`not_evaluated`; it never claims complete coverage from partial evidence.
+Detailed IDs remain in the two encrypted tenant-local snapshots. The playbook
+has no write, remediation, consent, owner-management or credential-management
+path.
 
 ## Microsoft Purview compliance
 

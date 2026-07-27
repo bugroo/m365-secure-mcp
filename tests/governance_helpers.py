@@ -24,6 +24,7 @@ from m365_secure_mcp.governance import (
     sign_governance_policy,
     validate_policy_against_manifest,
 )
+from m365_secure_mcp.playbook_manifest import load_global_playbook_manifest
 
 
 def write_signed_governance(
@@ -42,6 +43,7 @@ def write_signed_governance(
     service_principal_id: str | None = None,
     application_credential_baseline: ApplicationCredentialBaseline | None = None,
     application_id: str | None = None,
+    enable_workload_identity_readiness: bool = False,
 ) -> tuple[Path, Path]:
     """Create owner-only test policy material outside the repository."""
 
@@ -49,6 +51,8 @@ def write_signed_governance(
     private_root.mkdir(mode=0o700, parents=True)
     private_root.chmod(0o700)
     manifest = load_global_manifest()
+    playbooks = load_global_playbook_manifest(manifest)
+    readiness_playbook = "entra.workload_identity.readiness.playbook"
     write_contract = "entra.user.operational_profile.update"
     profiles = {
         GovernanceProfileName.ROUTINE_READ: GovernanceProfile(
@@ -67,7 +71,12 @@ def write_signed_governance(
                 "entra.identity_governance.posture.snapshot",
                 "entra.permission_grants.drift.snapshot",
                 "entra.role_assignments.read",
-            ]
+            ],
+            enabled_playbooks=(
+                [readiness_playbook]
+                if enable_workload_identity_readiness
+                else []
+            ),
         ),
         GovernanceProfileName.SELECTED_WRITE: GovernanceProfile(),
         GovernanceProfileName.BREAK_GLASS: GovernanceProfile(
@@ -102,10 +111,15 @@ def write_signed_governance(
         permission_grant_baseline=permission_grant_baseline,
         application_credential_baseline=application_credential_baseline,
         contract_manifest_digest=sha256_digest(manifest),
+        playbook_manifest_digest=(
+            sha256_digest(playbooks)
+            if enable_workload_identity_readiness
+            else None
+        ),
         issued_at=datetime.now(UTC),
         expires_at=datetime.now(UTC) + timedelta(hours=1),
     )
-    validate_policy_against_manifest(policy, manifest)
+    validate_policy_against_manifest(policy, manifest, playbooks)
     signer = Ed25519PrivateKey.generate()
     bundle = sign_governance_policy(policy, signer, key_id="test-governance")
 

@@ -1,0 +1,50 @@
+{
+  "playbooks": [
+    {
+      "authorization_mode": "automatic_read",
+      "compensation": "not_applicable",
+      "description": "Correlate signed Entra workload-identity permissions, credentials, and ownership evidence without changing Microsoft Graph.",
+      "failure_mode": "halt_not_evaluated",
+      "id": "entra.workload_identity.readiness.playbook",
+      "module": "assurance",
+      "nodes": [
+        {
+          "contract_id": "entra.app_credentials.posture.snapshot",
+          "depends_on": [],
+          "id": "application_credentials"
+        },
+        {
+          "contract_id": "entra.permission_grants.drift.snapshot",
+          "depends_on": [],
+          "id": "permission_grants"
+        }
+      ],
+      "output_fields": [
+        "active_profile",
+        "admin_consent_is_manual",
+        "authorization_basis",
+        "authorization_mode",
+        "captured_at",
+        "contract_manifest_digest",
+        "coverage_status",
+        "findings",
+        "nodes",
+        "playbook_digest",
+        "playbook_id",
+        "playbook_manifest_digest",
+        "policy_digest",
+        "run_id",
+        "schema_version",
+        "status",
+        "targets",
+        "tenant_namespace",
+        "writes_performed"
+      ],
+      "risk_tier": "T0",
+      "tool_name": "m365_get_entra_workload_identity_readiness",
+      "writes_permitted": false
+    }
+  ],
+  "product": "m365-secure-mcp",
+  "schema_version": "1.0"
+}

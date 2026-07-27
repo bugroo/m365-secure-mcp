@@ -45,6 +45,10 @@ from .entra_posture import (
 from .entra_posture import (
     EntraIdentityGovernancePostureService,
 )
+from .entra_workload_readiness import (
+    TOOL_NAME as ENTRA_WORKLOAD_IDENTITY_READINESS_TOOL_NAME,
+)
+from .entra_workload_readiness import EntraWorkloadIdentityReadinessService
 from .formatting import addresses, render_collection, render_record
 from .governance import (
     VerifiedGovernancePolicy,
@@ -108,6 +112,10 @@ from .ooxml import (
     replace_ooxml_text,
 )
 from .operations import OperationRecord
+from .playbook_manifest import (
+    PlaybookManifest,
+    load_global_playbook_manifest,
+)
 from .powerbi import PowerBIClient
 from .protocol import ToolResponse, error_response, success_response
 from .recovery import RecoveryCapsuleStore
@@ -536,6 +544,7 @@ def _register_assurance_read(
     runner: ToolRunner,
     *,
     manifest: ContractManifest,
+    playbook_manifest: PlaybookManifest,
 ) -> None:
     if services.governance is None or services.assurance_snapshots is None:
         raise ValueError(
@@ -561,6 +570,15 @@ def _register_assurance_read(
         manifest=manifest,
         governance=services.governance,
         snapshots=services.assurance_snapshots,
+    )
+    workload_identity_readiness = EntraWorkloadIdentityReadinessService(
+        settings=services.settings,
+        contract_manifest=manifest,
+        playbook_manifest=playbook_manifest,
+        governance=services.governance,
+        snapshots=services.assurance_snapshots,
+        permission_drift=permission_drift,
+        application_credentials=application_credentials,
     )
 
     @mcp.tool(
@@ -656,6 +674,39 @@ def _register_assurance_read(
 
         return await runner.call(
             ENTRA_APP_CREDENTIAL_POSTURE_TOOL_NAME,
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name=ENTRA_WORKLOAD_IDENTITY_READINESS_TOOL_NAME,
+        annotations=_read_annotations(
+            "Get Entra Workload Identity Readiness"
+        ),
+    )
+    async def get_entra_workload_identity_readiness(
+        params: BasicInput,
+    ) -> ToolResponse:
+        """Correlate signed permission, credential, and ownership evidence.
+
+        This fixed T0 playbook accepts no tenant or resource IDs, performs no
+        writes, and returns only bounded findings and opaque evidence
+        references. Detailed evidence remains encrypted in the tenant-local
+        Assurance snapshot.
+        """
+
+        async def operation() -> str:
+            report = await workload_identity_readiness.collect()
+            return render_record(
+                title="Entra Workload Identity Readiness",
+                record=report.model_dump(mode="json"),
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+                external_content=False,
+            )
+
+        return await runner.call(
+            ENTRA_WORKLOAD_IDENTITY_READINESS_TOOL_NAME,
             params.model_dump(mode="json"),
             operation,
         )
@@ -3789,6 +3840,7 @@ def create_server(settings: Settings) -> FastMCP:
     """Build one MCP server with only the tools allowed by the selected profile."""
 
     manifest = load_global_manifest()
+    playbook_manifest = load_global_playbook_manifest(manifest)
     governance: VerifiedGovernancePolicy | None = None
     assurance_enabled = (
         settings.profile is Profile.READ
@@ -3811,7 +3863,11 @@ def create_server(settings: Settings) -> FastMCP:
             raise ValueError(
                 "governance policy is bound to a different contract manifest"
             )
-        validate_policy_against_manifest(governance.policy, manifest)
+        validate_policy_against_manifest(
+            governance.policy,
+            manifest,
+            playbook_manifest,
+        )
     elif governance_required:
         if (
             settings.governance_policy_path is None
@@ -3906,6 +3962,7 @@ def create_server(settings: Settings) -> FastMCP:
                 services,
                 runner,
                 manifest=manifest,
+                playbook_manifest=playbook_manifest,
             )
         register_catalog_tools(mcp, services, runner)
     else:

@@ -406,6 +406,12 @@ _register(
 )
 _register(
     _permissions,
+    module="assurance",
+    scopes=frozenset({"Application.Read.All", "Directory.Read.All"}),
+    tools=("m365_get_entra_workload_identity_readiness",),
+)
+_register(
+    _permissions,
     module="licensing",
     scopes=frozenset({"LicenseAssignment.Read.All"}),
     tools=("m365_list_subscribed_skus",),

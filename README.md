@@ -9,9 +9,9 @@ A local-first Microsoft Graph control plane for Codex, Claude Code, and
 compatible MCP clients. Every operation is a fixed, reviewable contract bound
 to an identity, permission set, resource policy, and evidence trail.
 
-| Fixed tools | Compiled governance contracts | Read profile | Opt-in writes | Delete tools |
-|---:|---:|---:|---:|---:|
-| 128 | 8 Entra contracts | 100 max | 27 | 0 |
+| Fixed tools | Compiled contracts | Signed playbooks | Read profile | Opt-in writes | Delete tools |
+|---:|---:|---:|---:|---:|---:|
+| 129 | 8 Entra contracts | 1 T0 workflow | 101 max | 27 | 0 |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
@@ -42,7 +42,7 @@ configuration fails before the server starts.
 flowchart TB
     A["Codex or Claude Code"] -->|"local stdio"| B["M365 Secure MCP"]
     H["OS Keychain"] -->|"token cache"| B
-    M["Signed global manifest"] -->|"contract digest"| B
+    M["Signed contract + playbook manifests"] -->|"pinned digests"| B
     Y["Signed tenant policy"] -->|"profile + fences"| B
     B --> C["Identity + contract + policy + resource"]
     C -->|"Graph token"| G["Microsoft Graph v1.0"]
@@ -62,9 +62,11 @@ flowchart TB
 | Assurance | posture, findings, audit, receipts, drift and release checks | produces evidence; does not remediate autonomously |
 
 The first compiled vertical slices are Entra Identity & Governance. Their
-signed manifest contains seven bounded reads and one T1 write. The wider pre-existing
-catalog remains statically coded while it is migrated contract by contract;
-the runtime never translates tenant metadata into a new tool.
+signed contract manifest contains seven bounded reads and one T1 write. A
+separately signed playbook manifest composes two of those reads into one T0
+Workload Identity Readiness workflow. The wider pre-existing catalog remains
+statically coded while it is migrated contract by contract; the runtime never
+translates tenant metadata into a new tool or workflow.
 
 ```bash
 # Fails when generated definitions, permission matrix, digests,
@@ -74,19 +76,22 @@ uv run m365-compile-contracts --check
 
 The build inputs and outputs are
 [global-manifest.json](src/m365_secure_mcp/contract_data/global-manifest.json),
-[the compiled permission matrix](docs/CONTRACT_MATRIX.md), and
+[global-playbooks.json](src/m365_secure_mcp/contract_data/global-playbooks.json),
+[the compiled permission matrix](docs/CONTRACT_MATRIX.md),
+[the compiled playbook matrix](docs/PLAYBOOK_MATRIX.md), and
 [contract-artifacts](contract-artifacts/). The manifest is verified with a
-pinned Ed25519 trust anchor before server construction. Editing the manifest,
+pinned Ed25519 trust anchor before server construction. Contracts and
+playbooks use independent trust anchors. Editing either manifest, either
 signature, or a signed tenant policy without the corresponding signer fails
 closed.
 
 ### What comes next
 
-The next official vertical slice is a signed, T0 read-only **Workload Identity
-Readiness** playbook. It will correlate the existing Entra permission-drift,
+The signed, T0 read-only **Workload Identity Readiness** playbook is now
+implemented. It correlates the existing Entra permission-drift,
 application-credential and ownership evidence without adding scopes or writes.
-The prioritized sequence after that is the reusable Change-safe operator,
-profile/scope drift for MSPs, and the first compiled T2 contract.
+The next official vertical slice is the reusable Change-safe operator engine,
+followed by profile/scope drift for MSPs and the first compiled T2 contract.
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -335,9 +340,9 @@ because a stdio server cannot prove the host's approval policy.
 
 ### Read profile
 
-Up to **99 API read tools** (91 Microsoft Graph and 8 Power BI) are selected by
-module and can be reduced to an exact allowlist. The local security-posture
-tool remains visible, for a maximum read process of 100 tools. Content-bearing
+Up to **100 API read tools** (92 Microsoft Graph and 8 Power BI) are selected
+by module and can be reduced to an exact allowlist. The local security-posture
+tool remains visible, for a maximum read process of 101 tools. Content-bearing
 responses are normalized, bounded, and marked as untrusted external data.
 
 ### Write profile
@@ -358,7 +363,7 @@ exact tool/idempotency-key pair; it cannot enumerate the ledger and never calls
 Graph.
 
 <details>
-<summary><strong>Expand the 128-contract capability map</strong></summary>
+<summary><strong>Expand the 129-tool capability map</strong></summary>
 
 | Domain | Fixed reads | Opt-in writes |
 |---|---:|---:|
@@ -685,10 +690,55 @@ few credentials, and maintain accountable application owners:
 [credential management](https://learn.microsoft.com/en-us/entra/identity-platform/how-to-add-credentials),
 and [application ownership](https://learn.microsoft.com/en-us/entra/identity/enterprise-apps/what-is-application-management).
 
-Upgrading to `0.8.0` changes the signed global-manifest digest. Existing tenant
-policies remain fail-closed until the Governance owner reviews the new contract
-matrix, updates `contract_manifest_digest`, and explicitly signs a new private
-policy version. Runtime never migrates or re-signs tenant policy.
+### Workload Identity Readiness
+
+`m365_get_entra_workload_identity_readiness` is a signed T0 playbook over the
+permission-grant drift and application-credential posture contracts. Its DAG,
+node contracts, permission closure and output fields are fixed at build time.
+It adds no Graph operation: its exact delegated scope closure is
+`Application.Read.All` plus `Directory.Read.All`, with the runtime base
+`User.Read`.
+
+Enable it only in a signed `privileged-read` Governance profile:
+
+```bash
+export M365_PROFILE="read"
+export M365_MODULES="profile,assurance"
+export M365_ENABLED_TOOLS="m365_get_entra_workload_identity_readiness"
+export M365_PRIVILEGED_MODULES_ENABLED="true"
+export M365_ALLOWED_APPLICATION_IDS="<approved object ID[,object ID...]>"
+export M365_ALLOWED_SERVICE_PRINCIPAL_IDS="<approved object ID[,object ID...]>"
+export M365_GOVERNANCE_POLICY_PATH="/private/m365/governance-policy.signed.json"
+export M365_GOVERNANCE_PUBLIC_KEY_PATH="/private/m365/governance-signing.pub"
+```
+
+The private policy must enable
+`entra.workload_identity.readiness.playbook`, pin the current
+`playbook_manifest_digest`, enable both child contracts in the same profile,
+and contain both signed baselines and both local resource fences. The Entra
+administrator still adds and consents the two delegated permissions manually.
+
+There is no per-call confirmation: `automatic_read` executes after the signed
+contract, playbook, tenant profile, identity, scopes, resource fences and
+baselines pass. The nodes retain their independent pagination, policy-change
+and encrypted-snapshot checks. A failed or incomplete node halts the playbook
+and reports `not_evaluated`; partial evidence is never promoted to complete.
+
+Application and service-principal observations are correlated with an opaque,
+tenant-local HMAC workload reference. Raw IDs and normalized evidence remain
+inside the two encrypted tenant-local snapshots. The public result contains
+bounded counts, deterministic findings and evidence references only. The
+playbook cannot grant consent, rotate credentials, change owners or invoke any
+write.
+
+Upgrading to `0.9.0` introduces the separately signed playbook manifest and
+extends the private policy schema. Governance policies signed by older
+versions must be reviewed, exported with the current schema and explicitly
+re-signed, even when no playbook is enabled. To enable readiness, the
+Governance owner must additionally review the
+[playbook matrix](docs/PLAYBOOK_MATRIX.md), set the exact playbook digest and
+selection, configure both baselines, and sign the next policy version. Runtime
+never migrates or re-signs tenant policy.
 
 ## First governed T1 write: Entra operational profile
 
@@ -914,12 +964,12 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 182 passed |
+| Tests | 194 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
 | Package | wheel and source distribution |
-| Full read-profile smoke test | 98 read contracts + security posture |
+| Full read-profile smoke test | 100 read contracts + security posture |
 
 Live Graph integration tests require a dedicated non-production tenant and
 explicit operator consent.
@@ -928,7 +978,9 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 128 fixed tools and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 129 fixed tools and their boundaries |
+| [Compiled playbook matrix](docs/PLAYBOOK_MATRIX.md) | Signed DAG, contract closure and exact permissions |
+| [Workflow evaluations](evaluations/README.md) | Sanitized security and failure-mode fixtures |
 | [Official roadmap](docs/ROADMAP.md) | Prioritized vertical slices, acceptance criteria, friction and no-go rules |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
 | [Configuration](docs/CONFIGURATION.md) | Every environment variable and gate |

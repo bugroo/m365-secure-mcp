@@ -32,6 +32,7 @@ from .contract_manifest import (
     canonical_json,
     sha256_digest,
 )
+from .playbook_manifest import PlaybookManifest, PlaybookSpec
 from .security import PrivateStateError, SecurityError, read_private_file
 
 MAX_GOVERNANCE_POLICY_BYTES = 512_000
@@ -86,6 +87,7 @@ class GovernanceProfile(StrictModel):
     """One administrator-approved profile within a tenant policy."""
 
     enabled_contracts: list[str] = Field(default_factory=list)
+    enabled_playbooks: list[str] = Field(default_factory=list)
     maximum_targets_per_operation: int = Field(default=1, ge=1, le=100)
     write_window_utc: str | None = Field(
         default=None,
@@ -98,6 +100,13 @@ class GovernanceProfile(StrictModel):
     def unique_contracts(cls, value: list[str]) -> list[str]:
         if value != sorted(set(value)):
             raise ValueError("enabled contracts must be unique and sorted")
+        return value
+
+    @field_validator("enabled_playbooks")
+    @classmethod
+    def unique_playbooks(cls, value: list[str]) -> list[str]:
+        if value != sorted(set(value)):
+            raise ValueError("enabled playbooks must be unique and sorted")
         return value
 
 
@@ -432,6 +441,10 @@ class GovernancePolicy(StrictModel):
     permission_grant_baseline: PermissionGrantBaseline | None = None
     application_credential_baseline: ApplicationCredentialBaseline | None = None
     contract_manifest_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    playbook_manifest_digest: str | None = Field(
+        default=None,
+        pattern=r"^sha256:[0-9a-f]{64}$",
+    )
     issued_at: datetime
     expires_at: datetime | None = None
 
@@ -457,6 +470,13 @@ class GovernancePolicy(StrictModel):
                 raise ValueError(
                     "break-glass TTL is valid only on the break-glass profile"
                 )
+        if (
+            any(profile.enabled_playbooks for profile in self.profiles.values())
+            and self.playbook_manifest_digest is None
+        ):
+            raise ValueError(
+                "enabled playbooks require a signed playbook manifest digest"
+            )
         if self.issued_at.tzinfo is None:
             raise ValueError("issued_at must include a UTC offset")
         if self.identity_governance_baseline is not None:
@@ -701,6 +721,76 @@ class VerifiedGovernancePolicy:
             )
         return decision, baseline
 
+    def authorize_playbook_read(
+        self,
+        playbook: PlaybookSpec,
+        *,
+        contract_manifest: ContractManifest,
+        tenant_id: str,
+    ) -> ReadAuthorizationDecision:
+        """Authorize one fixed T0 playbook and all of its compiled nodes."""
+
+        policy = self.policy
+        now = datetime.now(UTC)
+        if str(policy.tenant_id) != tenant_id:
+            raise GovernancePolicyError(
+                "governance policy tenant does not match the runtime tenant",
+                reason_code="TENANT_FENCE_MISMATCH",
+            )
+        if policy.expires_at is not None and policy.expires_at <= now:
+            raise GovernancePolicyError(
+                "governance policy has expired",
+                reason_code="POLICY_EXPIRED",
+            )
+        if policy.active_profile is not GovernanceProfileName.PRIVILEGED_READ:
+            raise GovernancePolicyError(
+                "workload-identity readiness requires privileged-read",
+                reason_code="PROFILE_CONTRACT_MISMATCH",
+            )
+        profile = policy.profiles[policy.active_profile]
+        if playbook.id not in profile.enabled_playbooks:
+            raise GovernancePolicyError(
+                "playbook is not enabled in the active governance profile",
+                reason_code="DENIED_OUT_OF_CONTRACT",
+            )
+        if (
+            playbook.risk_tier is not RiskTier.T0
+            or playbook.authorization_mode is not AuthorizationMode.AUTOMATIC_READ
+            or playbook.writes_permitted
+        ):
+            raise GovernancePolicyError(
+                "read authorization cannot execute an effectful playbook",
+                reason_code="PROFILE_CONTRACT_MISMATCH",
+            )
+        node_contracts = {
+            node.contract_id
+            for node in playbook.nodes
+        }
+        if not node_contracts.issubset(profile.enabled_contracts):
+            raise GovernancePolicyError(
+                "playbook node contract is not enabled in the active profile",
+                reason_code="DENIED_OUT_OF_CONTRACT",
+            )
+        for contract_id in sorted(node_contracts):
+            self.authorize_read(
+                contract_manifest.contract(contract_id),
+                tenant_id=tenant_id,
+            )
+        if (
+            self.policy.permission_grant_baseline is None
+            or self.policy.application_credential_baseline is None
+        ):
+            raise GovernancePolicyError(
+                "workload-identity readiness requires both signed baselines",
+                reason_code="BASELINE_NOT_CONFIGURED",
+            )
+        return ReadAuthorizationDecision(
+            mode="automatic_read",
+            basis="signed_policy",
+            profile=policy.active_profile,
+            policy_digest=self.policy_digest,
+        )
+
     def authorize(
         self,
         contract: ContractSpec,
@@ -802,10 +892,16 @@ class VerifiedGovernancePolicy:
 def validate_policy_against_manifest(
     policy: GovernancePolicy,
     manifest: ContractManifest,
+    playbook_manifest: PlaybookManifest | None = None,
 ) -> None:
     """Reject unknown contracts, profile misuse, and authorization downgrades."""
 
     contracts = {contract.id: contract for contract in manifest.contracts}
+    playbooks = (
+        {playbook.id: playbook for playbook in playbook_manifest.playbooks}
+        if playbook_manifest is not None
+        else {}
+    )
     for profile_name, profile in policy.profiles.items():
         for contract_id in profile.enabled_contracts:
             contract = contracts.get(contract_id)
@@ -839,6 +935,52 @@ def validate_policy_against_manifest(
                     "prohibited T4 contracts cannot be enabled by tenant policy",
                     reason_code="DENIED_OUT_OF_CONTRACT",
                 )
+        for playbook_id in profile.enabled_playbooks:
+            playbook = playbooks.get(playbook_id)
+            if playbook is None:
+                raise GovernancePolicyError(
+                    "governance profile references an unknown playbook",
+                    reason_code="UNKNOWN_PLAYBOOK",
+                )
+            if profile_name is not GovernanceProfileName.PRIVILEGED_READ:
+                raise GovernancePolicyError(
+                    "initial T0 playbooks require privileged-read",
+                    reason_code="PROFILE_CONTRACT_MISMATCH",
+                )
+            if (
+                playbook.risk_tier is not RiskTier.T0
+                or playbook.authorization_mode
+                is not AuthorizationMode.AUTOMATIC_READ
+                or playbook.writes_permitted
+            ):
+                raise GovernancePolicyError(
+                    "read profile contains an effectful playbook",
+                    reason_code="PROFILE_CONTRACT_MISMATCH",
+                )
+            if {
+                node.contract_id for node in playbook.nodes
+            } - set(profile.enabled_contracts):
+                raise GovernancePolicyError(
+                    "playbook nodes must be enabled contracts in the same profile",
+                    reason_code="PROFILE_CONTRACT_MISMATCH",
+                )
+
+    enabled_playbooks = {
+        playbook_id
+        for profile in policy.profiles.values()
+        for playbook_id in profile.enabled_playbooks
+    }
+    if enabled_playbooks:
+        if playbook_manifest is None:
+            raise GovernancePolicyError(
+                "enabled playbooks require the global playbook manifest",
+                reason_code="PLAYBOOK_MANIFEST_REQUIRED",
+            )
+        if policy.playbook_manifest_digest != sha256_digest(playbook_manifest):
+            raise GovernancePolicyError(
+                "governance policy is bound to a different playbook manifest",
+                reason_code="PLAYBOOK_MANIFEST_CHANGED",
+            )
 
     for contract_id, override in policy.authorization_overrides.items():
         contract = contracts.get(contract_id)

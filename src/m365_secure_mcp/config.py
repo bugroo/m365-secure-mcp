@@ -107,10 +107,16 @@ ENTRA_SERVICE_PRINCIPAL_TOOLS = frozenset(
     }
 )
 ASSURANCE_SERVICE_PRINCIPAL_TOOLS = frozenset(
-    {"m365_get_entra_permission_grant_drift"}
+    {
+        "m365_get_entra_permission_grant_drift",
+        "m365_get_entra_workload_identity_readiness",
+    }
 )
 ASSURANCE_APPLICATION_TOOLS = frozenset(
-    {"m365_get_entra_app_credential_posture"}
+    {
+        "m365_get_entra_app_credential_posture",
+        "m365_get_entra_workload_identity_readiness",
+    }
 )
 USERS_ADMIN_TOOLS = frozenset(
     {"m365_list_allowed_users", "m365_get_allowed_user"}

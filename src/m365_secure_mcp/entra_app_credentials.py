@@ -52,6 +52,7 @@ class StrictModel(BaseModel):
 
 class ApplicationCredentialTargetPosture(StrictModel):
     target_reference: str = Field(pattern=r"^app:[0-9a-f]{24}$")
+    workload_identity_reference: str = Field(pattern=r"^wi:[0-9a-f]{24}$")
     baseline_reference: str = Field(min_length=3, max_length=128)
     digest: str = Field(pattern=r"^hmac-sha256:[0-9a-f]{64}$")
     alignment: AlignmentStatus
@@ -596,6 +597,11 @@ class EntraApplicationCredentialPostureService:
             category="app",
             resource_id=target_id,
         )
+        workload_identity_reference = self.snapshots.resource_reference(
+            tenant_id=self.settings.tenant_id,
+            category="wi",
+            resource_id=str(application["appId"]),
+        )
         findings: list[Finding] = []
         owner_count = len(owners)
         if owner_count < target.minimum_owner_count:
@@ -709,6 +715,7 @@ class EntraApplicationCredentialPostureService:
         return (
             ApplicationCredentialTargetPosture(
                 target_reference=target_reference,
+                workload_identity_reference=workload_identity_reference,
                 baseline_reference=baseline_reference,
                 digest=digest,
                 alignment=alignment,

@@ -63,6 +63,7 @@ Start with `User.Read`. Add modules independently:
 | Compiled Entra governance posture snapshot | `Policy.Read.All`, `RoleManagement.Read.Directory` |
 | Compiled Entra permission-grant drift | `Directory.Read.All` |
 | Compiled Entra application credential posture | `Application.Read.All` |
+| Signed Workload Identity Readiness playbook | `Application.Read.All`, `Directory.Read.All` |
 | Access reviews | `AccessReview.Read.All` |
 | Entitlement catalogs | `EntitlementManagement.Read.All` |
 | License inventory | `LicenseAssignment.Read.All` |
@@ -139,6 +140,15 @@ Runtime reads those exact applications and their owner collections; it does
 not enumerate the tenant. It never returns or persists application names,
 secret hints, thumbprints, public keys or secret values, and has no credential
 rotation or owner-assignment action.
+
+The Workload Identity Readiness process composes those two exact contracts. It
+therefore requests only their union, `Application.Read.All` and
+`Directory.Read.All`, and should use `Directory Readers` or `Global Reader`.
+Configure only `m365_get_entra_workload_identity_readiness`, enable the signed
+playbook plus both child contracts in `privileged-read`, and configure both
+local allowlists, both signed resource fences and both signed baselines. It
+does not add a new Graph endpoint or permission. The administrator must add
+and consent both delegated scopes manually; the MCP cannot request consent.
 
 For `Sites.Selected`, an administrator must additionally grant the application
 access to each approved site. Configure the same site IDs and hostnames in the

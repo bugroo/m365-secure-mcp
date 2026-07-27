@@ -236,6 +236,44 @@ def test_application_credential_posture_requires_exact_targets_and_scope() -> No
     )
 
 
+def test_workload_readiness_requires_both_fences_and_exact_scope_union() -> None:
+    common = {
+        "modules": "profile,assurance",
+        "privileged_modules_enabled": True,
+        "enabled_tools": "m365_get_entra_workload_identity_readiness",
+        "governance_policy_path": "/private/governance-policy.signed.json",
+        "governance_public_key_path": "/private/governance-policy.pub",
+    }
+    with pytest.raises(
+        ValidationError,
+        match="M365_ALLOWED_APPLICATION_IDS",
+    ):
+        make_settings(
+            **common,
+            allowed_service_principal_ids=RESOURCE_ID,
+        )
+    with pytest.raises(
+        ValidationError,
+        match="M365_ALLOWED_SERVICE_PRINCIPAL_IDS",
+    ):
+        make_settings(
+            **common,
+            allowed_application_ids=APPLICATION_ID,
+        )
+
+    settings = make_settings(
+        **common,
+        allowed_application_ids=APPLICATION_ID,
+        allowed_service_principal_ids=RESOURCE_ID,
+    )
+    assert settings.scopes == (
+        "Application.Read.All",
+        "Directory.Read.All",
+        "User.Read",
+    )
+    assert settings.write_enabled is False
+
+
 def test_compliance_reads_require_exact_resource_allowlists() -> None:
     with pytest.raises(
         ValidationError,

@@ -121,6 +121,9 @@ the blast radius of:
 - There is no arbitrary URL/method/body Graph tool.
 - No tenant metadata, remote schema or runtime policy can generate or register
   an MCP tool. There is no in-process updater.
+- Playbook DAGs are signed tenant-neutral build artifacts. Every node resolves
+  to a compiled contract, and runtime cannot add a node, edge, scope, Graph
+  endpoint or output field from tenant data.
 - Pagination links are validated against the Graph v1.0 egress allowlist and
   wrapped in a process-local HMAC cursor bound to the originating tool.
 - Tool outputs are capped below common MCP client warning thresholds.
@@ -141,6 +144,11 @@ the blast radius of:
   targets, owner minimums, expiry windows, secret policy and active-credential
   limits. Credential exceptions bind an exact kind/key ID; application-level
   exceptions cannot suppress arbitrary credential findings.
+- Workload Identity Readiness is `automatic_read` and has the exact permission
+  closure of its two signed child contracts. It correlates the application and
+  service-principal views with a deployment-keyed HMAC reference rather than a
+  raw client/object ID. An incomplete node halts the parent or marks the target
+  `not_evaluated`; it cannot trigger a write or remediation.
 - HMAC keys are deployment/tenant-profile local, kept in OS Keychain and
   cryptographically separated from the Fernet encryption operation. Digests
   cannot be compared across customer deployments.
