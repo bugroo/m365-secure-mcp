@@ -1,0 +1,73 @@
+{
+  "beta_allowed": false,
+  "caller_controlled_graph_fields": [
+    "api_version",
+    "body",
+    "endpoint",
+    "graph_endpoint",
+    "headers",
+    "method",
+    "query",
+    "query_params",
+    "request_body",
+    "scope",
+    "scopes",
+    "suffix",
+    "url"
+  ],
+  "effects": [
+    "create_object",
+    "invoke_action",
+    "object_delete",
+    "read",
+    "relationship_add",
+    "relationship_remove",
+    "state_transition",
+    "update_properties"
+  ],
+  "explicit_effect_method_rules": {
+    "create_object": [
+      "POST"
+    ],
+    "invoke_action": [
+      "POST"
+    ],
+    "read": [
+      "GET"
+    ],
+    "relationship_add": [
+      "POST"
+    ],
+    "relationship_remove": [
+      "DELETE"
+    ],
+    "state_transition": [
+      "PATCH",
+      "POST"
+    ],
+    "update_properties": [
+      "PATCH"
+    ]
+  },
+  "graph_api_version": "v1.0",
+  "legacy_schema_1_0_method_effects": {
+    "GET": "read",
+    "PATCH": "update_properties"
+  },
+  "object_delete": "prohibited",
+  "relationship_remove_suffix": "/$ref",
+  "safe_path_parameter_pattern": "^(?!\\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$",
+  "schema_version": "1.0",
+  "supported_path_placeholders": [
+    "application_id",
+    "directory_object_id",
+    "group_id",
+    "incident_id",
+    "managed_device_id",
+    "policy_id",
+    "resource_service_principal_id",
+    "service_principal_id",
+    "sku_id",
+    "user_id"
+  ]
+}

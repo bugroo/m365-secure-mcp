@@ -1,8 +1,10 @@
 {
   "build_kind": "local-unattested",
   "builder": "m365_secure_mcp.contract_compiler",
-  "compiler_version": "1.4",
-  "contract_digests_digest": "sha256:a83ce1e3c568ec3ec1d028d740d50a1857d3db4829fabd597c791982c974d76b",
+  "compiler_version": "1.5",
+  "contract_digests_digest": "sha256:b2faa4013e84a8563129a4cd92eaf96688c3f7a6f703491f3bb674c72534efff",
+  "contract_effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "contract_effect_model_schema_version": "1.0",
   "control_compatibility_digest": "sha256:741892a8dda46b4b468c0acd9b4b5f75230b4611001d41389c15e169e67c8d60",
   "control_compatibility_schema_version": "1.0",
   "control_digests_digest": "sha256:36f53ab893419f597c786c72ff40ab80984489d3213346a790c0c45de3ca4563",
@@ -18,7 +20,7 @@
   "playbook_manifest_signature_required": true,
   "release_attestation_status": "external-required",
   "runtime_tool_generation": false,
-  "sbom_digest": "sha256:735c2e142892bd2fe5cfa12ac3005ca3195f7ded4bbcbc47dfd1f6ecdd18895f",
+  "sbom_digest": "sha256:f6d70f4f9e1b218ce14e82a67b9be50abf286e419d4c71dd96e89d1704f3cea8",
   "schema_version": "1.0",
   "source_repository": "https://github.com/bugroo/m365-secure-mcp",
   "source_revision": "release-attestation-required"

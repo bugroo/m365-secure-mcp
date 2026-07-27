@@ -6,6 +6,7 @@
       "delegated_scopes": [
         "Organization.Read.All"
       ],
+      "effect": "read",
       "endpoint": "/organization",
       "input_fields": [],
       "method": "GET",
@@ -17,6 +18,7 @@
       "delegated_scopes": [
         "User.Read.All"
       ],
+      "effect": "read",
       "endpoint": "/users/{user_id}",
       "input_fields": [
         "user_id"
@@ -30,6 +32,7 @@
       "delegated_scopes": [
         "Policy.Read.All"
       ],
+      "effect": "read",
       "endpoint": "/identity/conditionalAccess/policies",
       "input_fields": [
         "cursor",
@@ -44,6 +47,7 @@
       "delegated_scopes": [
         "RoleManagement.Read.Directory"
       ],
+      "effect": "read",
       "endpoint": "/roleManagement/directory/roleAssignments",
       "input_fields": [
         "cursor",
@@ -59,6 +63,7 @@
         "Policy.Read.All",
         "RoleManagement.Read.Directory"
       ],
+      "effect": "read",
       "endpoint": "/identity/conditionalAccess/policies",
       "input_fields": [],
       "method": "GET",
@@ -70,6 +75,7 @@
       "delegated_scopes": [
         "Directory.Read.All"
       ],
+      "effect": "read",
       "endpoint": "/oauth2PermissionGrants",
       "input_fields": [],
       "method": "GET",
@@ -81,6 +87,7 @@
       "delegated_scopes": [
         "Directory.Read.All"
       ],
+      "effect": "read",
       "endpoint": "/oauth2PermissionGrants",
       "input_fields": [],
       "method": "GET",
@@ -92,6 +99,7 @@
       "delegated_scopes": [
         "Application.Read.All"
       ],
+      "effect": "read",
       "endpoint": "/applications/{application_id}",
       "input_fields": [],
       "method": "GET",
@@ -105,6 +113,7 @@
         "RoleManagement.Read.Directory",
         "User.ReadUpdate.All"
       ],
+      "effect": "update_properties",
       "endpoint": "/users/{user_id}",
       "input_fields": [
         "department",

@@ -67,13 +67,16 @@ FROZEN_GRAPH_ARTIFACT_HASHES = {
         "c7978ac764953ab58176c3d56b8af89699195a2ef5a73c072744409c799e84da"
     ),
     "docs/CONTRACT_MATRIX.md": (
-        "39e1184145cbe06c0abdc9e0000f875af982c78d2d1980c5028829c16d61f5f2"
+        "854aeb3476dae8c1add6156ef76b95f12ab45395a38800a3c2531c7769418d5d"
     ),
     "docs/PLAYBOOK_MATRIX.md": (
         "ec583a66f14ebbc33d7a1a8748492cea214177cd72d3405238948dbb3bc78de1"
     ),
     "contract-artifacts/contract-digests.json": (
-        "74db27431ca26e361fe38e67bb41bbf3c997f90ade395e717bdfdccf50df472e"
+        "2251bfd0c7ad39e74aeb1fcc7e49366f00919c0096665ea20aa2fe1e241e63d5"
+    ),
+    "contract-artifacts/contract-effect-model.json": (
+        "aeeed6a64631e4d6bffde94e643025d42b6d1b9caccdaa06feafee837a69c8f7"
     ),
     "contract-artifacts/playbook-digests.json": (
         "539d393c49dece88c5ea71ebea1185f44f8a49a6835fa2f0404dc928f3028f32"

@@ -21,7 +21,11 @@ policy never falls back to v1.
 
 M2 does not execute a control, inspect evidence timestamps, change an
 assessment status or produce an assessment result. Those deterministic
-ControlEngine responsibilities begin in M3.
+ControlEngine responsibilities are postponed until after the Secure Operations
+identity, endpoint, Defender and effectful-playbook slices. The reduced
+Posture runtime may produce only deterministic findings and non-authorizing
+proposal candidates; Governance and a compiled operational contract remain
+required for any effect.
 
 ## Governance v2 control section
 
@@ -93,9 +97,10 @@ lifecycle. That rotation requires an explicit source review, new manifest
 signature, regenerated artifacts and reissued tenant policies; the runtime
 will not infer or migrate the binding.
 
-M2 computes configuration only. M3 will compare timezone-aware evidence
-timestamps. Missing required evidence will remain `not_evaluated`; Governance
-cannot turn it into a pass.
+M2 computes configuration only. The reduced Posture runtime planned after the
+Secure Operations slices will compare timezone-aware evidence timestamps.
+Missing required evidence will remain `not_evaluated`; Governance cannot turn
+it into a pass.
 
 ## Exceptions
 

@@ -13,6 +13,9 @@ from uuid import NAMESPACE_URL, uuid5
 from .contract_manifest import (
     ContractManifest,
     canonical_json,
+    contract_effect,
+    effect_model_digest,
+    effect_model_document,
     load_global_manifest,
     sha256_digest,
 )
@@ -24,7 +27,7 @@ from .control_compatibility import (
 from .control_manifest import ControlManifest, load_global_control_manifest
 from .playbook_manifest import PlaybookManifest, load_global_playbook_manifest
 
-COMPILER_VERSION = "1.4"
+COMPILER_VERSION = "1.5"
 
 
 def _repo_root() -> Path:
@@ -32,12 +35,14 @@ def _repo_root() -> Path:
 
 
 def _generated_python(manifest: ContractManifest) -> str:
+    model_digest = effect_model_digest()
     contracts = {
         item.id: {
             "tool_name": item.tool_name,
             "module": item.module,
             "method": item.graph.method,
             "endpoint": item.graph.endpoint,
+            "effect": contract_effect(item).value,
             "input_schema": item.input_schema,
             "output_fields": item.output_fields,
             "delegated_scopes": item.permissions.delegated_scopes,
@@ -64,6 +69,9 @@ def _generated_python(manifest: ContractManifest) -> str:
         "CONTRACT_MANIFEST_DIGEST: Final = (\n"
         f"    {digest!r}\n"
         ")\n"
+        "CONTRACT_EFFECT_MODEL_DIGEST: Final = (\n"
+        f"    {model_digest!r}\n"
+        ")\n"
         "CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(\n"
         f"    r'''{rendered}'''\n"
         ")\n"
@@ -75,14 +83,23 @@ def _permission_matrix(manifest: ContractManifest) -> str:
         "# Compiled contract matrix",
         "",
         "Generated from the signed, tenant-neutral global manifest.",
+        (
+            "Schema 1.0 effects are derived by the closed compiler mapping "
+            "`GET → read`, `PATCH → update_properties`; ambiguous POST is "
+            "rejected. Future schema 2.0 contracts must sign an explicit effect."
+        ),
         "",
-        "| Contract | Tool | Graph call | Tier | Authorization | Delegated scopes |",
-        "|---|---|---|---|---|---|",
+        (
+            "| Contract | Tool | Effect | Graph call | Tier | Authorization | "
+            "Delegated scopes |"
+        ),
+        "|---|---|---|---|---|---|---|",
     ]
     for item in manifest.contracts:
         scopes = "<br>".join(f"`{scope}`" for scope in item.permissions.delegated_scopes)
         lines.append(
             f"| `{item.id}` | `{item.tool_name}` | "
+            f"`{contract_effect(item).value}` | "
             f"`{item.graph.method} {item.graph.endpoint}` | `{item.risk_tier.value}` | "
             f"`{item.authorization_mode.value}` | {scopes} |"
         )
@@ -402,6 +419,8 @@ def compile_outputs(
     playbook_manifest_digest = sha256_digest(playbooks)
     control_manifest_digest = sha256_digest(controls)
     compatibility_digest = control_compatibility_digest(compatibility)
+    model_digest = effect_model_digest()
+    model_document = effect_model_document()
     lock_digest = (
         "sha256:"
         + hashlib.sha256((root / "uv.lock").read_bytes()).hexdigest()
@@ -430,6 +449,7 @@ def compile_outputs(
                 "delegated_scopes": item.permissions.delegated_scopes,
                 "authorization_mode": item.authorization_mode.value,
                 "risk_tier": item.risk_tier.value,
+                "effect": contract_effect(item).value,
             }
             for item in manifest.contracts
         ],
@@ -437,6 +457,7 @@ def compile_outputs(
     contract_digest_document = {
         "schema_version": "1.0",
         "manifest_digest": manifest_digest,
+        "effect_model_digest": model_digest,
         "contracts": contract_digests,
     }
     playbook_digest_document = {
@@ -457,7 +478,7 @@ def compile_outputs(
         (
             f"m365-secure-mcp:{manifest_digest}:"
             f"{playbook_manifest_digest}:{control_manifest_digest}:"
-            f"{compatibility_digest}:{lock_digest}"
+            f"{compatibility_digest}:{model_digest}:{lock_digest}"
         ),
     )
     package_version = str(
@@ -476,6 +497,10 @@ def compile_outputs(
                 "name": "m365-secure-mcp",
                 "version": package_version,
                 "properties": [
+                    {
+                        "name": "m365-secure-mcp:contract-effect-model-digest",
+                        "value": model_digest,
+                    },
                     {
                         "name": (
                             "m365-secure-mcp:"
@@ -507,6 +532,10 @@ def compile_outputs(
         "release_attestation_status": "external-required",
         "manifest_digest": manifest_digest,
         "manifest_signature_required": True,
+        "contract_effect_model_schema_version": (
+            model_document["schema_version"]
+        ),
+        "contract_effect_model_digest": model_digest,
         "playbook_manifest_digest": playbook_manifest_digest,
         "playbook_manifest_signature_required": True,
         "control_manifest_digest": control_manifest_digest,
@@ -551,6 +580,9 @@ def compile_outputs(
         ),
         root / "contract-artifacts/contract-digests.json": encoded(
             contract_digest_document
+        ),
+        root / "contract-artifacts/contract-effect-model.json": encoded(
+            model_document
         ),
         root / "contract-artifacts/contract-tests.json": encoded(tests),
         root / "contract-artifacts/playbook-digests.json": encoded(
@@ -625,6 +657,9 @@ def compile_outputs(
         root / "contract-artifacts/sbom.cdx.json": encoded(sbom),
         root / "src/m365_secure_mcp/release_data/contract-digests.json": (
             encoded(contract_digest_document)
+        ),
+        root / "src/m365_secure_mcp/release_data/contract-effect-model.json": (
+            encoded(model_document)
         ),
         root / "src/m365_secure_mcp/release_data/playbook-digests.json": (
             encoded(playbook_digest_document)
@@ -701,6 +736,7 @@ def main() -> None:
                 {
                     "status": "verified",
                     "manifest_digest": sha256_digest(manifest),
+                    "contract_effect_model_digest": effect_model_digest(),
                     "playbook_manifest_digest": sha256_digest(playbooks),
                     "control_manifest_digest": sha256_digest(controls),
                     "control_compatibility_digest": (
@@ -720,6 +756,7 @@ def main() -> None:
             {
                 "status": "generated",
                 "manifest_digest": sha256_digest(manifest),
+                "contract_effect_model_digest": effect_model_digest(),
                 "playbook_manifest_digest": sha256_digest(playbooks),
                 "control_manifest_digest": sha256_digest(controls),
                 "control_compatibility_digest": (

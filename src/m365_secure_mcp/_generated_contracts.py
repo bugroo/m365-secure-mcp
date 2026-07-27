@@ -6,6 +6,9 @@ from typing import Any, Final
 CONTRACT_MANIFEST_DIGEST: Final = (
     'sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba'
 )
+CONTRACT_EFFECT_MODEL_DIGEST: Final = (
+    'sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60'
+)
 CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     r'''{
   "entra.app_credentials.posture.snapshot": {
@@ -14,6 +17,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     "delegated_scopes": [
       "Application.Read.All"
     ],
+    "effect": "read",
     "endpoint": "/applications/{application_id}",
     "input_schema": {
       "additionalProperties": false,
@@ -58,6 +62,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     "delegated_scopes": [
       "Policy.Read.All"
     ],
+    "effect": "read",
     "endpoint": "/identity/conditionalAccess/policies",
     "input_schema": {
       "additionalProperties": false,
@@ -107,6 +112,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
       "Policy.Read.All",
       "RoleManagement.Read.Directory"
     ],
+    "effect": "read",
     "endpoint": "/identity/conditionalAccess/policies",
     "input_schema": {
       "additionalProperties": false,
@@ -146,6 +152,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     "delegated_scopes": [
       "Organization.Read.All"
     ],
+    "effect": "read",
     "endpoint": "/organization",
     "input_schema": {
       "additionalProperties": false,
@@ -176,6 +183,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     "delegated_scopes": [
       "Directory.Read.All"
     ],
+    "effect": "read",
     "endpoint": "/oauth2PermissionGrants",
     "input_schema": {
       "additionalProperties": false,
@@ -219,6 +227,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     "delegated_scopes": [
       "Directory.Read.All"
     ],
+    "effect": "read",
     "endpoint": "/oauth2PermissionGrants",
     "input_schema": {
       "additionalProperties": false,
@@ -265,6 +274,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     "delegated_scopes": [
       "RoleManagement.Read.Directory"
     ],
+    "effect": "read",
     "endpoint": "/roleManagement/directory/roleAssignments",
     "input_schema": {
       "additionalProperties": false,
@@ -312,6 +322,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     "delegated_scopes": [
       "User.Read.All"
     ],
+    "effect": "read",
     "endpoint": "/users/{user_id}",
     "input_schema": {
       "additionalProperties": false,
@@ -357,6 +368,7 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
       "RoleManagement.Read.Directory",
       "User.ReadUpdate.All"
     ],
+    "effect": "update_properties",
     "endpoint": "/users/{user_id}",
     "input_schema": {
       "additionalProperties": false,
