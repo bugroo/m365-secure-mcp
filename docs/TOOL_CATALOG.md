@@ -114,6 +114,20 @@ role-assignable-group reads are preconditions, not write capabilities.
 Passwords, authentication methods, identities, account state, phones,
 licenses and custom security attributes are absent.
 
+The compiled T1 handler uses the reusable Change-safe operator engine.
+`standing_policy` remains prompt-free. Its complete internal preflight-only
+path produces a Permission Impact Preview without calling PATCH and never
+claims to simulate Graph. Plan expiry, signed write windows, immutable target
+fences, operator identity, contract/policy digests and current resource
+preconditions are rechecked immediately before effect.
+
+If signed Governance raises the authorization floor to `explicit_plan`,
+runtime accepts only a single-use Ed25519 artifact created by an external
+host/broker over the exact private plan. The artifact is never a tool argument;
+the tool schema still contains only the three optional profile fields, target
+UUID and idempotency key. An approval is consumed after TOCTOU validation and
+before PATCH. A replay, stale binding or changed precondition fails closed.
+
 ## To Do and Planner
 
 - `m365_list_todo_lists`

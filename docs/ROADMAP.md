@@ -32,7 +32,7 @@ The following foundations are implemented:
 |---|---|
 | Build | independently signed tenant-neutral contract and playbook manifests, strict compiler, closed schemas, DAG validation, permission closure, per-artifact digests, evaluation fixtures, provenance and CycloneDX SBOM |
 | Governance | signed tenant-private policies, deployment profiles, resource allowlists, contract/playbook selection, authorization overrides that may only tighten the global floor |
-| Runtime | static tools, exact Graph v1.0 calls, token/identity checks, T1 preflight and TOCTOU revalidation, bounded retries, post-read verification, receipts and change records |
+| Runtime | static tools, exact Graph v1.0 calls, token/identity checks, reusable T1 planning/preflight, Permission Impact Preview, signed write windows, external single-use approval, TOCTOU revalidation, bounded retries, post-read verification, receipts and change records |
 | Assurance | Identity Governance posture, application-permission drift, application-credential posture and signed Workload Identity Readiness, with minimized encrypted tenant-local snapshots |
 
 The compiled Entra surface contains seven T0 reads and one T1 write:
@@ -148,9 +148,7 @@ more valuable than invoking isolated Graph reads while adding no write scope.
 
 Depends on: item 1.
 
-#### 3. Reusable Change-safe operator engine — 8 points
-
-**Current implementation target.**
+#### 3. Reusable Change-safe operator engine — completed in `0.10.0`
 
 Extract the existing T1 flow into a contract-independent deterministic engine:
 
@@ -183,6 +181,8 @@ Depends on: current T1 Entra implementation.
 ### P1 — MSP Assurance and the first T2 operation
 
 #### 4. Scope, contract and resource debt for profiles — 5 points
+
+**Current implementation target.**
 
 Compare each profile's effective token/grant posture with the exact permission
 closure of its enabled contracts. Report unused or unexpected scopes, missing

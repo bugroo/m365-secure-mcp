@@ -58,7 +58,7 @@ flowchart TB
 |---|---|---|
 | Build | signed global manifest, compiler, schemas, digests, SBOM and provenance | never generates tools at runtime |
 | Governance | tenant-private signed profiles, allowlists and authorization overrides | may tighten a contract, never weaken it |
-| Runtime | fixed MCP handlers, Graph v1.0 calls, preconditions, TOCTOU checks and verification | cannot edit or sign policy |
+| Runtime | fixed MCP handlers, Graph v1.0 calls, preconditions, TOCTOU checks, external approval verification and post-read verification | cannot edit/sign policy or approve itself |
 | Assurance | posture, findings, audit, receipts, drift and release checks | produces evidence; does not remediate autonomously |
 
 The first compiled vertical slices are Entra Identity & Governance. Their
@@ -90,8 +90,10 @@ closed.
 The signed, T0 read-only **Workload Identity Readiness** playbook is now
 implemented. It correlates the existing Entra permission-drift,
 application-credential and ownership evidence without adding scopes or writes.
-The next official vertical slice is the reusable Change-safe operator engine,
-followed by profile/scope drift for MSPs and the first compiled T2 contract.
+The reusable Change-safe operator engine is also implemented for the first T1
+contract. The next official vertical slice is profile, scope and resource debt
+for MSPs, followed by bounded runtime self-checks, the multi-tenant drift radar
+and the first compiled T2 contract.
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -824,6 +826,63 @@ Microsoft 365 values. Those values exist only in an encrypted, tenant-local
 recovery capsule backed by the OS Keychain. Any post-write ambiguity returns
 `EXECUTED_UNCERTAIN` and forbids automatic retry.
 
+### Reusable Change-safe operator
+
+Version `0.10.0` extracts the T1 flow into a contract-independent engine.
+Routine execution remains low-friction: a signed `standing_policy` needs no
+approval prompt. The engine nevertheless creates a stable plan from the
+idempotency key, enforces its expiry and signed UTC write window, rechecks the
+contract, policy, operator, immutable target and precondition digest, then
+performs contract-specific verification.
+
+The internal `preview` path runs the complete preflight and Permission Impact
+Preview without calling PATCH. It explicitly reports
+`PREFLIGHT_COMPLETE_NO_EFFECT`; it is not described as a Microsoft Graph
+simulation.
+
+If Governance hardens this T1 contract to `explicit_plan`, configure a separate
+host/broker authority:
+
+```bash
+uv run m365-approval generate-key \
+  --signer "/private/m365/approval-signing.pem" \
+  --verifier "/private/m365/approval-signing.pub"
+
+export M365_APPROVAL_BROKER_DIR="/private/m365/approvals"
+export M365_APPROVAL_PUBLIC_KEY_PATH="/private/m365/approval-signing.pub"
+```
+
+The first call returns `AWAITING_APPROVAL` and writes an owner-only private
+request named `<plan-id>.request.json`. An operator or host broker signs that
+exact request outside MCP runtime:
+
+```bash
+uv run m365-approval sign \
+  --request "/private/m365/approvals/<plan-id>.request.json" \
+  --signer "/private/m365/approval-signing.pem" \
+  --output "/private/m365/approvals/<plan-id>.approval.json" \
+  --key-id "customer-a-change-approver" \
+  --expected-plan-digest "sha256:<reviewed-plan-digest>"
+```
+
+Repeating the same contracted call with the same idempotency key reuses the
+unexpired plan. Runtime verifies the Ed25519 signature and exact binding to the
+tenant, profile, signed-in operator, contract/policy digests, normalized
+parameter digest, target fingerprint, preconditions, impact preview and
+expiry. It consumes the approval once after TOCTOU revalidation and before
+PATCH. No MCP tool accepts an approval document or `approved=true`.
+
+The request contains digests, field names, permissions, roles and fences for
+operator review, but not the requested or previous Microsoft 365 values. The
+approval signer is separate from Governance signing material. Microsoft Entra
+permissions and admin consent remain manual and are never requested by either
+CLI.
+
+Upgrading from `0.9.0` to `0.10.0` does not change the signed contract or
+playbook manifest digests. Existing policies remain bound to the same global
+capabilities. Only tenants that select an `explicit_plan` override need the
+external approval broker; `standing_policy` behavior remains prompt-free.
+
 ## Selected administrative writes
 
 Administrative writes remain invisible until every layer agrees:
@@ -964,7 +1023,7 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 194 passed |
+| Tests | 200 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |

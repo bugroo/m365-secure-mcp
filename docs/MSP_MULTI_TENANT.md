@@ -183,7 +183,11 @@ remain private.
     `Directory.Read.All`.
 12. Discover candidates and manually place approved IDs in the policy.
 13. Run offline doctor again and compare the policy and manifest digests.
-14. Connect named MCP entries. Allow prompt-free execution only for exact T1
+14. If a customer policy hardens a write to `explicit_plan`, provision a
+    customer/profile-specific approval directory and Ed25519 verifier. Keep the
+    approval signer outside MCP runtime and separate from Governance signing.
+    Do not share its replay ledger across customers.
+15. Connect named MCP entries. Allow prompt-free execution only for exact T1
     tools covered by signed `standing_policy`; keep host approval for all
     higher-risk or not-yet-compiled write contracts.
 

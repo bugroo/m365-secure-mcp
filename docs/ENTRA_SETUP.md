@@ -186,6 +186,12 @@ OAuth grant, grant admin consent, assign an app role, change a directory role,
 or activate PIM. Never add a permission only to suppress an error; map it to an
 enabled tool first.
 
+The optional Change-safe external approval broker adds no Microsoft Graph
+scope, Entra role, app registration or consent. Its Ed25519 authority is local
+to the host and must be separate from both the public-client registration and
+the Governance signer. `standing_policy` does not require this broker;
+configure it only for a signed `explicit_plan` override.
+
 ## 5. Conditional Access
 
 Recommended:

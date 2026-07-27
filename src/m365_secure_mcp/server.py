@@ -18,6 +18,7 @@ from mcp.types import ToolAnnotations
 from .assurance import AssuranceSnapshotStore
 from .auth import TokenProvider
 from .catalog import register_catalog_tools
+from .change_safe import ExternalApprovalBroker
 from .config import Module, Profile, Settings
 from .contract_manifest import (
     ContractManifest,
@@ -217,6 +218,7 @@ class Services:
     governance: VerifiedGovernancePolicy | None = None
     recovery: RecoveryCapsuleStore | None = None
     assurance_snapshots: AssuranceSnapshotStore | None = None
+    approval_broker: ExternalApprovalBroker | None = None
 
     @property
     def write_attempt_count(self) -> int:
@@ -2162,6 +2164,7 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
             runtime_policy=services.policy,
             governance=services.governance,
             recovery=services.recovery,
+            approval_broker=services.approval_broker,
         )
 
         async def operation() -> str:
@@ -3892,6 +3895,18 @@ def create_server(settings: Settings) -> FastMCP:
             powerbi_tokens,
             ensure_principal=graph.ensure_principal,
         )
+    approval_broker = None
+    if settings.external_approval_configured:
+        if (
+            settings.approval_broker_dir is None
+            or settings.approval_public_key_path is None
+        ):
+            raise RuntimeError("external approval configuration is incomplete")
+        approval_broker = ExternalApprovalBroker(
+            directory=settings.approval_broker_dir,
+            public_key_path=settings.approval_public_key_path,
+            deployment_namespace=settings.deployment_namespace,
+        )
     services = Services(
         settings=settings,
         policy=policy,
@@ -3915,6 +3930,7 @@ def create_server(settings: Settings) -> FastMCP:
             else None
         ),
         powerbi=powerbi,
+        approval_broker=approval_broker,
     )
     runner = ToolRunner(services)
 

@@ -331,6 +331,8 @@ class Settings(BaseSettings):
     idempotency_db_path: Path | None = None
     governance_policy_path: Path | None = None
     governance_public_key_path: Path | None = None
+    approval_broker_dir: Path | None = None
+    approval_public_key_path: Path | None = None
     assurance_snapshot_path: Path | None = None
     assurance_max_pages_per_domain: int = Field(default=100, ge=1, le=500)
     assurance_max_records_per_domain: int = Field(
@@ -776,6 +778,15 @@ class Settings(BaseSettings):
         overlap = enabled_tools & disabled_tools
         if overlap:
             raise ValueError(f"tools cannot be both enabled and disabled: {sorted(overlap)}")
+        if (self.approval_broker_dir is None) != (
+            self.approval_public_key_path is None
+        ):
+            raise ValueError(
+                "external approval requires both M365_APPROVAL_BROKER_DIR "
+                "and M365_APPROVAL_PUBLIC_KEY_PATH"
+            )
+        if self.approval_broker_dir is not None and self.profile is not Profile.WRITE:
+            raise ValueError("external approval broker is valid only in a write process")
         return self
 
     @property
@@ -1080,6 +1091,13 @@ class Settings(BaseSettings):
             )
         )
 
+    @property
+    def external_approval_configured(self) -> bool:
+        return bool(
+            self.approval_broker_dir is not None
+            and self.approval_public_key_path is not None
+        )
+
     def public_summary(self) -> dict[str, object]:
         """Return a configuration summary that never includes credentials or tokens."""
 
@@ -1134,6 +1152,9 @@ class Settings(BaseSettings):
             "signed_governance_policy_configured": bool(
                 self.governance_policy_path
                 and self.governance_public_key_path
+            ),
+            "external_approval_broker_configured": (
+                self.external_approval_configured
             ),
             "assurance_snapshot_local_encryption": (
                 "ephemeral"
@@ -1226,6 +1247,9 @@ class Settings(BaseSettings):
                 self.governance_policy_path
                 and self.governance_public_key_path
             ),
+            "external_approval_broker_configured": (
+                self.external_approval_configured
+            ),
             "assurance_snapshot_local_encryption": (
                 "ephemeral"
                 if self.token_cache_mode == "memory"  # noqa: S105
@@ -1306,6 +1330,9 @@ class Settings(BaseSettings):
             "write_actions": sorted(self.enabled_write_actions),
             "privileged_modules_enabled": self.privileged_modules_enabled,
             "privileged_writes_enabled": self.privileged_writes_enabled,
+            "external_approval_broker_configured": (
+                self.external_approval_configured
+            ),
             "tool_allowlist": sorted(self.tool_allowlist),
             "tool_denylist": sorted(self.tool_denylist),
             "graph_timeout_seconds": self.graph_timeout_seconds,
@@ -1329,6 +1356,16 @@ class Settings(BaseSettings):
             "governance_public_key_path": (
                 str(self.governance_public_key_path.expanduser())
                 if self.governance_public_key_path is not None
+                else None
+            ),
+            "approval_broker_dir": (
+                str(self.approval_broker_dir.expanduser())
+                if self.approval_broker_dir is not None
+                else None
+            ),
+            "approval_public_key_path": (
+                str(self.approval_public_key_path.expanduser())
+                if self.approval_public_key_path is not None
                 else None
             ),
             "assurance_snapshot_path": str(

@@ -44,6 +44,7 @@ def write_signed_governance(
     application_credential_baseline: ApplicationCredentialBaseline | None = None,
     application_id: str | None = None,
     enable_workload_identity_readiness: bool = False,
+    write_window_utc: str | None = None,
 ) -> tuple[Path, Path]:
     """Create owner-only test policy material outside the repository."""
 
@@ -62,7 +63,8 @@ def write_signed_governance(
             ]
         ),
         GovernanceProfileName.ROUTINE_WRITE: GovernanceProfile(
-            enabled_contracts=[write_contract] if enable_write_contract else []
+            enabled_contracts=[write_contract] if enable_write_contract else [],
+            write_window_utc=write_window_utc,
         ),
         GovernanceProfileName.PRIVILEGED_READ: GovernanceProfile(
             enabled_contracts=[

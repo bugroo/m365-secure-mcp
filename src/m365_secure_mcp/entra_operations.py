@@ -5,10 +5,17 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Literal
-from uuid import UUID, uuid4
+from uuid import UUID
 
+from .change_safe import (
+    ChangeSafeOperator,
+    ChangeSafePlan,
+    ExternalApprovalBroker,
+    GovernedOperationError,
+    GovernedWriteUncertainError,
+)
 from .config import Settings
 from .contract_manifest import (
     AuthorizationMode,
@@ -24,8 +31,6 @@ from .governance import (
 from .graph import GraphClient, GraphError
 from .models import UpdateEntraUserOperationalProfileInput
 from .operations import (
-    ChangeRecord,
-    GovernedReceipt,
     OperationRecord,
     OperationStatus,
     PermissionImpactPreview,
@@ -65,24 +70,6 @@ EXCLUDED_CAPABILITIES = [
 ]
 
 
-class GovernedOperationError(SecurityError):
-    """A pre-write governed outcome carrying deterministic operator guidance."""
-
-    def __init__(self, message: str, operation_record: OperationRecord) -> None:
-        super().__init__(message)
-        self.operation_record = operation_record
-        self.reason_code = operation_record.reason_code
-
-
-class GovernedWriteUncertainError(WriteVerificationError):
-    """A Graph write may have committed but verification did not prove it."""
-
-    def __init__(self, message: str, operation_record: OperationRecord) -> None:
-        super().__init__(message)
-        self.operation_record = operation_record
-        self.reason_code = operation_record.reason_code
-
-
 @dataclass(frozen=True)
 class UserSnapshot:
     user_id: str
@@ -106,16 +93,7 @@ class UserSnapshot:
         )
 
 
-@dataclass(frozen=True)
-class OperationalProfilePlan:
-    plan_id: UUID
-    expires_at: datetime
-    snapshot: UserSnapshot
-    requested: dict[str, str]
-    changed_fields: list[str]
-    permission_impact: PermissionImpactPreview
-    authorization: AuthorizationDecision
-    contract_digest: str
+OperationalProfilePlan = ChangeSafePlan[UserSnapshot]
 
 
 class EntraOperationalProfileService:
@@ -129,12 +107,18 @@ class EntraOperationalProfileService:
         runtime_policy: SecurityPolicy,
         governance: VerifiedGovernancePolicy,
         recovery: RecoveryCapsuleStore,
+        approval_broker: ExternalApprovalBroker | None = None,
     ) -> None:
         self.settings = settings
         self.graph = graph
         self.runtime_policy = runtime_policy
         self.governance = governance
         self.recovery = recovery
+        self.change_safe = ChangeSafeOperator(
+            tenant_id=settings.tenant_id,
+            deployment_namespace=settings.deployment_namespace,
+            approval_broker=approval_broker,
+        )
 
     @staticmethod
     def contract() -> ContractSpec:
@@ -145,16 +129,9 @@ class EntraOperationalProfileService:
         contract: ContractSpec,
         changed_fields: list[str],
     ) -> PermissionImpactPreview:
-        return PermissionImpactPreview(
-            contract_id=contract.id,
-            risk_tier=contract.risk_tier,
-            graph_method=contract.graph.method,
-            graph_endpoint_template=contract.graph.endpoint,
-            delegated_scopes=contract.permissions.delegated_scopes,
-            operator_roles=contract.permissions.operator_roles,
-            target_count=1,
+        return self.change_safe.permission_impact(
+            contract,
             changed_fields=changed_fields,
-            fences=contract.resource_fences,
             excludes=EXCLUDED_CAPABILITIES,
         )
 
@@ -237,6 +214,12 @@ class EntraOperationalProfileService:
                 raise ValueError("operational profile values must be strings")
             requested[graph_name] = value
         return requested
+
+    def _target_fingerprint(self, user_id: str) -> str:
+        digest = hashlib.sha256(
+            f"{self.settings.deployment_namespace}:{user_id}".encode()
+        ).hexdigest()
+        return f"sha256:{digest}"
 
     async def _read_user(self, user_id: str) -> UserSnapshot:
         endpoint = f"/users/{path_segment(user_id)}"
@@ -358,23 +341,17 @@ class EntraOperationalProfileService:
         new_plan_required: bool,
         evidence_reference: str,
     ) -> OperationRecord:
-        return OperationRecord(
+        if authorization != plan.authorization:
+            raise SecurityError("operation record authorization changed unexpectedly")
+        return self.change_safe.base_record(
             status=status,
             reason_code=reason_code,
             operator_action=operator_action,
             responsible_party=responsible_party,
-            authorization_mode=authorization.mode,
-            authorization_basis=authorization.basis,
-            required_profile=authorization.profile.value,
-            policy_change_required=False,
-            contract_change_required=False,
-            new_plan_required=new_plan_required,
-            safe_to_retry=safe_to_retry,
+            plan=plan,
             evidence_reference=evidence_reference,
-            plan_id=plan.plan_id,
-            plan_expires_at=plan.expires_at,
-            permission_impact=plan.permission_impact,
-            changed_fields=plan.changed_fields,
+            safe_to_retry=safe_to_retry,
+            new_plan_required=new_plan_required,
         )
 
     async def preflight(
@@ -411,6 +388,7 @@ class EntraOperationalProfileService:
             target_user_id=user_id,
             local_target_user_ids=self.settings.target_user_ids,
         )
+        principal = await self.graph.ensure_principal()
         requested = self._requested(params)
         changed_fields = sorted(requested)
         permission_impact = self._permission_impact(contract, changed_fields)
@@ -424,15 +402,52 @@ class EntraOperationalProfileService:
         if not effective_changes:
             raise SecurityError("requested operational profile already matches Graph")
         now = datetime.now(UTC)
-        return OperationalProfilePlan(
-            plan_id=uuid4(),
-            expires_at=now + timedelta(seconds=contract.plan_ttl_seconds),
+        return self.change_safe.build_plan(
+            contract=contract,
+            authorization=authorization,
+            operator_id=principal.object_id,
+            idempotency_key=params.idempotency_key,
             snapshot=snapshot,
+            precondition_digest=snapshot.digest,
             requested=requested,
+            normalized_parameters=params.model_dump(mode="json"),
+            target_fingerprint=self._target_fingerprint(user_id),
             changed_fields=sorted(effective_changes),
             permission_impact=permission_impact,
-            authorization=authorization,
-            contract_digest=sha256_digest(contract),
+            now=now,
+        )
+
+    async def preview(
+        self,
+        params: UpdateEntraUserOperationalProfileInput,
+        *,
+        operation_id: UUID,
+    ) -> OperationRecord:
+        """Run the complete non-write plan path without simulating Graph effect."""
+
+        plan = await self.preflight(params)
+        record = self.change_safe.base_record(
+            status=OperationStatus.CANCELLED_BEFORE_EFFECT,
+            reason_code="PREFLIGHT_COMPLETE_NO_EFFECT",
+            operator_action=(
+                "Review the impact preview. No write was attempted; execute the "
+                "same contracted operation only while its preconditions remain fresh."
+            ),
+            responsible_party=ResponsibleParty.OPERATOR,
+            plan=plan,
+            evidence_reference=f"operation:{operation_id}",
+            safe_to_retry=True,
+            new_plan_required=False,
+        )
+        return record.model_copy(
+            update={
+                "details": {
+                    **record.details,
+                    "preflight_only": True,
+                    "graph_write_attempted": False,
+                    "graph_simulation_claimed": False,
+                }
+            }
         )
 
     async def execute(
@@ -485,36 +500,14 @@ class EntraOperationalProfileService:
             )
             raise GovernedOperationError(str(exc), record) from exc
         evidence_reference = f"operation:{operation_id}"
-        if plan.authorization.mode is not AuthorizationMode.STANDING_POLICY:
-            record = self._base_record(
-                status=OperationStatus.AWAITING_APPROVAL,
-                reason_code="HOST_APPROVAL_REQUIRED",
-                operator_action=(
-                    "Approve the exact plan through the host or external broker; "
-                    "approval is never accepted as a tool argument."
-                ),
-                responsible_party=ResponsibleParty.OPERATOR,
-                authorization=plan.authorization,
-                plan=plan,
-                safe_to_retry=False,
-                new_plan_required=False,
-                evidence_reference=evidence_reference,
-            )
-            raise GovernedOperationError("host approval is required", record)
-
-        if datetime.now(UTC) >= plan.expires_at:
-            record = self._base_record(
-                status=OperationStatus.PLAN_EXPIRED,
-                reason_code="PLAN_EXPIRED",
-                operator_action="Regenerate the plan from a fresh preflight.",
-                responsible_party=ResponsibleParty.OPERATOR,
-                authorization=plan.authorization,
-                plan=plan,
-                safe_to_retry=True,
-                new_plan_required=True,
-                evidence_reference=evidence_reference,
-            )
-            raise GovernedOperationError("operation plan expired", record)
+        approval = self.change_safe.authorization_gate(
+            plan,
+            evidence_reference=evidence_reference,
+        )
+        self.change_safe.ensure_fresh(
+            plan,
+            evidence_reference=evidence_reference,
+        )
 
         # TOCTOU revalidation: the signed policy, contract digest, local fence,
         # user source of authority, role status, and current profile are all
@@ -567,6 +560,28 @@ class EntraOperationalProfileService:
             previous_profile=plan.snapshot.profile,
             requested_profile=plan.requested,
         )
+        # Approval is consumed only after every TOCTOU check and recovery
+        # precondition passes, but before the first effectful Graph call.
+        try:
+            self.change_safe.consume_approval(approval)
+        except SecurityError as exc:
+            raise GovernedOperationError(
+                str(exc),
+                self._base_record(
+                    status=OperationStatus.BLOCKED_PRECONDITION,
+                    reason_code="EXTERNAL_APPROVAL_REPLAY_REJECTED",
+                    operator_action=(
+                        "Do not reuse this approval. Generate a new plan and "
+                        "obtain a new external signature."
+                    ),
+                    responsible_party=ResponsibleParty.OPERATOR,
+                    authorization=plan.authorization,
+                    plan=plan,
+                    safe_to_retry=False,
+                    new_plan_required=True,
+                    evidence_reference=evidence_reference,
+                ),
+            ) from exc
         endpoint = f"/users/{path_segment(str(params.user_id))}"
         try:
             await self.graph.request_json(
@@ -576,18 +591,13 @@ class EntraOperationalProfileService:
             )
         except GraphError as exc:
             if exc.write_may_have_committed:
-                uncertain = self._base_record(
-                    status=OperationStatus.EXECUTED_UNCERTAIN,
+                uncertain = self.change_safe.uncertain_record(
+                    plan=plan,
+                    evidence_reference=evidence_reference,
                     reason_code="GRAPH_WRITE_OUTCOME_UNCERTAIN",
                     operator_action=(
                         "Perform a read-only verification; do not retry the write."
                     ),
-                    responsible_party=ResponsibleParty.OPERATOR,
-                    authorization=plan.authorization,
-                    plan=plan,
-                    safe_to_retry=False,
-                    new_plan_required=False,
-                    evidence_reference=evidence_reference,
                 )
                 raise GovernedWriteUncertainError(str(exc), uncertain) from exc
             exc.operation_record = self._base_record(  # type: ignore[attr-defined]
@@ -611,78 +621,23 @@ class EntraOperationalProfileService:
                         f"post-read did not confirm requested field '{field}'"
                     )
         except Exception as exc:
-            uncertain = self._base_record(
-                status=OperationStatus.EXECUTED_UNCERTAIN,
+            uncertain = self.change_safe.uncertain_record(
+                plan=plan,
+                evidence_reference=evidence_reference,
                 reason_code="POST_READ_VERIFICATION_FAILED",
                 operator_action=(
                     "Inspect the user with a read-only contract; do not repeat the write."
                 ),
-                responsible_party=ResponsibleParty.OPERATOR,
-                authorization=plan.authorization,
-                plan=plan,
-                safe_to_retry=False,
-                new_plan_required=False,
-                evidence_reference=evidence_reference,
             )
             raise GovernedWriteUncertainError(str(exc), uncertain) from exc
 
-        created_at = datetime.now(UTC)
-        target_fingerprint = hashlib.sha256(
-            (
-                f"{self.settings.deployment_namespace}:"
-                f"{params.user_id}"
-            ).encode()
-        ).hexdigest()
-        change = ChangeRecord(
+        return self.change_safe.verified_record(
             operation_id=operation_id,
-            contract_id=CONTRACT_ID,
-            contract_digest=plan.contract_digest,
-            policy_digest=plan.authorization.policy_digest,
-            target_fingerprint=f"sha256:{target_fingerprint}",
-            changed_fields=plan.changed_fields,
-            authorization_mode=plan.authorization.mode,
-            authorization_basis=plan.authorization.basis,
-            verification=refreshed_contract.verification,
-            compensation=refreshed_contract.compensation.value,
-            recovery_capsule_reference=capsule_reference,
-            created_at=created_at,
-        )
-        receipt = GovernedReceipt(
-            operation_id=operation_id,
-            contract_id=CONTRACT_ID,
-            status=OperationStatus.EXECUTED_VERIFIED,
-            contract_digest=plan.contract_digest,
-            policy_digest=plan.authorization.policy_digest,
-            authorization_basis=plan.authorization.basis,
-            verification=refreshed_contract.verification,
-            change_record_reference=f"change:{operation_id}",
+            plan=plan,
+            contract=refreshed_contract,
             evidence_reference=evidence_reference,
-            created_at=created_at,
-        )
-        return OperationRecord(
-            status=OperationStatus.EXECUTED_VERIFIED,
-            reason_code="POST_READ_MATCHED",
-            operator_action="No further action is required.",
-            responsible_party=ResponsibleParty.NONE,
-            authorization_mode=plan.authorization.mode,
-            authorization_basis=plan.authorization.basis,
-            required_profile=plan.authorization.profile.value,
-            policy_change_required=False,
-            contract_change_required=False,
-            new_plan_required=False,
-            safe_to_retry=False,
-            evidence_reference=evidence_reference,
-            plan_id=plan.plan_id,
-            plan_expires_at=plan.expires_at,
-            permission_impact=plan.permission_impact,
-            changed_fields=plan.changed_fields,
-            receipt=receipt,
-            change_record=change,
-            details={
-                "target_count": 1,
-                "stored_m365_values_in_receipt": False,
-                "admin_consent_is_manual": True,
-            },
+            target_fingerprint=self._target_fingerprint(str(params.user_id)),
+            capsule_reference=capsule_reference,
         )
 
 

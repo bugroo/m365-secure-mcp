@@ -110,6 +110,50 @@ tenant-neutral template instead of using this excerpt as a full policy.
 Governance must sign a new policy version after any selection, fence, baseline
 or digest changes.
 
+## External exact-plan approval
+
+`standing_policy` is the default for the compiled T1 operational-profile
+contract and requires no per-call dialog. These settings are needed only when
+signed Governance tightens that contract to `explicit_plan`:
+
+| Variable | Required together | Meaning |
+|---|---:|---|
+| `M365_APPROVAL_BROKER_DIR` | yes | Owner-only exchange directory for private plan requests, signed approvals and the replay ledger |
+| `M365_APPROVAL_PUBLIC_KEY_PATH` | yes | Owner-only Ed25519 verifier for the external host/broker authority |
+
+The pair is valid only in a write process. A partial pair or use in a read
+process stops startup. The approval signing key is not runtime configuration
+and must remain separate from the Governance signer.
+
+For an `explicit_plan` operation, runtime writes
+`<plan-id>.request.json` under the configured directory. The file binds tenant,
+deployment/profile, signed-in operator, contract and policy digests, normalized
+parameter digest, target fingerprint, precondition digest, changed field names,
+Permission Impact Preview and expiry. It contains neither previous nor
+requested Microsoft 365 values.
+
+`m365-approval` is an external operator CLI. It never calls Graph, grants
+consent, changes policy or exposes an MCP tool:
+
+```bash
+m365-approval generate-key \
+  --signer "/private/m365/approval-signing.pem" \
+  --verifier "/private/m365/approval-signing.pub"
+
+m365-approval sign \
+  --request "/private/m365/approvals/<plan-id>.request.json" \
+  --signer "/private/m365/approval-signing.pem" \
+  --output "/private/m365/approvals/<plan-id>.approval.json" \
+  --key-id "approved-host-authority" \
+  --expected-plan-digest "sha256:<reviewed-plan-digest>"
+```
+
+Runtime accepts only an unexpired Ed25519 signature over the exact current
+plan, consumes the approval once in a tenant/profile-bound SQLite ledger, and
+burns it after all TOCTOU checks but before PATCH. A stale, changed, replayed or
+cross-deployment artifact fails closed. Approval is never a model-controlled
+parameter.
+
 ## Surface selection
 
 | Variable | Default | Meaning |

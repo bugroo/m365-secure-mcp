@@ -291,7 +291,7 @@ async def test_owner_secret_expiry_and_redundancy_findings_are_deterministic(
                 "keyId": PASSWORD_KEY_ID,
                 "startDateTime": _timestamp(-90),
                 "endDateTime": _timestamp(-1),
-                "hint": "abc",
+                    "hint": "sensitive-hint-do-not-return-7f91",
                 "secretText": None,
             }
         ],
@@ -331,7 +331,7 @@ async def test_owner_secret_expiry_and_redundancy_findings_are_deterministic(
     for excluded in (
         PASSWORD_KEY_ID,
         CERTIFICATE_KEY_ID,
-        "abc",
+            "sensitive-hint-do-not-return-7f91",
         "discarded-thumbprint",
     ):
         assert excluded not in public_result

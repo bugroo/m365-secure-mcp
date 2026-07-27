@@ -35,6 +35,24 @@ def test_default_is_minimal_read_profile() -> None:
     assert settings.permission_grant_mode == "admin_preconsented"
 
 
+def test_external_approval_broker_requires_both_paths_and_write_process(
+    tmp_path,
+) -> None:
+    with pytest.raises(ValidationError, match="requires both"):
+        make_settings(
+            profile="write",
+            write_enabled=True,
+            write_actions="mail.create_draft",
+            allowed_recipient_domains="example.com",
+            approval_broker_dir=tmp_path / "approval",
+        )
+    with pytest.raises(ValidationError, match="only in a write process"):
+        make_settings(
+            approval_broker_dir=tmp_path / "approval",
+            approval_public_key_path=tmp_path / "approval.pub",
+        )
+
+
 def test_dynamic_user_consent_is_not_a_supported_mode() -> None:
     with pytest.raises(ValidationError, match="admin_preconsented"):
         make_settings(permission_grant_mode="dynamic")

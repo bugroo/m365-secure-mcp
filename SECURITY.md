@@ -181,6 +181,17 @@ the blast radius of:
 - Approval is never a tool parameter or model-controlled boolean. The T1 Entra
   vertical slice needs no per-call prompt under a valid signed standing policy;
   an `explicit_plan` override returns `AWAITING_APPROVAL` before mutation.
+- The Change-safe operator derives a stable plan ID from the tenant/profile
+  deployment namespace, fixed contract and caller idempotency key. The private
+  plan binds operator, contract/policy digests, normalized parameter digest,
+  target fingerprint, precondition digest, Permission Impact Preview and
+  expiry; requested/previous M365 values are not written into approval files.
+- External approval uses a separate Ed25519 trust anchor and owner-only broker
+  directory. Runtime consumes a verified approval once in a deployment-bound
+  SQLite replay ledger after TOCTOU validation and before the Graph write.
+  Expired, tampered, replayed or cross-plan artifacts fail closed.
+- The non-write preview path completes preflight and impact calculation, calls
+  no write endpoint and explicitly denies that it is a provider simulation.
 - `entra.user.operational_profile.update` accepts only `department`,
   `jobTitle`, and `officeLocation`. It rejects guests, synchronized users,
   protected users, active/eligible directory-role principals and members of
@@ -256,6 +267,9 @@ the blast radius of:
 - Tenant Governance policies use an external Ed25519 trust anchor and
   owner-only files. Runtime re-reads and verifies policy and manifest before
   the write, and rejects any digest change after preflight.
+- The optional exact-plan approver is an independent external authority.
+  `m365-approval` can create encrypted signing material and sign/verify private
+  plan requests, but it cannot call Graph, edit Governance or grant consent.
 - The MCP has no auto-update, dynamic tool registration, dynamic consent,
   arbitrary Graph proxy, or learned policy mutation path.
 

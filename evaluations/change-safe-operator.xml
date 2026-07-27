@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <metadata>
+    <name>Change-safe operator security properties</name>
+    <version>1.0</version>
+    <contains_tenant_data>false</contains_tenant_data>
+  </metadata>
+  <qa_pair>
+    <question>What authorization mode lets the bounded T1 write execute without a per-call approval?</question>
+    <answer>standing_policy</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What state is returned while an exact external approval is missing?</question>
+    <answer>AWAITING_APPROVAL</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Can the model submit an approved boolean or approval document as a tool argument?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which algorithm signs an external exact-plan approval?</question>
+    <answer>Ed25519</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>How many times may one verified approval grant be consumed?</question>
+    <answer>1</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Does preflight-only mode claim to simulate a Microsoft Graph write?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What state is used when a write may have committed but readback cannot prove it?</question>
+    <answer>EXECUTED_UNCERTAIN</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Is an EXECUTED_UNCERTAIN write safe to retry automatically?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>When is an external approval consumed relative to the first effectful Graph call?</question>
+    <answer>after TOCTOU revalidation and before effect</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Who manually grants Microsoft Entra consent for the contract scopes?</question>
+    <answer>tenant administrator</answer>
+  </qa_pair>
+</evaluation>

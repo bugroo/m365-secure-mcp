@@ -44,3 +44,27 @@ def test_workload_readiness_evaluation_is_stable_read_only_and_complete() -> Non
         "privileged-read",
         "false",
     }.issubset(set(answers))
+
+
+def test_change_safe_evaluation_is_stable_and_has_no_model_approval() -> None:
+    root = Path(__file__).resolve().parents[1]
+    evaluation = ElementTree.parse(  # noqa: S314 - committed local fixture
+        root / "evaluations/change-safe-operator.xml"
+    ).getroot()
+    pairs = evaluation.findall("qa_pair")
+
+    assert len(pairs) == 10
+    questions = [(pair.findtext("question") or "").strip() for pair in pairs]
+    answers = [(pair.findtext("answer") or "").strip() for pair in pairs]
+    assert all(questions)
+    assert all(answers)
+    assert len(questions) == len(set(questions))
+    assert {
+        "standing_policy",
+        "AWAITING_APPROVAL",
+        "Ed25519",
+        "1",
+        "EXECUTED_UNCERTAIN",
+        "tenant administrator",
+    }.issubset(set(answers))
+    assert answers.count("false") == 3

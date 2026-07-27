@@ -1,7 +1,7 @@
 {
   "builder": "m365_secure_mcp.contract_compiler",
   "compiler_version": "1.1",
-  "dependency_lock_digest": "sha256:8e0c40c88b7a56662e22c40994d83d76faba5c76b5155b8f7ec39898144e0bf7",
+  "dependency_lock_digest": "sha256:4e801a13c5f513b2660d348b5283023b1bea0234173957fbb4b085c1d693b803",
   "manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
   "manifest_signature_required": true,
   "playbook_manifest_digest": "sha256:13a3dada2e106bc8f56f35301e4b57e601a75668adebe73be07b829d39819ca4",
