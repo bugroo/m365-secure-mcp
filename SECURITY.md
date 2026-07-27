@@ -28,9 +28,10 @@ the blast radius of:
    and therefore needs independent local gates. T1 can use an administrator-
    signed standing policy; higher tiers require host approval or stronger
    authorization.
-6. **Build/Governance → runtime.** A pinned signed global manifest defines
-   contract floors. A separate signed tenant policy can select resources and
-   harden authorization, but runtime cannot edit or sign either authority.
+6. **Build/Governance → runtime.** Independently pinned and signed global
+   manifests define contract floors, playbook DAGs and tenant-neutral posture
+   controls. A separate signed tenant policy can select resources and harden
+   authorization, but runtime cannot edit or sign any authority.
 7. **Assurance evidence → operator.** Conditional Access, directory roles,
    application permission grants, credentials and ownership are sensitive.
    Runtime returns only metrics, deterministic findings, public permission
@@ -124,6 +125,17 @@ the blast radius of:
 - Playbook DAGs are signed tenant-neutral build artifacts. Every node resolves
   to a compiled contract, and runtime cannot add a node, edge, scope, Graph
   endpoint or output field from tenant data.
+- Posture control definitions use an independent signed manifest and a closed
+  evaluator-ID enum. Definitions contain no executable expressions, severity,
+  tenant selectors, Graph calls or customer policy. Unverified framework
+  mappings cannot be published by the compiler.
+- Control signing is an explicit offline operator command, separate from
+  compile/check and MCP runtime. It accepts only an encrypted Ed25519 signer
+  from an owner-only external path and refuses a key ID, public key or lifecycle
+  state that does not match the reviewed source trust metadata.
+- The control trust ring has exactly one current key. Retired public keys are
+  retained only for closed historical manifest digests; compromised keys are
+  never accepted. Production and ephemeral test authorities cannot be mixed.
 - Pagination links are validated against the Graph v1.0 egress allowlist and
   wrapped in a process-local HMAC cursor bound to the originating tool.
 - Tool outputs are capped below common MCP client warning thresholds.
@@ -188,6 +200,11 @@ the blast radius of:
   dependency lock digest and package version. Doctor compares installed
   runtime dependency versions with that SBOM; external release
   signature/attestation remains an install-pipeline responsibility.
+- Local compiler provenance is explicitly `local-unattested`,
+  `not-a-release`, and `external-required`. Local wheel/sdist builds are not
+  release attestations. A future protected release workflow must replace the
+  source-revision placeholder and bind tagged source, archives, attestation,
+  SBOM and the signed control-manifest digest before publication.
 - Filesystem checks inspect metadata only for explicit configuration paths and
   application-owned audit, receipt, snapshot, recovery and approval paths.
   There is no recursive directory traversal, home-directory search, secret

@@ -47,6 +47,20 @@ async def test_offline_doctor_is_secret_free_and_reports_exact_surface(
     assert checks["private_state_paths"]["status"] == "pass"
     assert checks["private_api_scope"]["evidence"]["scopes"] == ["User.Read"]
     assert checks["release_integrity"]["status"] == "pass"
+    assert checks["release_integrity"]["evidence"][
+        "control_manifest_signature_verified"
+    ] is True
+    assert checks["release_integrity"]["evidence"][
+        "packaged_evidence_files"
+    ] == 5
+    assert (
+        checks["release_integrity"]["evidence"]["build_kind"]
+        == "local-unattested"
+    )
+    assert (
+        checks["release_integrity"]["evidence"]["distribution_status"]
+        == "not-a-release"
+    )
     assert checks["profile_isolation"]["status"] == "pass"
     assert checks["effective_scope_closure"]["status"] == "pass"
     assert all(check["operator_action"] for check in report["checks"])
