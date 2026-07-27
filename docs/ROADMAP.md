@@ -274,7 +274,8 @@ Completion evidence:
 
 #### 7. Posture control library — 5 points
 
-**M1 build-plane foundation completed; runtime evaluation remains planned.**
+**M1 build-plane foundation and M2 Governance v2 completed; M3 runtime
+evaluation remains planned.**
 
 Generalize deterministic controls and baseline exceptions across Entra first,
 then sharing, endpoint and security domains. Map evidence to current Microsoft
@@ -305,6 +306,39 @@ M1.1 hardens only the signing lifecycle: external encrypted signer input,
 current/retired/compromised public-key metadata, closed historical verification,
 direct-cutover rotation, local-build provenance labels and an explicit future
 release gate. It does not begin Governance v2 or runtime control evaluation.
+
+Implemented in M2:
+
+- backward-compatible signed Governance schemas `1.0` and `2.0`, with no
+  automatic migration or v2-to-v1 fallback;
+- exact control-manifest digest/schema/library and definition-major binding;
+- explicit enabled controls and mandatory customer severity;
+- deterministic public freshness ceilings that customer policy may only
+  tighten, supplied for M1 by canonically digested compatibility metadata
+  pinned in the signed Governance v2 policy;
+- exact tenant/profile-fenced, signed and expiring exceptions with
+  deterministic matching primitives;
+- fail-closed CLI and diagnostics validation without private identifier output;
+- no ControlEngine, evidence timestamp inspection, assessment output, Graph
+  endpoint, permission, write or remediation change.
+
+M2.1 hardens the temporary M1 freshness bridge. M1 itself has no signed
+freshness field, so the bridge remains explicitly separate from the signed
+definitions. Its schema, exact manifest coverage and content digest are
+compiled into diagnostics, generated artifacts, local provenance and SBOM
+metadata. A future reviewed control-manifest rotation will move freshness into
+the signed definitions; M3 remains unstarted.
+
+Next milestone (M3):
+
+- implement the deterministic ControlEngine over existing bounded Assurance
+  evidence;
+- preserve `not_evaluated` for missing, stale, unlicensed, unscoped or
+  incomplete evidence;
+- consume Governance v2 severity, freshness and effective exceptions without
+  allowing runtime policy mutation;
+- emit bounded assessment results with opaque evidence references and retain
+  normalized detail only in the encrypted tenant-local capsule.
 
 Depends on: items 1 and 4.
 

@@ -51,6 +51,9 @@ async def test_offline_doctor_is_secret_free_and_reports_exact_surface(
         "control_manifest_signature_verified"
     ] is True
     assert checks["release_integrity"]["evidence"][
+        "control_compatibility_digest"
+    ].startswith("sha256:")
+    assert checks["release_integrity"]["evidence"][
         "packaged_evidence_files"
     ] == 5
     assert (

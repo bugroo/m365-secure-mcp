@@ -25,10 +25,16 @@ from .config import (
     Settings,
 )
 from .contract_manifest import load_global_manifest, sha256_digest
+from .control_compatibility import (
+    control_compatibility_digest,
+    load_control_compatibility_metadata,
+)
 from .control_manifest import load_global_control_manifest
 from .governance import (
+    GovernancePolicyV2,
     GovernanceProfileName,
     load_verified_governance_policy,
+    resolve_control_library_configuration,
     validate_policy_against_manifest,
 )
 from .graph import GRAPH_BASE_URL, GraphClient, classify_agent_error
@@ -95,6 +101,7 @@ def _release_integrity_check() -> dict[str, Any]:
         "contract_manifest_signature_verified": False,
         "playbook_manifest_signature_verified": False,
         "control_manifest_signature_verified": False,
+        "control_compatibility_digest": None,
         "packaged_evidence_files": 0,
         "runtime_dependencies_checked": 0,
         "external_release_attestation_required": True,
@@ -108,6 +115,9 @@ def _release_integrity_check() -> dict[str, Any]:
         evidence["playbook_manifest_signature_verified"] = True
         controls = load_global_control_manifest()
         evidence["control_manifest_signature_verified"] = True
+        compatibility = load_control_compatibility_metadata(controls)
+        compatibility_digest = control_compatibility_digest(compatibility)
+        evidence["control_compatibility_digest"] = compatibility_digest
         contract_digests = _release_document("contract-digests.json")
         playbook_digests = _release_document("playbook-digests.json")
         control_digests = _release_document("control-digests.json")
@@ -145,11 +155,29 @@ def _release_integrity_check() -> dict[str, Any]:
             issues.append("control digest artifact does not match signed manifest")
         if control_digests.get("controls") != expected_controls:
             issues.append("one or more packaged control digests do not match")
+        if (
+            control_digests.get("control_compatibility_schema_version")
+            != compatibility.schema_version
+        ):
+            issues.append(
+                "control compatibility schema does not match packaged metadata"
+            )
+        if (
+            control_digests.get("control_compatibility_digest")
+            != compatibility_digest
+        ):
+            issues.append(
+                "control compatibility digest does not match packaged metadata"
+            )
 
         expected_provenance = {
             "manifest_digest": sha256_digest(manifest),
             "playbook_manifest_digest": sha256_digest(playbooks),
             "control_manifest_digest": sha256_digest(controls),
+            "control_compatibility_schema_version": (
+                compatibility.schema_version
+            ),
+            "control_compatibility_digest": compatibility_digest,
             "contract_digests_digest": sha256_digest(contract_digests),
             "playbook_digests_digest": sha256_digest(playbook_digests),
             "control_digests_digest": sha256_digest(control_digests),
@@ -194,6 +222,26 @@ def _release_integrity_check() -> dict[str, Any]:
             or component.get("version") != __version__
         ):
             issues.append("SBOM root component does not match runtime package")
+        component_properties = (
+            component.get("properties")
+            if isinstance(component, dict)
+            else None
+        )
+        properties = {
+            str(item.get("name")): str(item.get("value"))
+            for item in component_properties
+            if isinstance(item, dict)
+            and item.get("name") is not None
+            and item.get("value") is not None
+        } if isinstance(component_properties, list) else {}
+        if properties.get(
+            "m365-secure-mcp:control-compatibility-digest"
+        ) != compatibility_digest:
+            issues.append("SBOM does not bind control compatibility metadata")
+        if properties.get(
+            "m365-secure-mcp:control-manifest-digest"
+        ) != sha256_digest(controls):
+            issues.append("SBOM does not bind the signed control manifest")
         raw_components = sbom.get("components")
         if not isinstance(raw_components, list):
             raise ValueError("packaged SBOM components are invalid")
@@ -338,6 +386,11 @@ def _profile_isolation_check(settings: Settings) -> dict[str, Any]:
     )
     active_profile_compatible = True
     active_governance_profile: str | None = None
+    governance_schema_version: str | None = None
+    control_library_configured = False
+    enabled_control_count = 0
+    control_exception_count = 0
+    control_compatibility_digest_value: str | None = None
     if (
         settings.governance_policy_path is not None
         and settings.governance_public_key_path is not None
@@ -348,11 +401,25 @@ def _profile_isolation_check(settings: Settings) -> dict[str, Any]:
         )
         manifest = load_global_manifest()
         playbooks = load_global_playbook_manifest(manifest)
+        controls = load_global_control_manifest()
         validate_policy_against_manifest(
             verified.policy,
             manifest,
             playbooks,
+            controls,
         )
+        governance_schema_version = verified.policy.schema_version
+        if isinstance(verified.policy, GovernancePolicyV2):
+            control_configuration = resolve_control_library_configuration(
+                verified.policy,
+                controls,
+            )
+            control_library_configured = True
+            enabled_control_count = len(control_configuration.settings)
+            control_exception_count = len(control_configuration.exceptions)
+            control_compatibility_digest_value = (
+                control_configuration.compatibility_digest
+            )
         active = verified.policy.active_profile
         active_governance_profile = active.value
         allowed = (
@@ -393,6 +460,13 @@ def _profile_isolation_check(settings: Settings) -> dict[str, Any]:
                 active_governance_profile is not None
             ),
             "active_governance_profile": active_governance_profile,
+            "governance_schema_version": governance_schema_version,
+            "control_library_configured": control_library_configured,
+            "enabled_control_count": enabled_control_count,
+            "control_exception_count": control_exception_count,
+            "control_compatibility_digest": (
+                control_compatibility_digest_value
+            ),
             "runtime_profile_compatible": active_profile_compatible,
             "issues": issues,
         },

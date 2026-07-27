@@ -1,4 +1,6 @@
 {
+  "control_compatibility_digest": "sha256:741892a8dda46b4b468c0acd9b4b5f75230b4611001d41389c15e169e67c8d60",
+  "control_compatibility_schema_version": "1.0",
   "control_library_version": "1.0.0",
   "control_manifest_digest": "sha256:aab4fbabbf8757b6b2bf54bec9f23e60849807f65b5c0ec7deedbc9d9d7217d1",
   "controls": {

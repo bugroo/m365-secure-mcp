@@ -247,6 +247,14 @@ separate UUID allowlists and remain read-only in the MCP.
 | `M365_RECOVERY_CAPSULE_PATH` | platform path | Encrypted tenant-local compensation capsule |
 | `M365_RECOVERY_CAPSULE_TTL_SECONDS` | `604800` | Recovery-capsule retention metadata |
 
+The same paths accept Governance schema `1.0` or `2.0`. Version `2.0` adds
+signed Posture Control Library configuration without changing the existing
+contract/tool authorization surface; version `1.0` is not migrated
+automatically. A v2 policy must also pin the installed canonical M1 freshness
+compatibility digest; the CLI does not infer or migrate it. See
+[Signed tenant Governance](GOVERNANCE.md) and the
+[fabricated v2 template](../examples/governance-policy-v2.template.json).
+
 Known write actions:
 
 ```text

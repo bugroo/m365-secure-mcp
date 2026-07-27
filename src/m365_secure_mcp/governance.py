@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import base64
 import json
+import re
+from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from types import MappingProxyType
+from typing import Annotated, Final, Literal, Self
 from uuid import UUID
 
 from cryptography.exceptions import InvalidSignature
@@ -32,11 +35,52 @@ from .contract_manifest import (
     canonical_json,
     sha256_digest,
 )
+from .control_compatibility import (
+    MAX_CONTROL_EVIDENCE_AGE_SECONDS,
+    ControlCompatibilityMetadata,
+    control_compatibility_digest,
+    load_control_compatibility_metadata,
+)
+from .control_manifest import (
+    CONTROL_ID_PATTERN,
+    ControlLifecycleState,
+    ControlManifest,
+    load_global_control_manifest,
+)
 from .playbook_manifest import PlaybookManifest, PlaybookSpec
 from .security import PrivateStateError, SecurityError, read_private_file
 
 MAX_GOVERNANCE_POLICY_BYTES = 512_000
 MAX_PUBLIC_KEY_BYTES = 4_096
+
+CONTROL_EXCEPTION_SUBJECT_KINDS: Final[
+    Mapping[tuple[str, int], frozenset[str]]
+] = MappingProxyType(
+    {
+        ("entra.applications.active_credential_count", 1): frozenset(
+            {"application"}
+        ),
+        ("entra.applications.credential_expiry_posture", 1): frozenset(
+            {"application"}
+        ),
+        ("entra.applications.owner_coverage", 1): frozenset({"application"}),
+        ("entra.applications.password_credential_policy", 1): frozenset(
+            {"application"}
+        ),
+        ("entra.applications.permission_contract_closure", 1): frozenset(
+            {"service_principal"}
+        ),
+        ("entra.conditional_access.mfa_policy_coverage", 1): frozenset(
+            {"user", "group"}
+        ),
+        ("entra.directory_roles.permanent_active_assignment", 1): frozenset(
+            {"user", "group", "application", "service_principal"}
+        ),
+        ("entra.profiles.contract_closure", 1): frozenset({"profile"}),
+        ("entra.profiles.resource_fence_closure", 1): frozenset({"profile"}),
+        ("entra.profiles.scope_closure", 1): frozenset({"profile"}),
+    }
+)
 
 
 class GovernanceProfileName(StrEnum):
@@ -504,10 +548,168 @@ class ProfileDebtBaseline(StrictModel):
         return self
 
 
-class GovernancePolicy(StrictModel):
-    """Unsigned governance policy body; signatures wrap this exact object."""
+class ControlSeverity(StrEnum):
+    """Customer-approved authority for future Control Library assessments."""
 
-    schema_version: Literal["1.0"] = "1.0"
+    INFO = "info"
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+
+class ControlGovernanceSetting(StrictModel):
+    """Signed customer settings for one exact public control major version."""
+
+    definition_major_version: int = Field(ge=1, le=1_000_000)
+    severity: ControlSeverity
+    maximum_evidence_age_seconds: int | None = Field(
+        default=None,
+        strict=True,
+        ge=1,
+        le=MAX_CONTROL_EVIDENCE_AGE_SECONDS,
+    )
+    allow_control_wide_exception: bool = False
+
+
+class ControlWideSubjectSelector(StrictModel):
+    """Explicit selector for the whole control, disabled unless policy opts in."""
+
+    kind: Literal["control_wide"]
+
+
+class DirectoryObjectSubjectSelector(StrictModel):
+    """Exact tenant-fenced directory object selector; names and UPNs are absent."""
+
+    kind: Literal["user", "group", "application", "service_principal"]
+    object_id: UUID
+
+
+class ProfileSubjectSelector(StrictModel):
+    """Exact selector for the one active Governance profile."""
+
+    kind: Literal["profile"]
+    profile: GovernanceProfileName
+
+
+ControlExceptionSubject = Annotated[
+    ControlWideSubjectSelector
+    | DirectoryObjectSubjectSelector
+    | ProfileSubjectSelector,
+    Field(discriminator="kind"),
+]
+
+
+def _subject_key(subject: ControlExceptionSubject) -> tuple[str, str]:
+    if isinstance(subject, ControlWideSubjectSelector):
+        return (subject.kind, "*")
+    if isinstance(subject, ProfileSubjectSelector):
+        return (subject.kind, subject.profile.value)
+    return (subject.kind, str(subject.object_id))
+
+
+class ControlException(StrictModel):
+    """Exact, signed and expiring exception; never an authorization input."""
+
+    exception_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
+    control_id: str = Field(pattern=CONTROL_ID_PATTERN)
+    definition_major_version: int = Field(ge=1, le=1_000_000)
+    subject: ControlExceptionSubject
+    applies_to_status: Literal["not_aligned"]
+    rationale: str = Field(min_length=8, max_length=1_000)
+    approving_party_reference: str = Field(
+        pattern=r"^approver:[A-Za-z0-9][A-Za-z0-9_.:-]{2,127}$"
+    )
+    issued_at: datetime
+    expires_at: datetime
+
+    @field_validator("issued_at", "expires_at")
+    @classmethod
+    def timestamps_have_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("control exception timestamps must include a UTC offset")
+        return value
+
+    @model_validator(mode="after")
+    def expiry_follows_issuance(self) -> ControlException:
+        if self.expires_at <= self.issued_at:
+            raise ValueError("control exception expiry must follow issuance")
+        return self
+
+
+class ControlLibraryGovernance(StrictModel):
+    """Tenant-private binding and settings for the public Control Library."""
+
+    control_manifest_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    control_manifest_schema_version: Literal["1.0"]
+    control_library_version: str = Field(
+        pattern=r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$"
+    )
+    control_compatibility_digest: str = Field(
+        pattern=r"^sha256:[0-9a-f]{64}$"
+    )
+    enabled_control_ids: list[str] = Field(min_length=1, max_length=500)
+    controls: dict[str, ControlGovernanceSetting]
+    exceptions: list[ControlException] = Field(default_factory=list, max_length=1_000)
+
+    @field_validator("enabled_control_ids")
+    @classmethod
+    def normalize_enabled_control_ids(cls, value: list[str]) -> list[str]:
+        if len(value) != len(set(value)):
+            raise ValueError("enabled control IDs must be unique")
+        if any(re.fullmatch(CONTROL_ID_PATTERN, item) is None for item in value):
+            raise ValueError("enabled control ID is malformed")
+        return sorted(value)
+
+    @field_validator("exceptions")
+    @classmethod
+    def normalize_exceptions(
+        cls,
+        value: list[ControlException],
+    ) -> list[ControlException]:
+        exception_ids = [item.exception_id for item in value]
+        if len(exception_ids) != len(set(exception_ids)):
+            raise ValueError("control exception IDs must be unique")
+        return sorted(value, key=lambda item: item.exception_id)
+
+    @model_validator(mode="after")
+    def settings_and_exceptions_are_exact(self) -> ControlLibraryGovernance:
+        if set(self.controls) != set(self.enabled_control_ids):
+            raise ValueError(
+                "every enabled control requires exactly one signed control setting"
+            )
+        selector_groups: dict[tuple[str, int], list[tuple[str, str]]] = {}
+        for exception in self.exceptions:
+            setting = self.controls.get(exception.control_id)
+            if setting is None:
+                raise ValueError("control exception references a disabled control")
+            if (
+                exception.definition_major_version
+                != setting.definition_major_version
+            ):
+                raise ValueError(
+                    "control exception definition major does not match its setting"
+                )
+            key = (
+                exception.control_id,
+                exception.definition_major_version,
+            )
+            selector_groups.setdefault(key, []).append(
+                _subject_key(exception.subject)
+            )
+        for selectors in selector_groups.values():
+            if len(selectors) != len(set(selectors)):
+                raise ValueError("control exceptions contain an ambiguous overlap")
+            if any(kind == "control_wide" for kind, _ in selectors) and len(
+                selectors
+            ) > 1:
+                raise ValueError("control-wide and exact exceptions cannot overlap")
+        return self
+
+
+class GovernancePolicyBase(StrictModel):
+    """Common signed tenant policy fields shared by v1 and v2."""
+
     policy_version: int = Field(default=1, ge=1, le=1_000_000)
     tenant_id: UUID
     active_profile: GovernanceProfileName
@@ -527,7 +729,7 @@ class GovernancePolicy(StrictModel):
     expires_at: datetime | None = None
 
     @model_validator(mode="after")
-    def validate_policy(self) -> GovernancePolicy:
+    def validate_policy(self) -> Self:
         if self.tenant_id.int == 0:
             raise ValueError("placeholder tenant IDs are prohibited")
         if self.resources.tenants != [self.tenant_id]:
@@ -601,6 +803,58 @@ class GovernancePolicy(StrictModel):
         return self
 
 
+class GovernancePolicy(GovernancePolicyBase):
+    """Backward-compatible Governance v1 policy body."""
+
+    schema_version: Literal["1.0"] = "1.0"
+
+
+class GovernancePolicyV2(GovernancePolicyBase):
+    """Governance v2 adds signed Posture Control Library configuration only."""
+
+    schema_version: Literal["2.0"] = "2.0"
+    control_library: ControlLibraryGovernance
+
+    @model_validator(mode="after")
+    def control_exceptions_stay_inside_policy_fences(self) -> GovernancePolicyV2:
+        for exception in self.control_library.exceptions:
+            if exception.issued_at > self.issued_at:
+                raise ValueError(
+                    "control exception cannot be issued after the policy"
+                )
+            subject = exception.subject
+            if isinstance(subject, ControlWideSubjectSelector):
+                setting = self.control_library.controls[exception.control_id]
+                if not setting.allow_control_wide_exception:
+                    raise ValueError(
+                        "control-wide exception is not explicitly allowed"
+                    )
+                continue
+            if isinstance(subject, ProfileSubjectSelector):
+                if subject.profile is not self.active_profile:
+                    raise ValueError(
+                        "control exception cannot select another profile"
+                    )
+                continue
+            allowed_by_kind = {
+                "user": self.resources.users,
+                "group": self.resources.groups,
+                "application": self.resources.applications,
+                "service_principal": self.resources.service_principals,
+            }
+            if subject.object_id not in allowed_by_kind[subject.kind]:
+                raise ValueError(
+                    "control exception subject is outside tenant resource fences"
+                )
+        return self
+
+
+GovernancePolicyDocument = Annotated[
+    GovernancePolicy | GovernancePolicyV2,
+    Field(discriminator="schema_version"),
+]
+
+
 class GovernanceSignature(StrictModel):
     schema_version: Literal["1.0"] = "1.0"
     algorithm: Literal["ed25519"] = "ed25519"
@@ -618,16 +872,64 @@ class GovernanceSignature(StrictModel):
 
 
 class SignedGovernancePolicy(StrictModel):
-    policy: GovernancePolicy
+    policy: GovernancePolicyDocument
     signature: GovernanceSignature
 
 
 class GovernancePolicyError(SecurityError):
     """A signed tenant policy rejected an operation."""
 
-    def __init__(self, message: str, *, reason_code: str = "DENIED_BY_POLICY") -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str = "DENIED_BY_POLICY",
+        operator_action: str = "Review and re-sign the tenant Governance policy.",
+    ) -> None:
         super().__init__(message)
         self.reason_code = reason_code
+        self.operator_action = operator_action
+
+
+@dataclass(frozen=True)
+class EffectiveControlSetting:
+    """Validated configuration for one future deterministic evaluator."""
+
+    control_id: str
+    definition_major_version: int
+    severity: ControlSeverity
+    maximum_evidence_age_seconds: int
+    allow_control_wide_exception: bool
+
+
+@dataclass(frozen=True)
+class EffectiveControlLibraryConfiguration:
+    """Validated M2 configuration; it does not evaluate evidence or statuses."""
+
+    manifest_digest: str
+    library_version: str
+    compatibility_schema_version: str
+    compatibility_digest: str
+    tenant_id: UUID
+    profile: GovernanceProfileName
+    settings: tuple[EffectiveControlSetting, ...]
+    exceptions: tuple[ControlException, ...]
+
+    def setting(self, control_id: str) -> EffectiveControlSetting:
+        for setting in self.settings:
+            if setting.control_id == control_id:
+                return setting
+        raise KeyError(f"unknown enabled control: {control_id}")
+
+
+@dataclass(frozen=True)
+class ControlExceptionMatch:
+    """Minimized match result; private rationale and approver stay in policy."""
+
+    exception_id: str
+    control_id: str
+    definition_major_version: int
+    expires_at: datetime
 
 
 @dataclass(frozen=True)
@@ -662,7 +964,7 @@ class VerifiedGovernancePolicy:
     public_key_path: Path
 
     @property
-    def policy(self) -> GovernancePolicy:
+    def policy(self) -> GovernancePolicyDocument:
         return self.bundle.policy
 
     def refresh(self) -> VerifiedGovernancePolicy:
@@ -989,10 +1291,282 @@ class VerifiedGovernancePolicy:
         )
 
 
+def parse_governance_policy(document: object) -> GovernancePolicyDocument:
+    """Select one exact schema without fallback or automatic migration."""
+
+    if not isinstance(document, dict):
+        raise GovernancePolicyError(
+            "governance policy root must be an object",
+            reason_code="GOVERNANCE_SCHEMA_UNSUPPORTED",
+        )
+    schema_version = document.get("schema_version")
+    if schema_version == "1.0":
+        if "control_library" in document:
+            raise GovernancePolicyError(
+                "Governance v1 cannot enable the Posture Control Library",
+                reason_code="CONTROL_LIBRARY_REQUIRES_GOVERNANCE_V2",
+                operator_action=(
+                    "Create and sign a Governance v2 policy; keep the v1 policy unchanged."
+                ),
+            )
+        return GovernancePolicy.model_validate(document)
+    if schema_version == "2.0":
+        return GovernancePolicyV2.model_validate(document)
+    raise GovernancePolicyError(
+        "governance policy schema version is unsupported",
+        reason_code="GOVERNANCE_SCHEMA_UNSUPPORTED",
+        operator_action=(
+            "Use a supported Governance schema and sign it with the tenant authority."
+        ),
+    )
+
+
+def parse_signed_governance_policy(document: object) -> SignedGovernancePolicy:
+    """Parse a closed signed bundle while preserving stable schema errors."""
+
+    if not isinstance(document, dict) or set(document) != {"policy", "signature"}:
+        raise PrivateStateError("governance policy is malformed")
+    policy = parse_governance_policy(document["policy"])
+    signature = GovernanceSignature.model_validate(document["signature"])
+    return SignedGovernancePolicy(policy=policy, signature=signature)
+
+
+def _definition_major(version: str) -> int:
+    match = re.fullmatch(
+        r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)",
+        version,
+    )
+    if match is None:
+        raise GovernancePolicyError(
+            "control definition version is malformed",
+            reason_code="CONTROL_DEFINITION_INCOMPATIBLE",
+        )
+    return int(match.group(1))
+
+
+def resolve_control_library_configuration(
+    policy: GovernancePolicyDocument,
+    control_manifest: ControlManifest | None = None,
+    compatibility_metadata: ControlCompatibilityMetadata | None = None,
+) -> EffectiveControlLibraryConfiguration:
+    """Validate signed v2 configuration against exact local M1 semantics."""
+
+    if not isinstance(policy, GovernancePolicyV2):
+        raise GovernancePolicyError(
+            "Governance v1 cannot enable the Posture Control Library",
+            reason_code="CONTROL_LIBRARY_REQUIRES_GOVERNANCE_V2",
+            operator_action=(
+                "Create and sign a Governance v2 policy; keep the v1 policy unchanged."
+            ),
+        )
+    manifest = control_manifest or load_global_control_manifest()
+    configuration = policy.control_library
+    manifest_digest = sha256_digest(manifest)
+    if configuration.control_manifest_digest != manifest_digest:
+        raise GovernancePolicyError(
+            "Governance control manifest binding does not match",
+            reason_code="CONTROL_MANIFEST_CHANGED",
+            operator_action=(
+                "Review the installed signed control manifest and reissue the tenant "
+                "policy only for that exact digest."
+            ),
+        )
+    if configuration.control_manifest_schema_version != manifest.schema_version:
+        raise GovernancePolicyError(
+            "Governance control manifest schema is unsupported",
+            reason_code="CONTROL_MANIFEST_SCHEMA_INCOMPATIBLE",
+        )
+    if configuration.control_library_version != manifest.library_version:
+        raise GovernancePolicyError(
+            "Governance control library version does not match",
+            reason_code="CONTROL_LIBRARY_VERSION_INCOMPATIBLE",
+            operator_action=(
+                "Pin the policy to the installed library version; do not select a "
+                "newest or future version automatically."
+            ),
+        )
+    definitions = {item.control_id: item for item in manifest.controls}
+    validated_controls: list[
+        tuple[str, int, ControlGovernanceSetting]
+    ] = []
+    for control_id in configuration.enabled_control_ids:
+        definition = definitions.get(control_id)
+        if definition is None:
+            raise GovernancePolicyError(
+                "Governance references an unknown control",
+                reason_code="UNKNOWN_CONTROL",
+            )
+        if definition.lifecycle.state is ControlLifecycleState.RETIRED:
+            raise GovernancePolicyError(
+                "Governance cannot enable a retired control",
+                reason_code="CONTROL_RETIRED",
+            )
+        setting = configuration.controls[control_id]
+        definition_major = _definition_major(definition.definition_version)
+        if setting.definition_major_version != definition_major:
+            raise GovernancePolicyError(
+                "Governance control definition major is incompatible",
+                reason_code="CONTROL_DEFINITION_INCOMPATIBLE",
+            )
+        validated_controls.append(
+            (control_id, definition_major, setting)
+        )
+    try:
+        compatibility = (
+            compatibility_metadata
+            if compatibility_metadata is not None
+            else load_control_compatibility_metadata(manifest)
+        )
+        compatibility.validate_manifest_binding(manifest)
+    except (RuntimeError, ValueError) as exc:
+        raise GovernancePolicyError(
+            "Control compatibility metadata is unavailable or incompatible",
+            reason_code="CONTROL_COMPATIBILITY_UNAVAILABLE",
+            operator_action=(
+                "Keep Control Library evaluation disabled until reviewed "
+                "compatibility metadata for this exact manifest is installed."
+            ),
+        ) from exc
+    installed_compatibility_digest = control_compatibility_digest(
+        compatibility
+    )
+    if (
+        configuration.control_compatibility_digest
+        != installed_compatibility_digest
+    ):
+        raise GovernancePolicyError(
+            "Governance control compatibility binding does not match",
+            reason_code="CONTROL_COMPATIBILITY_CHANGED",
+            operator_action=(
+                "Review the installed compatibility metadata and reissue the "
+                "tenant policy only for its exact canonical digest."
+            ),
+        )
+    effective: list[EffectiveControlSetting] = []
+    for control_id, definition_major, setting in validated_controls:
+        try:
+            global_maximum = compatibility.maximum_age(
+                control_id,
+                definition_major,
+            )
+        except KeyError as exc:
+            raise GovernancePolicyError(
+                "Control freshness metadata is unavailable",
+                reason_code="CONTROL_FRESHNESS_UNAVAILABLE",
+                operator_action=(
+                    "Keep the control disabled until reviewed public freshness "
+                    "metadata is installed."
+                ),
+            ) from exc
+        customer_maximum = setting.maximum_evidence_age_seconds
+        if customer_maximum is not None and customer_maximum > global_maximum:
+            raise GovernancePolicyError(
+                "Customer evidence freshness cannot loosen the public maximum",
+                reason_code="CONTROL_FRESHNESS_LOOSENED",
+            )
+        effective.append(
+            EffectiveControlSetting(
+                control_id=control_id,
+                definition_major_version=definition_major,
+                severity=setting.severity,
+                maximum_evidence_age_seconds=(
+                    global_maximum
+                    if customer_maximum is None
+                    else min(global_maximum, customer_maximum)
+                ),
+                allow_control_wide_exception=(
+                    setting.allow_control_wide_exception
+                ),
+            )
+        )
+
+    for exception in configuration.exceptions:
+        allowed_kinds = CONTROL_EXCEPTION_SUBJECT_KINDS.get(
+            (exception.control_id, exception.definition_major_version)
+        )
+        if allowed_kinds is None:
+            raise GovernancePolicyError(
+                "Control exception selector metadata is unavailable",
+                reason_code="CONTROL_EXCEPTION_SELECTOR_UNAVAILABLE",
+            )
+        if isinstance(exception.subject, ControlWideSubjectSelector):
+            continue
+        if exception.subject.kind not in allowed_kinds:
+            raise GovernancePolicyError(
+                "Control exception subject kind is incompatible",
+                reason_code="CONTROL_EXCEPTION_SUBJECT_INCOMPATIBLE",
+            )
+
+    return EffectiveControlLibraryConfiguration(
+        manifest_digest=manifest_digest,
+        library_version=manifest.library_version,
+        compatibility_schema_version=compatibility.schema_version,
+        compatibility_digest=installed_compatibility_digest,
+        tenant_id=policy.tenant_id,
+        profile=policy.active_profile,
+        settings=tuple(sorted(effective, key=lambda item: item.control_id)),
+        exceptions=tuple(configuration.exceptions),
+    )
+
+
+def matching_control_exception(
+    configuration: EffectiveControlLibraryConfiguration,
+    *,
+    control_id: str,
+    definition_major_version: int,
+    subject: ControlExceptionSubject,
+    status: Literal["not_aligned"],
+    evaluated_at: datetime,
+    tenant_id: str,
+    profile: GovernanceProfileName,
+) -> ControlExceptionMatch | None:
+    """Return one exact effective exception without changing assessment status."""
+
+    if status != "not_aligned":
+        raise GovernancePolicyError(
+            "Control exceptions apply only to not_aligned",
+            reason_code="CONTROL_EXCEPTION_STATUS_INCOMPATIBLE",
+        )
+    if evaluated_at.tzinfo is None or evaluated_at.utcoffset() is None:
+        raise GovernancePolicyError(
+            "Exception matching requires a timezone-aware timestamp",
+            reason_code="CONTROL_EXCEPTION_TIME_INVALID",
+        )
+    if str(configuration.tenant_id) != tenant_id:
+        raise GovernancePolicyError(
+            "Control exception tenant boundary does not match",
+            reason_code="TENANT_FENCE_MISMATCH",
+        )
+    if configuration.profile is not profile:
+        raise GovernancePolicyError(
+            "Control exception profile boundary does not match",
+            reason_code="PROFILE_CONTRACT_MISMATCH",
+        )
+    subject_key = _subject_key(subject)
+    for exception in configuration.exceptions:
+        if (
+            exception.control_id != control_id
+            or exception.definition_major_version != definition_major_version
+            or evaluated_at < exception.issued_at
+            or evaluated_at >= exception.expires_at
+        ):
+            continue
+        exception_key = _subject_key(exception.subject)
+        if exception_key == ("control_wide", "*") or exception_key == subject_key:
+            return ControlExceptionMatch(
+                exception_id=exception.exception_id,
+                control_id=exception.control_id,
+                definition_major_version=exception.definition_major_version,
+                expires_at=exception.expires_at,
+            )
+    return None
+
+
 def validate_policy_against_manifest(
-    policy: GovernancePolicy,
+    policy: GovernancePolicyDocument,
     manifest: ContractManifest,
     playbook_manifest: PlaybookManifest | None = None,
+    control_manifest: ControlManifest | None = None,
 ) -> None:
     """Reject unknown contracts, profile misuse, and authorization downgrades."""
 
@@ -1137,6 +1711,9 @@ def validate_policy_against_manifest(
                         reason_code="DENIED_OUT_OF_CONTRACT",
                     )
 
+    if isinstance(policy, GovernancePolicyV2):
+        resolve_control_library_configuration(policy, control_manifest)
+
 
 def _load_verifier(path: Path) -> Ed25519PublicKey:
     try:
@@ -1176,7 +1753,7 @@ def load_policy_signer(
 
 
 def sign_governance_policy(
-    policy: GovernancePolicy,
+    policy: GovernancePolicyDocument,
     signer: Ed25519PrivateKey,
     *,
     key_id: str,
@@ -1230,7 +1807,9 @@ def load_verified_governance_policy(
                 label="governance policy",
             )
         )
-        bundle = SignedGovernancePolicy.model_validate(document)
+        bundle = parse_signed_governance_policy(document)
+    except GovernancePolicyError:
+        raise
     except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
         raise PrivateStateError("governance policy is malformed") from exc
     digest = verify_governance_policy(bundle, _load_verifier(public_key_path))

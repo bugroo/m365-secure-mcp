@@ -12,7 +12,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-i",
         "microsoft.apps.credential-hygiene"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.applications.credential_expiry_posture",
@@ -26,7 +27,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-i",
         "microsoft.apps.credential-hygiene"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.applications.owner_coverage",
@@ -40,7 +42,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-i",
         "microsoft.apps.owner-review"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.applications.password_credential_policy",
@@ -54,7 +57,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-i",
         "microsoft.apps.credential-hygiene"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.applications.permission_contract_closure",
@@ -68,7 +72,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-i",
         "microsoft.apps.least-privilege"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.conditional_access.mfa_policy_coverage",
@@ -82,7 +87,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-j",
         "microsoft.ca.mfa-all-users"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.directory_roles.permanent_active_assignment",
@@ -96,7 +102,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-i",
         "microsoft.pim.zero-permanent-active"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.profiles.contract_closure",
@@ -109,7 +116,8 @@
       "lifecycle_state": "active",
       "mapping_ids": [
         "eu.nis2.article-21-2-f"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.profiles.resource_fence_closure",
@@ -123,7 +131,8 @@
       "mapping_ids": [
         "eu.nis2.article-21-2-f",
         "eu.nis2.article-21-2-i"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     },
     {
       "control_id": "entra.profiles.scope_closure",
@@ -138,9 +147,12 @@
         "eu.nis2.article-21-2-f",
         "eu.nis2.article-21-2-i",
         "microsoft.apps.least-privilege"
-      ]
+      ],
+      "maximum_evidence_age_seconds": 86400
     }
   ],
+  "control_compatibility_digest": "sha256:741892a8dda46b4b468c0acd9b4b5f75230b4611001d41389c15e169e67c8d60",
+  "control_compatibility_schema_version": "1.0",
   "control_library_version": "1.0.0",
   "control_manifest_digest": "sha256:aab4fbabbf8757b6b2bf54bec9f23e60849807f65b5c0ec7deedbc9d9d7217d1",
   "schema_version": "1.0"
