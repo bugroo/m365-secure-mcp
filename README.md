@@ -11,7 +11,7 @@ to an identity, permission set, resource policy, and evidence trail.
 
 | Fixed tools | Compiled contracts | Signed playbooks | Read profile | Opt-in writes | Delete tools |
 |---:|---:|---:|---:|---:|---:|
-| 129 | 8 Entra contracts | 1 T0 workflow | 101 max | 27 | 0 |
+| 130 | 9 Entra contracts | 1 T0 workflow | 102 max | 27 | 0 |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
@@ -62,7 +62,7 @@ flowchart TB
 | Assurance | posture, findings, audit, receipts, drift and release checks | produces evidence; does not remediate autonomously |
 
 The first compiled vertical slices are Entra Identity & Governance. Their
-signed contract manifest contains seven bounded reads and one T1 write. A
+signed contract manifest contains eight bounded reads and one T1 write. A
 separately signed playbook manifest composes two of those reads into one T0
 Workload Identity Readiness workflow. The wider pre-existing catalog remains
 statically coded while it is migrated contract by contract; the runtime never
@@ -87,13 +87,13 @@ closed.
 
 ### What comes next
 
-The signed, T0 read-only **Workload Identity Readiness** playbook is now
-implemented. It correlates the existing Entra permission-drift,
-application-credential and ownership evidence without adding scopes or writes.
-The reusable Change-safe operator engine is also implemented for the first T1
-contract. The next official vertical slice is profile, scope and resource debt
-for MSPs, followed by bounded runtime self-checks, the multi-tenant drift radar
-and the first compiled T2 contract.
+The signed, T0 read-only **Workload Identity Readiness** playbook, reusable
+Change-safe operator and **Profile Scope & Contract Debt** Assurance vertical
+are implemented. The debt view correlates the active profile with validated
+token scopes, the current App Registration's signed grant posture, policy
+lifecycle, recent metadata-only audit evidence and resource fences. The next
+official vertical slice is bounded runtime self-checks, followed by the
+multi-tenant drift radar and the first compiled T2 contract.
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -342,9 +342,9 @@ because a stdio server cannot prove the host's approval policy.
 
 ### Read profile
 
-Up to **100 API read tools** (92 Microsoft Graph and 8 Power BI) are selected
+Up to **101 API read tools** (93 Microsoft Graph and 8 Power BI) are selected
 by module and can be reduced to an exact allowlist. The local security-posture
-tool remains visible, for a maximum read process of 101 tools. Content-bearing
+tool remains visible, for a maximum read process of 102 tools. Content-bearing
 responses are normalized, bounded, and marked as untrusted external data.
 
 ### Write profile
@@ -365,7 +365,7 @@ exact tool/idempotency-key pair; it cannot enumerate the ledger and never calls
 Graph.
 
 <details>
-<summary><strong>Expand the 129-tool capability map</strong></summary>
+<summary><strong>Expand the 130-tool capability map</strong></summary>
 
 | Domain | Fixed reads | Opt-in writes |
 |---|---:|---:|
@@ -620,6 +620,100 @@ catalog IDs remain in the encrypted tenant-local snapshot. Coverage is stated
 as `complete_for_signed_targets`: this first slice intentionally evaluates only
 service principals whose expected capabilities are already represented by the
 compiled global manifest.
+
+### Profile scope and contract debt
+
+`m365_get_entra_profile_debt_posture` is the fourth compiled T0 Assurance
+vertical. It correlates six independently meaningful views for the active
+`privileged-read` profile:
+
+- exact scope closure of the contracts selected in signed Governance;
+- delegated scope names from the already validated Graph token;
+- complete signed grant posture for this deployment's App Registration;
+- policy version and customer-approved review age;
+- recent success/failure evidence from the known owner-only audit path;
+- private Governance resource fences versus exact local runtime allowlists.
+
+The tool accepts only `response_format`. It cannot choose a scope, app,
+tenant, URL, method, baseline or remediation. Grant collection reuses the
+fixed permission-drift contract and requires `Directory.Read.All`; the Entra
+administrator still adds, consents, removes or changes permissions manually.
+
+Use a dedicated profile process and expose only this public tool. Its internal
+permission-evidence node remains a separately signed contract:
+
+```bash
+export M365_PROFILE="read"
+export M365_MODULES="profile,assurance"
+export M365_ENABLED_TOOLS="m365_get_entra_profile_debt_posture"
+export M365_PRIVILEGED_MODULES_ENABLED="true"
+export M365_ALLOWED_SERVICE_PRINCIPAL_IDS="<this app service-principal object ID>"
+export M365_GOVERNANCE_POLICY_PATH="/private/m365/governance-policy.signed.json"
+export M365_GOVERNANCE_PUBLIC_KEY_PATH="/private/m365/governance-signing.pub"
+```
+
+The private policy must enable both
+`entra.permission_grants.drift.snapshot` and
+`entra.profile_debt.posture.snapshot`, bind the current service principal to
+that exact contract closure, and define customer severities:
+
+```json
+{
+  "policy_version": 2,
+  "profiles": {
+    "privileged-read": {
+      "enabled_contracts": [
+        "entra.permission_grants.drift.snapshot",
+        "entra.profile_debt.posture.snapshot"
+      ]
+    }
+  },
+  "permission_grant_baseline": {
+    "baseline_id": "msp-runtime-profile",
+    "version": 1,
+    "targets": [
+      {
+        "service_principal_id": "<this app service-principal object ID>",
+        "contract_ids": [
+          "entra.permission_grants.drift.snapshot",
+          "entra.profile_debt.posture.snapshot"
+        ],
+        "allowed_delegated_consent_types": ["AllPrincipals"]
+      }
+    ],
+    "exceptions": []
+  },
+  "profile_debt_baseline": {
+    "baseline_id": "msp-profile-debt",
+    "version": 1,
+    "minimum_policy_version": 2,
+    "maximum_policy_age_days": 90,
+    "evidence_window_days": 30,
+    "persistent_failure_threshold": 3,
+    "severities": {
+      "PROFILE_CURRENT_APP_BASELINE_MISSING": "critical",
+      "PROFILE_PERMISSION_GRANT_DRIFT": "critical",
+      "PROFILE_TOKEN_SCOPE_MISSING": "high",
+      "PROFILE_TOKEN_SCOPE_UNEXPECTED": "critical",
+      "PROFILE_CONTRACT_BASELINE_MISMATCH": "high",
+      "PROFILE_POLICY_VERSION_STALE": "medium",
+      "PROFILE_POLICY_AGE_STALE": "medium",
+      "PROFILE_CONTRACT_NO_RECENT_EVIDENCE": "low",
+      "PROFILE_CONTRACT_PERSISTENT_FAILURE": "high",
+      "PROFILE_RESOURCE_ALLOWLIST_UNUSED": "low",
+      "PROFILE_RESOURCE_FENCE_MISMATCH": "high"
+    },
+    "exceptions": []
+  }
+}
+```
+
+Every exception is signed, control-specific, subject-specific and expiring.
+Missing audit or current-app evidence is `not_evaluated`, never “aligned”.
+MCP output contains counts, public contract/scope names and opaque references;
+private IDs and normalized evidence stay encrypted in the tenant-local
+snapshot. The operation performs no Graph write, consent change, policy
+change, baseline promotion or automatic remediation.
 
 ### Application credential posture
 
@@ -883,6 +977,12 @@ playbook manifest digests. Existing policies remain bound to the same global
 capabilities. Only tenants that select an `explicit_plan` override need the
 external approval broker; `standing_policy` behavior remains prompt-free.
 
+Version `0.11.0` adds the signed profile-debt contract and the signed
+`policy_version`/`profile_debt_baseline` Governance fields. This intentionally
+changes the global manifest digest. Existing tenants must review the new
+contract selection, update `contract_manifest_digest`, and re-sign their
+private policy; runtime never migrates or signs a tenant policy automatically.
+
 ## Selected administrative writes
 
 Administrative writes remain invisible until every layer agrees:
@@ -1037,7 +1137,7 @@ explicit operator consent.
 
 | Document | Purpose |
 |---|---|
-| [Tool catalog](docs/TOOL_CATALOG.md) | All 129 fixed tools and their boundaries |
+| [Tool catalog](docs/TOOL_CATALOG.md) | All 130 fixed tools and their boundaries |
 | [Compiled playbook matrix](docs/PLAYBOOK_MATRIX.md) | Signed DAG, contract closure and exact permissions |
 | [Workflow evaluations](evaluations/README.md) | Sanitized security and failure-mode fixtures |
 | [Official roadmap](docs/ROADMAP.md) | Prioritized vertical slices, acceptance criteria, friction and no-go rules |

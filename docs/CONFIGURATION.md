@@ -81,6 +81,14 @@ credential kind/key ID; application-level controls use separate exceptions.
 All exceptions are signed, justified and expiring. Runtime cannot promote a
 baseline, rotate credentials, assign owners or grant consent.
 
+`profile_debt_baseline` governs the read-only comparison of an active profile
+with token scopes, current-app grant posture, contract-use evidence, policy
+lifecycle and resource fences. It signs severity for every supported control,
+the minimum policy version, maximum review age, evidence window, persistent
+failure threshold and exact expiring exceptions. `policy_version` is signed
+tenant material. Runtime cannot increment it, change severity, add an
+exception, edit an allowlist or remediate a finding.
+
 The current
 `entra.workload_identity.readiness.playbook` is valid only in
 `privileged-read`. Its profile must enable both
@@ -344,6 +352,17 @@ digests. Permission-grant drift additionally requires
 `M365_ALLOWED_SERVICE_PRINCIPAL_IDS`, the same IDs under signed
 `resources.service_principals`, and a signed `permission_grant_baseline`.
 Runtime has no consent, revocation, baseline-promotion or snapshot-read tool.
+
+Profile debt requires the current App Registration's service-principal object
+ID in the same local and signed fences, a signed
+`permission_grant_baseline`, a signed `profile_debt_baseline`, and both
+`entra.permission_grants.drift.snapshot` and
+`entra.profile_debt.posture.snapshot` in the active `privileged-read` profile.
+It reads only the configured owner-only audit path, bounded to 16 MB and
+100,000 records. Missing, malformed, oversized or unsafe audit evidence is
+reported as `not_evaluated`; no filesystem search is attempted. Findings
+propose an operator/admin/Governance action but never alter grants, consent,
+policies or runtime allowlists.
 
 Application credential posture requires `M365_ALLOWED_APPLICATION_IDS`, the
 same IDs in signed `resources.applications`, and a signed

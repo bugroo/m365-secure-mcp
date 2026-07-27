@@ -153,6 +153,11 @@ class GraphClient:
 
         return self._write_ambiguous_count
 
+    async def delegated_scope_claims(self) -> frozenset[str]:
+        """Expose validated permission names, never token or identity claims."""
+
+        return await self.tokens.get_delegated_scope_claims()
+
     async def ensure_principal(self) -> Principal:
         if self._principal is not None:
             return self._principal

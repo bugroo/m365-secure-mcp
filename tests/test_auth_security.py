@@ -90,3 +90,21 @@ def test_powerbi_token_uses_its_own_audience() -> None:
             scp="Dataset.Read.All",
         )
     )
+
+
+@pytest.mark.asyncio
+async def test_assurance_scope_view_exposes_names_but_not_ambient_claims(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = TokenProvider(_settings())
+
+    async def validated_token() -> str:
+        return _jwt(
+            scp="openid profile offline_access Mail.Read User.Read"
+        )
+
+    monkeypatch.setattr(provider, "get_access_token", validated_token)
+
+    scopes = await provider.get_delegated_scope_claims()
+
+    assert scopes == frozenset({"Mail.Read", "User.Read"})

@@ -109,6 +109,7 @@ ENTRA_SERVICE_PRINCIPAL_TOOLS = frozenset(
 ASSURANCE_SERVICE_PRINCIPAL_TOOLS = frozenset(
     {
         "m365_get_entra_permission_grant_drift",
+        "m365_get_entra_profile_debt_posture",
         "m365_get_entra_workload_identity_readiness",
     }
 )

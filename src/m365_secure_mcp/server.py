@@ -46,6 +46,10 @@ from .entra_posture import (
 from .entra_posture import (
     EntraIdentityGovernancePostureService,
 )
+from .entra_profile_debt import (
+    TOOL_NAME as ENTRA_PROFILE_DEBT_TOOL_NAME,
+)
+from .entra_profile_debt import EntraProfileDebtService
 from .entra_workload_readiness import (
     TOOL_NAME as ENTRA_WORKLOAD_IDENTITY_READINESS_TOOL_NAME,
 )
@@ -481,6 +485,30 @@ def _register_common_tools(mcp: FastMCP, services: Services, runner: ToolRunner)
             principal = services.graph.principal
             record = services.settings.agent_summary()
             record["policy_digest"] = services.settings.policy_digest
+            if services.governance is not None:
+                governance_policy = services.governance.policy
+                record["governance"] = {
+                    "verified": True,
+                    "policy_version": governance_policy.policy_version,
+                    "active_profile": (
+                        governance_policy.active_profile.value
+                    ),
+                    "contract_manifest_bound": True,
+                    "identity_baseline_configured": (
+                        governance_policy.identity_governance_baseline
+                        is not None
+                    ),
+                    "permission_baseline_configured": (
+                        governance_policy.permission_grant_baseline is not None
+                    ),
+                    "application_credential_baseline_configured": (
+                        governance_policy.application_credential_baseline
+                        is not None
+                    ),
+                    "profile_debt_baseline_configured": (
+                        governance_policy.profile_debt_baseline is not None
+                    ),
+                }
             record["authenticated_principal"] = (
                 {
                     "verified": True,
@@ -582,6 +610,14 @@ def _register_assurance_read(
         permission_drift=permission_drift,
         application_credentials=application_credentials,
     )
+    profile_debt = EntraProfileDebtService(
+        scope_source=services.graph,
+        settings=services.settings,
+        manifest=manifest,
+        governance=services.governance,
+        snapshots=services.assurance_snapshots,
+        permission_drift=permission_drift,
+    )
 
     @mcp.tool(
         name=ENTRA_POSTURE_TOOL_NAME,
@@ -644,6 +680,38 @@ def _register_assurance_read(
 
         return await runner.call(
             ENTRA_PERMISSION_DRIFT_TOOL_NAME,
+            params.model_dump(mode="json"),
+            operation,
+        )
+
+    @mcp.tool(
+        name=ENTRA_PROFILE_DEBT_TOOL_NAME,
+        annotations=_read_annotations(
+            "Get Entra Profile Scope and Contract Debt"
+        ),
+    )
+    async def get_entra_profile_debt_posture(
+        params: BasicInput,
+    ) -> ToolResponse:
+        """Correlate profile intent with token, grant, audit, and fence evidence.
+
+        This fixed T0 contract accepts no tenant, resource, scope, URL, or
+        method arguments. It never changes consent, grants, policy, or
+        allowlists; private IDs remain encrypted or HMAC-referenced.
+        """
+
+        async def operation() -> str:
+            report = await profile_debt.collect()
+            return render_record(
+                title="Entra Profile Scope and Contract Debt",
+                record=report.model_dump(mode="json"),
+                response_format=params.response_format,
+                character_limit=services.settings.max_tool_characters,
+                external_content=False,
+            )
+
+        return await runner.call(
+            ENTRA_PROFILE_DEBT_TOOL_NAME,
             params.model_dump(mode="json"),
             operation,
         )

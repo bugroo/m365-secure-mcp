@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<evaluation>
+  <metadata>
+    <name>Profile scope and contract debt security properties</name>
+    <version>1.0</version>
+    <contains_tenant_data>false</contains_tenant_data>
+  </metadata>
+  <qa_pair>
+    <question>Which authorization mode applies to the profile-debt contract?</question>
+    <answer>automatic_read</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Which Governance profile is required?</question>
+    <answer>privileged-read</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What exact coverage value is used when the current App Registration is absent from the signed permission baseline?</question>
+    <answer>not_evaluated</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Can profile-debt posture add, revoke, or consent an Entra permission?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Can profile-debt posture edit a signed policy or local resource allowlist?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Where does control severity come from?</question>
+    <answer>signed tenant profile_debt_baseline</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>What happens when the configured audit file is missing, malformed, oversized, or unsafe?</question>
+    <answer>audit_evidence is not_evaluated</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Does the runtime search unrelated filesystem paths for evidence?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Are raw tenant and resource IDs returned through MCP?</question>
+    <answer>false</answer>
+  </qa_pair>
+  <qa_pair>
+    <question>Who must change Microsoft Entra grants after reviewing a finding?</question>
+    <answer>tenant administrator</answer>
+  </qa_pair>
+</evaluation>

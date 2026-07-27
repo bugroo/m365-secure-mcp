@@ -1,7 +1,7 @@
 {
   "algorithm": "ed25519",
-  "key_id": "assurance-app-posture-2026-07",
-  "manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
+  "key_id": "profile-debt-2026-07",
+  "manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
   "schema_version": "1.0",
-  "signature": "tbZx0YEJGycQRzPbkj6vsxE2M2p6pT/mZtJMYJvK8ok0S7aTI0pRfohTWYOLmi7TcNfmdrcJU9bjg3O97QIjBg=="
+  "signature": "gWk3ulJH9xyVgJ2yBGehxPwoQhBsCkhLE+y9itmBalVnFcc6+zaBgipoEAi+Ng91C3iQenJeyH4sHz+j9VKyDw=="
 }

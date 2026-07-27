@@ -181,13 +181,18 @@ remain private.
     `privileged-read`, pin the playbook-manifest digest, and sign the next
     policy version. Consent its exact union: `Application.Read.All` and
     `Directory.Read.All`.
-12. Discover candidates and manually place approved IDs in the policy.
-13. Run offline doctor again and compare the policy and manifest digests.
-14. If a customer policy hardens a write to `explicit_plan`, provision a
+12. For Profile Scope & Contract Debt, add this deployment's service principal
+    as the exact permission-baseline target, enable the permission-drift and
+    profile-debt contracts, define signed customer severities/evidence
+    thresholds, increment `policy_version`, and re-sign. Consent remains the
+    administrator's manual `Directory.Read.All` action.
+13. Discover candidates and manually place approved IDs in the policy.
+14. Run offline doctor again and compare the policy and manifest digests.
+15. If a customer policy hardens a write to `explicit_plan`, provision a
     customer/profile-specific approval directory and Ed25519 verifier. Keep the
     approval signer outside MCP runtime and separate from Governance signing.
     Do not share its replay ledger across customers.
-15. Connect named MCP entries. Allow prompt-free execution only for exact T1
+16. Connect named MCP entries. Allow prompt-free execution only for exact T1
     tools covered by signed `standing_policy`; keep host approval for all
     higher-risk or not-yet-compiled write contracts.
 
@@ -212,9 +217,10 @@ incident offboarding should also follow the tenant's token-revocation process.
 
 ## Planned MSP operations
 
-Workload Identity Readiness is now implemented as a signed T0 playbook. The
-[official implementation roadmap](ROADMAP.md) is the canonical plan for
-profile/scope drift and the multi-tenant drift radar. These workflows retain
+Workload Identity Readiness and Profile Scope & Contract Debt are implemented
+as signed, read-only Assurance workflows. The
+[official implementation roadmap](ROADMAP.md) is the canonical plan for the
+runtime self-check and multi-tenant drift radar. These workflows retain
 the topology in this document: an external orchestrator may schedule runs, but
 every customer still uses an isolated single-tenant MCP process, registration,
 private policy, token cache, baseline and evidence store. No implemented or

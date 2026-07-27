@@ -396,7 +396,10 @@ _register(
     _permissions,
     module="assurance",
     scopes=frozenset({"Directory.Read.All"}),
-    tools=("m365_get_entra_permission_grant_drift",),
+    tools=(
+        "m365_get_entra_permission_grant_drift",
+        "m365_get_entra_profile_debt_posture",
+    ),
 )
 _register(
     _permissions,

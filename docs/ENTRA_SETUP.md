@@ -131,6 +131,17 @@ service-principal object ID in both the local allowlist and signed Governance,
 and sign a contract-derived `permission_grant_baseline`. The MCP never creates,
 updates, revokes or consents a grant.
 
+The profile-debt process also requests only `Directory.Read.All` plus the
+fixed `User.Read` runtime scope. Configure only
+`m365_get_entra_profile_debt_posture`, but enable its internal
+`entra.permission_grants.drift.snapshot` dependency and the
+`entra.profile_debt.posture.snapshot` contract in the signed
+`privileged-read` profile. The signed permission baseline must select this
+deployment's service principal and derive its expected grants from that same
+exact contract list. A separate signed `profile_debt_baseline` owns severity
+and lifecycle/evidence thresholds. The Entra administrator grants and consents
+permissions manually; this read-only tool cannot add, revoke or modify them.
+
 The application credential posture process requests only
 `Application.Read.All` and should use `Directory Readers` or `Global Reader`.
 Configure only `m365_get_entra_app_credential_posture`, place every approved

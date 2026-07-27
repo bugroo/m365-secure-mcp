@@ -144,6 +144,15 @@ the blast radius of:
   targets, owner minimums, expiry windows, secret policy and active-credential
   limits. Credential exceptions bind an exact kind/key ID; application-level
   exceptions cannot suppress arbitrary credential findings.
+- The profile-debt baseline signs severity for every supported control,
+  minimum policy version, review age, evidence window, failure threshold and
+  exact expiring exceptions. It correlates validated token scope names with
+  current-app grant posture, the active profile closure, audit metadata and
+  resource fences; it cannot change any of them.
+- Profile-debt audit inspection is limited to the configured application-owned
+  path, 16 MB and 100,000 records. Missing, malformed, oversized, symlinked or
+  broadly accessible evidence is `not_evaluated`; the runtime does not search
+  the home directory or inspect unrelated files.
 - Workload Identity Readiness is `automatic_read` and has the exact permission
   closure of its two signed child contracts. It correlates the application and
   service-principal views with a deployment-keyed HMAC reference rather than a

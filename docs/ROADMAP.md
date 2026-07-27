@@ -33,9 +33,9 @@ The following foundations are implemented:
 | Build | independently signed tenant-neutral contract and playbook manifests, strict compiler, closed schemas, DAG validation, permission closure, per-artifact digests, evaluation fixtures, provenance and CycloneDX SBOM |
 | Governance | signed tenant-private policies, deployment profiles, resource allowlists, contract/playbook selection, authorization overrides that may only tighten the global floor |
 | Runtime | static tools, exact Graph v1.0 calls, token/identity checks, reusable T1 planning/preflight, Permission Impact Preview, signed write windows, external single-use approval, TOCTOU revalidation, bounded retries, post-read verification, receipts and change records |
-| Assurance | Identity Governance posture, application-permission drift, application-credential posture and signed Workload Identity Readiness, with minimized encrypted tenant-local snapshots |
+| Assurance | Identity Governance posture, application-permission drift, application-credential posture, signed Workload Identity Readiness, and profile scope/contract/resource debt, with minimized encrypted tenant-local snapshots |
 
-The compiled Entra surface contains seven T0 reads and one T1 write:
+The compiled Entra surface contains eight T0 reads and one T1 write:
 `entra.user.operational_profile.update`. The T1 contract changes only
 `department`, `jobTitle` and `officeLocation` for an allowlisted,
 cloud-managed, non-privileged member. It uses `standing_policy` by default and
@@ -180,9 +180,7 @@ Depends on: current T1 Entra implementation.
 
 ### P1 — MSP Assurance and the first T2 operation
 
-#### 4. Scope, contract and resource debt for profiles — 5 points
-
-**Current implementation target.**
+#### 4. Scope, contract and resource debt for profiles — completed in `0.11.0`
 
 Compare each profile's effective token/grant posture with the exact permission
 closure of its enabled contracts. Report unused or unexpected scopes, missing
@@ -200,7 +198,20 @@ Acceptance:
 
 Depends on: playbook compiler and current permission-drift vertical.
 
+Completion evidence:
+
+- fixed signed `entra.profile_debt.posture.snapshot` T0 contract;
+- signed customer severity, lifecycle, evidence and exception baseline;
+- correlation of validated token claims, current-app grant evidence, active
+  profile closure, audit outcomes and private/local resource fences;
+- explicit complete versus `not_evaluated` coverage per evidence source;
+- encrypted raw IDs/evidence with public counts, contract/scope names and HMAC
+  references only;
+- no consent, grant, policy, allowlist or baseline mutation path.
+
 #### 5. Runtime self-check expansion — 5 points
+
+**Current implementation target.**
 
 Extend `--doctor` and release verification with bounded local checks:
 manifest/playbook digests, installed package/provenance/SBOM consistency,

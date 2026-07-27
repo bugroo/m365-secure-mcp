@@ -20,6 +20,7 @@ from m365_secure_mcp.governance import (
     GovernanceResources,
     IdentityGovernanceBaseline,
     PermissionGrantBaseline,
+    ProfileDebtBaseline,
     public_key_text,
     sign_governance_policy,
     validate_policy_against_manifest,
@@ -42,9 +43,12 @@ def write_signed_governance(
     permission_grant_baseline: PermissionGrantBaseline | None = None,
     service_principal_id: str | None = None,
     application_credential_baseline: ApplicationCredentialBaseline | None = None,
+    profile_debt_baseline: ProfileDebtBaseline | None = None,
     application_id: str | None = None,
     enable_workload_identity_readiness: bool = False,
+    enable_profile_debt: bool = False,
     write_window_utc: str | None = None,
+    policy_version: int = 1,
 ) -> tuple[Path, Path]:
     """Create owner-only test policy material outside the repository."""
 
@@ -54,6 +58,7 @@ def write_signed_governance(
     manifest = load_global_manifest()
     playbooks = load_global_playbook_manifest(manifest)
     readiness_playbook = "entra.workload_identity.readiness.playbook"
+    profile_debt_contract = "entra.profile_debt.posture.snapshot"
     write_contract = "entra.user.operational_profile.update"
     profiles = {
         GovernanceProfileName.ROUTINE_READ: GovernanceProfile(
@@ -72,6 +77,7 @@ def write_signed_governance(
                 "entra.conditional_access.policies.read",
                 "entra.identity_governance.posture.snapshot",
                 "entra.permission_grants.drift.snapshot",
+                *([profile_debt_contract] if enable_profile_debt else []),
                 "entra.role_assignments.read",
             ],
             enabled_playbooks=(
@@ -86,6 +92,7 @@ def write_signed_governance(
         ),
     }
     policy = GovernancePolicy(
+        policy_version=policy_version,
         tenant_id=UUID(tenant_id),
         active_profile=active_profile,
         profiles=profiles,
@@ -112,6 +119,7 @@ def write_signed_governance(
         identity_governance_baseline=identity_governance_baseline,
         permission_grant_baseline=permission_grant_baseline,
         application_credential_baseline=application_credential_baseline,
+        profile_debt_baseline=profile_debt_baseline,
         contract_manifest_digest=sha256_digest(manifest),
         playbook_manifest_digest=(
             sha256_digest(playbooks)

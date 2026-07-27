@@ -16,7 +16,7 @@
       "writes_permitted": false
     }
   ],
-  "contract_manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
+  "contract_manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
   "playbook_manifest_digest": "sha256:13a3dada2e106bc8f56f35301e4b57e601a75668adebe73be07b829d39819ca4",
   "schema_version": "1.0"
 }

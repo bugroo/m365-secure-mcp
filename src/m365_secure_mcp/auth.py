@@ -152,6 +152,28 @@ class TokenProvider:
             self._save_cache()
             return token
 
+    async def get_delegated_scope_claims(self) -> frozenset[str]:
+        """Return only validated, non-ambient delegated scope names.
+
+        The token itself and every other claim remain inside the authentication
+        boundary. Assurance may compare these public permission names with a
+        signed contract closure, but receives no credential material.
+        """
+
+        token = await self.get_access_token()
+        claims = self._claims(token)
+        return frozenset(
+            sorted(
+                item
+                for item in {
+                    scope
+                    for scope in str(claims.get("scp", "")).split()
+                    if scope
+                }
+                if item.lower() not in AMBIENT_SCOPES
+            )
+        )
+
     def _acquire_token(self, force_refresh: bool) -> dict[str, Any]:
         app = self._get_app()
         account = self._select_account()

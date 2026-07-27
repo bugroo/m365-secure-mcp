@@ -13,6 +13,11 @@ standing policy, exact external approval, single-use consumption, TOCTOU,
 preflight-only behavior and uncertain-write handling. Its executable scenarios
 live in `tests/test_entra_operational_profile.py`.
 
+`profile-debt-posture.xml` covers signed customer severity, explicit partial
+coverage, token/grant/profile correlation, bounded audit evidence, output
+privacy and the prohibition on consent/policy/allowlist remediation. Its
+executable scenarios live in `tests/test_entra_profile_debt.py`.
+
 Live-tenant evaluations are intentionally not committed because tenant
 inventory and posture are neither public nor stationary. They belong in a
 dedicated non-production tenant and must remain read-only.

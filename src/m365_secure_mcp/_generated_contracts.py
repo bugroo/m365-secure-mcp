@@ -4,7 +4,7 @@ import json
 from typing import Any, Final
 
 CONTRACT_MANIFEST_DIGEST: Final = (
-    'sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907'
+    'sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba'
 )
 CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     r'''{
@@ -211,6 +211,52 @@ CONTRACT_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     ],
     "risk_tier": "T0",
     "tool_name": "m365_get_entra_permission_grant_drift",
+    "verification": "resource_observed"
+  },
+  "entra.profile_debt.posture.snapshot": {
+    "authorization_mode": "automatic_read",
+    "compensation": "not_applicable",
+    "delegated_scopes": [
+      "Directory.Read.All"
+    ],
+    "endpoint": "/oauth2PermissionGrants",
+    "input_schema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "method": "GET",
+    "module": "assurance",
+    "operator_roles": [
+      "Directory Readers",
+      "Global Reader"
+    ],
+    "output_fields": [
+      "status",
+      "contract_digest",
+      "policy_digest",
+      "snapshot_reference",
+      "coverage_status",
+      "baseline_id",
+      "baseline_version",
+      "scope_posture",
+      "contract_posture",
+      "resource_posture",
+      "findings",
+      "writes_performed"
+    ],
+    "resource_fences": [
+      "session_tenant_only",
+      "signed_policy_tenant_only",
+      "signed_service_principal_targets",
+      "local_service_principal_allowlist",
+      "active_profile_only",
+      "bounded_private_audit_file",
+      "keyed_deployment_local_references",
+      "no_raw_resource_ids_in_mcp_output"
+    ],
+    "risk_tier": "T0",
+    "tool_name": "m365_get_entra_profile_debt_posture",
     "verification": "resource_observed"
   },
   "entra.role_assignments.read": {

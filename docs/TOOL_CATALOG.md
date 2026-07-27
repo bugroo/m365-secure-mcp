@@ -4,10 +4,10 @@ Microsoft Graph is the primary product surface. Planner is one workload in the
 catalog, not a separate architectural boundary or the project's central use
 case.
 
-The source defines 129 fixed tools; the build plane compiles eight Entra
+The source defines 130 fixed tools; the build plane compiles nine Entra
 Governance/Assurance contracts and one signed T0 playbook while the remaining
 static catalog is migrated incrementally. A maximally enabled read process
-exposes 101 tools: 92 Microsoft Graph reads, 8 Power BI reads, plus the local
+exposes 102 tools: 93 Microsoft Graph reads, 8 Power BI reads, plus the local
 security-posture tool. A write
 process exposes the two common tools, the local receipt query, and only its
 selected write actions. The default process exposes only the two common tools.
@@ -222,6 +222,7 @@ principal results are narrowed by separate local UUID allowlists.
 
 - `m365_get_entra_identity_governance_posture`
 - `m365_get_entra_permission_grant_drift`
+- `m365_get_entra_profile_debt_posture`
 - `m365_get_entra_app_credential_posture`
 - `m365_get_entra_workload_identity_readiness`
 
@@ -262,6 +263,21 @@ tenant, service-principal, grant, resource or principal IDs. Complete raw
 evidence is encrypted in the same owner-only tenant-local Assurance store.
 Coverage is explicitly limited to the signed target set and fails closed on
 pagination, shape, size, policy or resource-fence ambiguity.
+
+Profile debt is a separate fixed T0 contract that composes the current App
+Registration's permission-grant evidence with validated token scope names,
+the active signed profile contract closure, policy lifecycle, bounded
+metadata-only audit evidence and local/Governance resource fences. It accepts
+no scope, resource ID, tenant, URL, method or remediation parameter.
+
+The signed `profile_debt_baseline` owns severity, policy-version/age
+thresholds, the evidence window, persistent-failure threshold and exact
+expiring exceptions. Missing or unsafe audit evidence and a current app absent
+from the permission baseline are `not_evaluated`, never silently aligned.
+Public output contains public permission/contract names, counts and opaque
+HMAC references. Private IDs are stored only inside the encrypted
+tenant-specific snapshot. No grant, consent, policy, allowlist or baseline can
+be changed by this tool.
 
 Application credential posture is a third fixed T0 workflow. It uses
 `Application.Read.All` to read only application object IDs present in both a

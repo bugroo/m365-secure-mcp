@@ -419,6 +419,99 @@
     {
       "authorization_mode": "automatic_read",
       "compensation": "not_applicable",
+      "description": "Correlate the active profile contract closure with validated token scopes, signed grant posture, policy lifecycle, local evidence, and resource-fence debt.",
+      "graph": {
+        "api_version": "v1.0",
+        "endpoint": "/oauth2PermissionGrants",
+        "method": "GET"
+      },
+      "id": "entra.profile_debt.posture.snapshot",
+      "idempotency": {
+        "key_required": false,
+        "retry": "bounded_read_retry"
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "module": "assurance",
+      "output_fields": [
+        "status",
+        "contract_digest",
+        "policy_digest",
+        "snapshot_reference",
+        "coverage_status",
+        "baseline_id",
+        "baseline_version",
+        "scope_posture",
+        "contract_posture",
+        "resource_posture",
+        "findings",
+        "writes_performed"
+      ],
+      "permissions": {
+        "admin_consent_required": true,
+        "delegated_scopes": [
+          "Directory.Read.All"
+        ],
+        "operator_roles": [
+          "Directory Readers",
+          "Global Reader"
+        ]
+      },
+      "plan_ttl_seconds": 0,
+      "postconditions": [
+        "coverage_is_explicit_per_evidence_source",
+        "metadata_only_mcp_output",
+        "private_identifiers_encrypted_or_hmac_referenced",
+        "encrypted_tenant_local_snapshot",
+        "no_graph_write",
+        "no_consent_or_policy_change",
+        "no_automatic_remediation"
+      ],
+      "preconditions": [
+        "tenant_bound_identity",
+        "signed_governance_policy",
+        "privileged_read_profile",
+        "validated_token_scope_claims",
+        "signed_profile_debt_baseline",
+        "signed_permission_grant_baseline",
+        "current_application_is_signed_target",
+        "local_service_principal_allowlist",
+        "bounded_private_audit_evidence"
+      ],
+      "preflight_graph_calls": [
+        {
+          "endpoint": "/servicePrincipals/{service_principal_id}",
+          "method": "GET"
+        },
+        {
+          "endpoint": "/servicePrincipals/{service_principal_id}/appRoleAssignments",
+          "method": "GET"
+        },
+        {
+          "endpoint": "/servicePrincipals/{resource_service_principal_id}",
+          "method": "GET"
+        }
+      ],
+      "resource_fences": [
+        "session_tenant_only",
+        "signed_policy_tenant_only",
+        "signed_service_principal_targets",
+        "local_service_principal_allowlist",
+        "active_profile_only",
+        "bounded_private_audit_file",
+        "keyed_deployment_local_references",
+        "no_raw_resource_ids_in_mcp_output"
+      ],
+      "risk_tier": "T0",
+      "tool_name": "m365_get_entra_profile_debt_posture",
+      "verification": "resource_observed"
+    },
+    {
+      "authorization_mode": "automatic_read",
+      "compensation": "not_applicable",
       "description": "Assess credential expiry, ownership, secret use, and redundant credentials for signed and locally allowlisted Entra application objects.",
       "graph": {
         "api_version": "v1.0",

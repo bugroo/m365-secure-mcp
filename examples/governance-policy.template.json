@@ -5,6 +5,7 @@
   "playbook_manifest_digest": "sha256:<generated-by-m365-compile-contracts>",
   "expires_at": null,
   "issued_at": "2026-07-26T00:00:00Z",
+  "policy_version": 1,
   "profiles": {
     "break-glass": {
       "break_glass_ttl_seconds": 900,
@@ -58,6 +59,7 @@
   "application_credential_baseline": null,
   "identity_governance_baseline": null,
   "permission_grant_baseline": null,
+  "profile_debt_baseline": null,
   "resources": {
     "applications": [],
     "groups": [],

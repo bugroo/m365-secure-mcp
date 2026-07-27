@@ -77,6 +77,17 @@
     },
     {
       "authorization_mode": "automatic_read",
+      "contract_id": "entra.profile_debt.posture.snapshot",
+      "delegated_scopes": [
+        "Directory.Read.All"
+      ],
+      "endpoint": "/oauth2PermissionGrants",
+      "input_fields": [],
+      "method": "GET",
+      "risk_tier": "T0"
+    },
+    {
+      "authorization_mode": "automatic_read",
       "contract_id": "entra.app_credentials.posture.snapshot",
       "delegated_scopes": [
         "Application.Read.All"
@@ -106,6 +117,6 @@
       "risk_tier": "T1"
     }
   ],
-  "manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
+  "manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
   "schema_version": "1.0"
 }

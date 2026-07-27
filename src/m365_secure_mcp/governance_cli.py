@@ -194,6 +194,7 @@ def _verify(args: argparse.Namespace) -> None:
                 "key_id": verified.bundle.signature.key_id,
                 "tenant_bound": True,
                 "active_profile": verified.policy.active_profile.value,
+                "policy_version": verified.policy.policy_version,
             },
             indent=2,
         )

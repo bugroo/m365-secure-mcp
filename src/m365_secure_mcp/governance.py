@@ -79,6 +79,22 @@ class DriftSeverity(StrEnum):
     CRITICAL = "critical"
 
 
+class ProfileDebtControl(StrEnum):
+    """Deterministic profile-debt controls governed by the tenant baseline."""
+
+    CURRENT_APP_BASELINE_MISSING = "PROFILE_CURRENT_APP_BASELINE_MISSING"
+    PERMISSION_GRANT_DRIFT = "PROFILE_PERMISSION_GRANT_DRIFT"
+    TOKEN_SCOPE_MISSING = "PROFILE_TOKEN_SCOPE_MISSING"  # noqa: S105
+    TOKEN_SCOPE_UNEXPECTED = "PROFILE_TOKEN_SCOPE_UNEXPECTED"  # noqa: S105
+    CONTRACT_BASELINE_MISMATCH = "PROFILE_CONTRACT_BASELINE_MISMATCH"
+    POLICY_VERSION_STALE = "PROFILE_POLICY_VERSION_STALE"
+    POLICY_AGE_STALE = "PROFILE_POLICY_AGE_STALE"
+    CONTRACT_NO_RECENT_EVIDENCE = "PROFILE_CONTRACT_NO_RECENT_EVIDENCE"
+    CONTRACT_PERSISTENT_FAILURE = "PROFILE_CONTRACT_PERSISTENT_FAILURE"
+    RESOURCE_ALLOWLIST_UNUSED = "PROFILE_RESOURCE_ALLOWLIST_UNUSED"
+    RESOURCE_FENCE_MISMATCH = "PROFILE_RESOURCE_FENCE_MISMATCH"
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -428,10 +444,71 @@ class ApplicationCredentialBaseline(StrictModel):
         return self
 
 
+class ProfileDebtException(StrictModel):
+    """Exact, expiring exception for one public scope/contract/resource subject."""
+
+    exception_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
+    control_id: ProfileDebtControl
+    subject: str = Field(
+        pattern=r"^[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}$"
+    )
+    rationale: str = Field(min_length=8, max_length=500)
+    expires_at: datetime
+
+    @field_validator("expires_at")
+    @classmethod
+    def expiry_has_timezone(cls, value: datetime) -> datetime:
+        if value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError(
+                "profile-debt exception expiry must include a UTC offset"
+            )
+        return value
+
+
+class ProfileDebtBaseline(StrictModel):
+    """Signed customer thresholds for read-only profile debt analysis."""
+
+    baseline_id: str = Field(pattern=r"^[A-Za-z0-9][A-Za-z0-9_.-]{2,63}$")
+    version: int = Field(ge=1, le=1_000_000)
+    minimum_policy_version: int = Field(default=1, ge=1, le=1_000_000)
+    maximum_policy_age_days: int = Field(default=90, ge=1, le=365)
+    evidence_window_days: int = Field(default=30, ge=1, le=90)
+    persistent_failure_threshold: int = Field(default=3, ge=1, le=100)
+    severities: dict[ProfileDebtControl, DriftSeverity]
+    exceptions: list[ProfileDebtException] = Field(
+        default_factory=list,
+        max_length=500,
+    )
+
+    @model_validator(mode="after")
+    def controls_and_exceptions_are_complete(
+        self,
+    ) -> ProfileDebtBaseline:
+        if set(self.severities) != set(ProfileDebtControl):
+            raise ValueError(
+                "profile-debt baseline must set severity for every control"
+            )
+        exception_ids = [item.exception_id for item in self.exceptions]
+        if exception_ids != sorted(set(exception_ids)):
+            raise ValueError(
+                "profile-debt exceptions must be unique and sorted"
+            )
+        selectors = [
+            (item.control_id.value, item.subject)
+            for item in self.exceptions
+        ]
+        if len(selectors) != len(set(selectors)):
+            raise ValueError(
+                "profile-debt exceptions must have unique control subjects"
+            )
+        return self
+
+
 class GovernancePolicy(StrictModel):
     """Unsigned governance policy body; signatures wrap this exact object."""
 
     schema_version: Literal["1.0"] = "1.0"
+    policy_version: int = Field(default=1, ge=1, le=1_000_000)
     tenant_id: UUID
     active_profile: GovernanceProfileName
     profiles: dict[GovernanceProfileName, GovernanceProfile]
@@ -440,6 +517,7 @@ class GovernancePolicy(StrictModel):
     identity_governance_baseline: IdentityGovernanceBaseline | None = None
     permission_grant_baseline: PermissionGrantBaseline | None = None
     application_credential_baseline: ApplicationCredentialBaseline | None = None
+    profile_debt_baseline: ProfileDebtBaseline | None = None
     contract_manifest_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
     playbook_manifest_digest: str | None = Field(
         default=None,
@@ -721,6 +799,28 @@ class VerifiedGovernancePolicy:
             )
         return decision, baseline
 
+    def authorize_profile_debt_read(
+        self,
+        contract: ContractSpec,
+        *,
+        tenant_id: str,
+    ) -> tuple[ReadAuthorizationDecision, ProfileDebtBaseline]:
+        """Authorize read-only profile debt analysis under signed thresholds."""
+
+        decision = self.authorize_read(contract, tenant_id=tenant_id)
+        baseline = self.policy.profile_debt_baseline
+        if baseline is None:
+            raise GovernancePolicyError(
+                "profile debt analysis requires a signed customer baseline",
+                reason_code="BASELINE_NOT_CONFIGURED",
+            )
+        if self.policy.permission_grant_baseline is None:
+            raise GovernancePolicyError(
+                "profile debt analysis requires a signed permission baseline",
+                reason_code="BASELINE_NOT_CONFIGURED",
+            )
+        return decision, baseline
+
     def authorize_playbook_read(
         self,
         playbook: PlaybookSpec,
@@ -970,6 +1070,33 @@ def validate_policy_against_manifest(
         for profile in policy.profiles.values()
         for playbook_id in profile.enabled_playbooks
     }
+    profile_debt_contract = "entra.profile_debt.posture.snapshot"
+    permission_drift_contract = "entra.permission_grants.drift.snapshot"
+    debt_profiles = [
+        name
+        for name, profile in policy.profiles.items()
+        if profile_debt_contract in profile.enabled_contracts
+    ]
+    if debt_profiles:
+        if debt_profiles != [GovernanceProfileName.PRIVILEGED_READ]:
+            raise GovernancePolicyError(
+                "profile debt is valid only in privileged-read",
+                reason_code="PROFILE_CONTRACT_MISMATCH",
+            )
+        debt_profile = policy.profiles[GovernanceProfileName.PRIVILEGED_READ]
+        if permission_drift_contract not in debt_profile.enabled_contracts:
+            raise GovernancePolicyError(
+                "profile debt requires permission drift in the same profile",
+                reason_code="PROFILE_CONTRACT_MISMATCH",
+            )
+        if (
+            policy.permission_grant_baseline is None
+            or policy.profile_debt_baseline is None
+        ):
+            raise GovernancePolicyError(
+                "profile debt requires both signed customer baselines",
+                reason_code="BASELINE_NOT_CONFIGURED",
+            )
     if enabled_playbooks:
         if playbook_manifest is None:
             raise GovernancePolicyError(

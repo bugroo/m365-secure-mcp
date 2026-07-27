@@ -5,10 +5,11 @@
     "entra.identity_governance.posture.snapshot": "sha256:1d5e1afcd5c313ef1f975f3c22d8cc480fbf5a37d4eae071ec3a1f8dd9b5aca2",
     "entra.organization.summary.read": "sha256:4ea3998c3aed55120671f4d81ad9a5637f76fb4a0854434cdea45b2420bfcae6",
     "entra.permission_grants.drift.snapshot": "sha256:9de20fb02a42d1ffd93feb6520083678ff49c4e40c3fed0c3fe20a815f644c20",
+    "entra.profile_debt.posture.snapshot": "sha256:f49fc80a99f4d1184147f0eb8e17886cc7976f5323ed763942aa8c25bf410305",
     "entra.role_assignments.read": "sha256:664d020343cd5b5455d68662d04d7cfc4e6d6cd7f0b31ffd974d1e0241c4bc6b",
     "entra.user.operational_profile.read": "sha256:cb10aea6c1691ea8401c80b4a61f7624f9b2e38abddd883bc698260e430cc13e",
     "entra.user.operational_profile.update": "sha256:329d50ad7cf61b0d707742611d3b9090bab7cfeecca82a9da0f77b2136a08a15"
   },
-  "manifest_digest": "sha256:2a658b65f9358b2198fd4a49688d4489321c23129121b8c5b4b0f543a0133907",
+  "manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
   "schema_version": "1.0"
 }

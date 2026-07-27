@@ -228,6 +228,32 @@ def test_permission_grant_drift_requires_exact_targets_and_scope() -> None:
     )
 
 
+def test_profile_debt_requires_current_app_target_fence_and_exact_scope() -> None:
+    with pytest.raises(
+        ValidationError,
+        match="M365_ALLOWED_SERVICE_PRINCIPAL_IDS",
+    ):
+        make_settings(
+            modules="profile,assurance",
+            privileged_modules_enabled=True,
+            enabled_tools="m365_get_entra_profile_debt_posture",
+            governance_policy_path="/private/governance-policy.signed.json",
+            governance_public_key_path="/private/governance-policy.pub",
+        )
+    settings = make_settings(
+        modules="profile,assurance",
+        privileged_modules_enabled=True,
+        enabled_tools="m365_get_entra_profile_debt_posture",
+        allowed_service_principal_ids=RESOURCE_ID,
+        governance_policy_path="/private/governance-policy.signed.json",
+        governance_public_key_path="/private/governance-policy.pub",
+    )
+    assert settings.scopes == (
+        "Directory.Read.All",
+        "User.Read",
+    )
+
+
 def test_application_credential_posture_requires_exact_targets_and_scope() -> None:
     with pytest.raises(
         ValidationError,
