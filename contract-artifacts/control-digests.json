@@ -1,0 +1,17 @@
+{
+  "control_library_version": "1.0.0",
+  "control_manifest_digest": "sha256:aab4fbabbf8757b6b2bf54bec9f23e60849807f65b5c0ec7deedbc9d9d7217d1",
+  "controls": {
+    "entra.applications.active_credential_count": "sha256:57a26bd0daa4c8e29240493f80fddb88f6797618fa065fe4f52cfeeb4418cc3d",
+    "entra.applications.credential_expiry_posture": "sha256:52266ec46b3586c52c794098af4af21a0276febd6d2dd1ffabdabf685226db37",
+    "entra.applications.owner_coverage": "sha256:61ffcf7f729bddca9271d8356ffa1672541602468972e193c990044e77c86d2c",
+    "entra.applications.password_credential_policy": "sha256:7baeae43e5eef88e6b852ff274dc8b81605439ba8744223a46e1ea71c1175360",
+    "entra.applications.permission_contract_closure": "sha256:d5f2897140d989e4b00d0868cf88ce45b89e750369aadb2cf30a403f7b2bc137",
+    "entra.conditional_access.mfa_policy_coverage": "sha256:2d91b57eb332baebc135c22b0376b049067db550e4bb18e941e1f4096606849e",
+    "entra.directory_roles.permanent_active_assignment": "sha256:916e3e36d0267c46d7c748ce54a02f3f04047cfcffeafee0395175dc5e2e7b19",
+    "entra.profiles.contract_closure": "sha256:70ca7eebd2f1f68784a4728ed041983df7a1c019cf6e3ade8071413adbe6a616",
+    "entra.profiles.resource_fence_closure": "sha256:48133d9bd299b7c600c85c49b3b3b70174b0ccddbdfa51a211b8893456ed68d6",
+    "entra.profiles.scope_closure": "sha256:6061b5f10c3dd9e803684abc473e6981a15236505437e48da3391d320196f077"
+  },
+  "schema_version": "1.0"
+}

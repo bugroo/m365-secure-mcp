@@ -25,6 +25,7 @@ from .config import (
     Settings,
 )
 from .contract_manifest import load_global_manifest, sha256_digest
+from .control_manifest import load_global_control_manifest
 from .governance import (
     GovernanceProfileName,
     load_verified_governance_policy,
@@ -93,20 +94,26 @@ def _release_integrity_check() -> dict[str, Any]:
     evidence: dict[str, Any] = {
         "contract_manifest_signature_verified": False,
         "playbook_manifest_signature_verified": False,
+        "control_manifest_signature_verified": False,
         "packaged_evidence_files": 0,
         "runtime_dependencies_checked": 0,
         "external_release_attestation_required": True,
+        "build_kind": "unknown",
+        "distribution_status": "unknown",
     }
     try:
         manifest = load_global_manifest()
         evidence["contract_manifest_signature_verified"] = True
         playbooks = load_global_playbook_manifest(manifest)
         evidence["playbook_manifest_signature_verified"] = True
+        controls = load_global_control_manifest()
+        evidence["control_manifest_signature_verified"] = True
         contract_digests = _release_document("contract-digests.json")
         playbook_digests = _release_document("playbook-digests.json")
+        control_digests = _release_document("control-digests.json")
         provenance = _release_document("provenance.json")
         sbom = _release_document("sbom.cdx.json")
-        evidence["packaged_evidence_files"] = 4
+        evidence["packaged_evidence_files"] = 5
 
         expected_contracts = {
             contract.id: sha256_digest(contract)
@@ -115,6 +122,10 @@ def _release_integrity_check() -> dict[str, Any]:
         expected_playbooks = {
             playbook.id: sha256_digest(playbook)
             for playbook in playbooks.playbooks
+        }
+        expected_controls = {
+            control.control_id: sha256_digest(control)
+            for control in controls.controls
         }
         if contract_digests.get("manifest_digest") != sha256_digest(manifest):
             issues.append("contract digest artifact does not match signed manifest")
@@ -127,19 +138,37 @@ def _release_integrity_check() -> dict[str, Any]:
             issues.append("playbook digest artifact does not match signed manifest")
         if playbook_digests.get("playbooks") != expected_playbooks:
             issues.append("one or more packaged playbook digests do not match")
+        if (
+            control_digests.get("control_manifest_digest")
+            != sha256_digest(controls)
+        ):
+            issues.append("control digest artifact does not match signed manifest")
+        if control_digests.get("controls") != expected_controls:
+            issues.append("one or more packaged control digests do not match")
 
         expected_provenance = {
             "manifest_digest": sha256_digest(manifest),
             "playbook_manifest_digest": sha256_digest(playbooks),
+            "control_manifest_digest": sha256_digest(controls),
             "contract_digests_digest": sha256_digest(contract_digests),
             "playbook_digests_digest": sha256_digest(playbook_digests),
+            "control_digests_digest": sha256_digest(control_digests),
             "sbom_digest": sha256_digest(sbom),
             "package_version": __version__,
             "runtime_tool_generation": False,
+            "source_revision": "release-attestation-required",
+            "build_kind": "local-unattested",
+            "distribution_status": "not-a-release",
+            "release_attestation_status": "external-required",
         }
         for field, expected in expected_provenance.items():
             if provenance.get(field) != expected:
                 issues.append(f"provenance field {field} does not match")
+        evidence["build_kind"] = provenance.get("build_kind", "unknown")
+        evidence["distribution_status"] = provenance.get(
+            "distribution_status",
+            "unknown",
+        )
 
         try:
             installed_version = importlib.metadata.version(
@@ -214,7 +243,8 @@ def _release_integrity_check() -> dict[str, Any]:
         "release_integrity",
         "pass" if not issues else "fail",
         (
-            "Signed manifests, packaged digests, provenance, SBOM, package "
+            "Signed contract, playbook, and control manifests, packaged digests, "
+            "provenance, SBOM, package "
             "version, and installed runtime dependencies are consistent."
             if not issues
             else "Packaged release evidence is inconsistent or incomplete."

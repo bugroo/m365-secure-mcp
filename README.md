@@ -21,6 +21,7 @@ to an identity, permission set, resource policy, and evidence trail.
 [MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Roadmap](docs/ROADMAP.md) |
+[Open-source boundary](docs/OPEN_SOURCE_BOUNDARY.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
 ## Microsoft Graph control plane
@@ -42,7 +43,7 @@ configuration fails before the server starts.
 flowchart TB
     A["Codex or Claude Code"] -->|"local stdio"| B["M365 Secure MCP"]
     H["OS Keychain"] -->|"token cache"| B
-    M["Signed contract + playbook manifests"] -->|"pinned digests"| B
+    M["Signed contract + playbook + control manifests"] -->|"pinned digests"| B
     Y["Signed tenant policy"] -->|"profile + fences"| B
     B --> C["Identity + contract + policy + resource"]
     C -->|"Graph token"| G["Microsoft Graph v1.0"]
@@ -77,13 +78,20 @@ uv run m365-compile-contracts --check
 The build inputs and outputs are
 [global-manifest.json](src/m365_secure_mcp/contract_data/global-manifest.json),
 [global-playbooks.json](src/m365_secure_mcp/contract_data/global-playbooks.json),
+[global-controls.json](src/m365_secure_mcp/contract_data/global-controls.json),
 [the compiled permission matrix](docs/CONTRACT_MATRIX.md),
-[the compiled playbook matrix](docs/PLAYBOOK_MATRIX.md), and
+[the compiled playbook matrix](docs/PLAYBOOK_MATRIX.md),
+[the compiled control matrix](docs/CONTROL_MATRIX.md), and
 [contract-artifacts](contract-artifacts/). The manifest is verified with a
 pinned Ed25519 trust anchor before server construction. Contracts and
-playbooks use independent trust anchors. Editing either manifest, either
-signature, or a signed tenant policy without the corresponding signer fails
-closed.
+playbooks and posture controls use independent trust anchors. Editing a
+manifest, signature, or signed tenant policy without the corresponding signer
+fails closed.
+
+Future posture-control signatures follow the external, two-role lifecycle in
+the [control signing runbook](docs/CONTROL_SIGNING_RUNBOOK.md). The compiler
+never signs, generates a production key or changes a trust anchor. Local
+`uv build` output is marked `local-unattested` and `not-a-release`.
 
 ### What comes next
 
@@ -95,8 +103,10 @@ signed grant posture, policy lifecycle, recent metadata-only audit evidence
 and resource fences. Offline doctor now verifies packaged release evidence,
 profile isolation, private-path metadata and effective scope closure. The
 external multi-tenant radar is also implemented without a central token pool.
-The next official vertical slice is the posture control library, followed by
-the first compiled T2 contract.
+The signed build-plane foundation for the Posture Control Library is
+implemented: ten public tenant-neutral definitions compile to a closed
+evaluator registry and versioned mapping matrix. Runtime evaluation and
+Governance v2 remain later milestones; no new Graph surface was introduced.
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -1182,6 +1192,8 @@ explicit operator consent.
 |---|---|
 | [Tool catalog](docs/TOOL_CATALOG.md) | All 130 fixed tools and their boundaries |
 | [Compiled playbook matrix](docs/PLAYBOOK_MATRIX.md) | Signed DAG, contract closure and exact permissions |
+| [Compiled control matrix](docs/CONTROL_MATRIX.md) | Signed public control IDs, evaluator bindings, evidence dependencies and framework mappings |
+| [Control signing runbook](docs/CONTROL_SIGNING_RUNBOOK.md) | Offline custody, signing, rotation, compromise response and future release gate |
 | [Workflow evaluations](evaluations/README.md) | Sanitized security and failure-mode fixtures |
 | [Official roadmap](docs/ROADMAP.md) | Prioritized vertical slices, acceptance criteria, friction and no-go rules |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
@@ -1191,6 +1203,7 @@ explicit operator consent.
 | [Reference review](docs/REFERENCE_REVIEW.md) | Comparative engineering decisions |
 | [Ownership and migration](docs/OWNERSHIP_AND_MIGRATION.md) | Public core, private deployment, and Lokka transition |
 | [MSP multi-tenant deployment](docs/MSP_MULTI_TENANT.md) | Host/customer isolation, GDAP and admin-consent workflow |
+| [Open-source boundary](docs/OPEN_SOURCE_BOUNDARY.md) | Public security core, private customer operations, licensing and integration boundary |
 
 ## Engineering references
 
@@ -1218,4 +1231,6 @@ The adopted and rejected patterns are recorded in
 
 ## License
 
-Apache License 2.0. See [LICENSE](LICENSE).
+Apache License 2.0. See [LICENSE](LICENSE). Downstream commercial use and the
+separate trademark/customer-data boundary are summarized in
+[the open-source boundary](docs/OPEN_SOURCE_BOUNDARY.md).

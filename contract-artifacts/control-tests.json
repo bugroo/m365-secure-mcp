@@ -1,0 +1,147 @@
+{
+  "assertions": [
+    {
+      "control_id": "entra.applications.active_credential_count",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_APPLICATION_ACTIVE_CREDENTIAL_COUNT_V1",
+      "evidence_contract_ids": [
+        "entra.app_credentials.posture.snapshot"
+      ],
+      "expected_condition": "application_active_credential_counts_match_policy",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-i",
+        "microsoft.apps.credential-hygiene"
+      ]
+    },
+    {
+      "control_id": "entra.applications.credential_expiry_posture",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_APPLICATION_CREDENTIAL_EXPIRY_POSTURE_V1",
+      "evidence_contract_ids": [
+        "entra.app_credentials.posture.snapshot"
+      ],
+      "expected_condition": "application_credentials_meet_expiry_policy",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-i",
+        "microsoft.apps.credential-hygiene"
+      ]
+    },
+    {
+      "control_id": "entra.applications.owner_coverage",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_APPLICATION_OWNER_COVERAGE_V1",
+      "evidence_contract_ids": [
+        "entra.app_credentials.posture.snapshot"
+      ],
+      "expected_condition": "application_owner_count_meets_policy",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-i",
+        "microsoft.apps.owner-review"
+      ]
+    },
+    {
+      "control_id": "entra.applications.password_credential_policy",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_APPLICATION_PASSWORD_CREDENTIAL_POLICY_V1",
+      "evidence_contract_ids": [
+        "entra.app_credentials.posture.snapshot"
+      ],
+      "expected_condition": "application_password_credentials_match_policy",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-i",
+        "microsoft.apps.credential-hygiene"
+      ]
+    },
+    {
+      "control_id": "entra.applications.permission_contract_closure",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_APPLICATION_PERMISSION_CONTRACT_CLOSURE_V1",
+      "evidence_contract_ids": [
+        "entra.permission_grants.drift.snapshot"
+      ],
+      "expected_condition": "application_permissions_match_compiled_contracts",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-i",
+        "microsoft.apps.least-privilege"
+      ]
+    },
+    {
+      "control_id": "entra.conditional_access.mfa_policy_coverage",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_CA_MFA_POLICY_COVERAGE_V1",
+      "evidence_contract_ids": [
+        "entra.identity_governance.posture.snapshot"
+      ],
+      "expected_condition": "mfa_policy_covers_required_identities_and_resources",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-j",
+        "microsoft.ca.mfa-all-users"
+      ]
+    },
+    {
+      "control_id": "entra.directory_roles.permanent_active_assignment",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_DIRECTORY_ROLE_PERMANENT_ACTIVE_ASSIGNMENT_V1",
+      "evidence_contract_ids": [
+        "entra.identity_governance.posture.snapshot"
+      ],
+      "expected_condition": "no_unexcepted_permanent_active_role_assignment",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-i",
+        "microsoft.pim.zero-permanent-active"
+      ]
+    },
+    {
+      "control_id": "entra.profiles.contract_closure",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_PROFILE_CONTRACT_CLOSURE_V1",
+      "evidence_contract_ids": [
+        "entra.profile_debt.posture.snapshot"
+      ],
+      "expected_condition": "active_profile_contracts_have_current_evidence",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-f"
+      ]
+    },
+    {
+      "control_id": "entra.profiles.resource_fence_closure",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_PROFILE_RESOURCE_FENCE_CLOSURE_V1",
+      "evidence_contract_ids": [
+        "entra.profile_debt.posture.snapshot"
+      ],
+      "expected_condition": "active_profile_resource_fences_are_closed",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-f",
+        "eu.nis2.article-21-2-i"
+      ]
+    },
+    {
+      "control_id": "entra.profiles.scope_closure",
+      "definition_version": "1.0.0",
+      "evaluator_id": "ENTRA_PROFILE_SCOPE_CLOSURE_V1",
+      "evidence_contract_ids": [
+        "entra.profile_debt.posture.snapshot"
+      ],
+      "expected_condition": "active_profile_scopes_match_contract_closure",
+      "lifecycle_state": "active",
+      "mapping_ids": [
+        "eu.nis2.article-21-2-f",
+        "eu.nis2.article-21-2-i",
+        "microsoft.apps.least-privilege"
+      ]
+    }
+  ],
+  "control_library_version": "1.0.0",
+  "control_manifest_digest": "sha256:aab4fbabbf8757b6b2bf54bec9f23e60849807f65b5c0ec7deedbc9d9d7217d1",
+  "schema_version": "1.0"
+}

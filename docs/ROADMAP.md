@@ -30,7 +30,7 @@ The following foundations are implemented:
 
 | Plane | Implemented baseline |
 |---|---|
-| Build | independently signed tenant-neutral contract and playbook manifests, strict compiler, closed schemas, DAG validation, permission closure, per-artifact digests, evaluation fixtures, provenance and CycloneDX SBOM |
+| Build | independently signed tenant-neutral contract, playbook and posture-control manifests, strict compiler, closed schemas and evaluator IDs, DAG validation, permission closure, per-artifact digests, evaluation fixtures, provenance and CycloneDX SBOM |
 | Governance | signed tenant-private policies, deployment profiles, resource allowlists, contract/playbook selection, authorization overrides that may only tighten the global floor |
 | Runtime | static tools, exact Graph v1.0 calls, token/identity checks, reusable T1 planning/preflight, Permission Impact Preview, signed write windows, external single-use approval, TOCTOU revalidation, bounded retries, post-read verification, receipts and change records |
 | Assurance | Identity Governance posture, application-permission drift, application-credential posture, signed Workload Identity Readiness, and profile scope/contract/resource debt, with minimized encrypted tenant-local snapshots |
@@ -274,7 +274,7 @@ Completion evidence:
 
 #### 7. Posture control library — 5 points
 
-**Current implementation target.**
+**M1 build-plane foundation completed; runtime evaluation remains planned.**
 
 Generalize deterministic controls and baseline exceptions across Entra first,
 then sharing, endpoint and security domains. Map evidence to current Microsoft
@@ -288,6 +288,23 @@ Acceptance:
 - missing license, role, scope or API evidence becomes `not_evaluated`, not a
   pass;
 - exceptions are signed, scoped and expiring.
+
+Implemented in M1:
+
+- independently signed public control manifest with ten tenant-neutral Entra
+  control IDs and monotonic lifecycle rules;
+- closed evaluator identifiers with no rule language or dynamic evaluation;
+- verified Microsoft and NIS2 source/mapping registry with explicit technical,
+  organizational and legal-claim limitations;
+- deterministic generated registry, control matrix, digests, compiler tests,
+  diagnostics, provenance and SBOM binding;
+- no Governance v2, evaluator runtime, Graph endpoint, permission, write or
+  remediation change.
+
+M1.1 hardens only the signing lifecycle: external encrypted signer input,
+current/retired/compromised public-key metadata, closed historical verification,
+direct-cutover rotation, local-build provenance labels and an explicit future
+release gate. It does not begin Governance v2 or runtime control evaluation.
 
 Depends on: items 1 and 4.
 

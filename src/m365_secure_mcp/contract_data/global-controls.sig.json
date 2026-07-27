@@ -1,0 +1,7 @@
+{
+  "algorithm": "ed25519",
+  "control_manifest_digest": "sha256:aab4fbabbf8757b6b2bf54bec9f23e60849807f65b5c0ec7deedbc9d9d7217d1",
+  "key_id": "posture-controls-2026-07",
+  "schema_version": "1.0",
+  "signature": "r4zXQGqwB42nIS9V7YHggwfNE2WULXO3GTk3x63G9kmi5tcBpPSD08k2Z/3+1MLv8GKriPHIEJPFuAwym+RwCA=="
+}
