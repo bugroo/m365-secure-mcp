@@ -2,568 +2,309 @@
 
 ## Product direction
 
-`m365-secure-mcp` is a **Policy-governed Microsoft 365 Operations Control
-Plane**. It is not a generic Graph client and it is not an autonomous tenant
-administrator.
+`m365-secure-mcp` is a **policy-bound Microsoft 365 Operations Control Plane
+that observes, diagnoses, plans, executes, verifies and documents bounded
+administrative operations through fixed Microsoft Graph contracts**.
 
-The product differentiates itself through complete, bounded operations:
+Three pillars have equal product weight:
 
-- fixed Microsoft Graph contracts instead of caller-selected URLs or methods;
-- private, signed Governance policy per tenant and profile;
-- low-friction execution for pre-approved T0/T1 operations;
-- explicit authorization for higher-impact changes;
-- deterministic verification, receipts, change records and Assurance findings;
-- one isolated process, identity, token cache and evidence boundary per tenant.
+1. **Observe and diagnose.**
+2. **Operate and automate.**
+3. **Assure and provide evidence.**
 
-The administrator, signed contracts, signed tenant policy and the MCP host
-remain authoritative. Runtime cannot grant consent, change policy, register a
-tool, approve its own plan or update itself.
+The project is not a generic Graph proxy, an autonomous tenant administrator,
+a primarily read-only product or a compliance summarizer. The administrator,
+signed build artifacts, signed tenant Governance and the MCP host remain
+authoritative. Runtime cannot grant consent, widen policy, register a tool,
+approve its own plan or update itself.
 
-This document is the single source of truth for **planned** product work. The
-[tool catalog](TOOL_CATALOG.md) and
-[compiled contract matrix](CONTRACT_MATRIX.md) are authoritative for what is
-implemented now.
+This file is authoritative for planned work. The
+[tool catalog](TOOL_CATALOG.md) and generated
+[contract matrix](CONTRACT_MATRIX.md) remain authoritative for the active
+runtime surface. The binding legacy-write freeze, semantic effect rules and
+operation dispositions live in [Secure Operations](SECURE_OPERATIONS.md).
 
 ## Current baseline
 
-The following foundations are implemented:
-
 | Plane | Implemented baseline |
 |---|---|
-| Build | independently signed tenant-neutral contract, playbook and posture-control manifests, strict compiler, closed schemas and evaluator IDs, DAG validation, permission closure, per-artifact digests, evaluation fixtures, provenance and CycloneDX SBOM |
-| Governance | signed tenant-private policies, deployment profiles, resource allowlists, contract/playbook selection, authorization overrides that may only tighten the global floor |
-| Runtime | static tools, exact Graph v1.0 calls, token/identity checks, reusable T1 planning/preflight, Permission Impact Preview, signed write windows, external single-use approval, TOCTOU revalidation, bounded retries, post-read verification, receipts and change records |
-| Assurance | Identity Governance posture, application-permission drift, application-credential posture, signed Workload Identity Readiness, and profile scope/contract/resource debt, with minimized encrypted tenant-local snapshots |
+| Build | independently signed contract, playbook and posture-control manifests; closed compiler; per-artifact digests; provenance and CycloneDX SBOM |
+| Governance | backward-compatible signed schemas v1/v2, profiles, resource allowlists, authorization hardening and private Posture Control configuration |
+| Runtime | 27 fixed opt-in write registrations, eight compiled T0 reads, one compiled Change-safe T1 write, bounded retries, receipts and change records |
+| Assurance | Entra posture/drift/debt evidence, credential posture, signed T0 readiness playbook, encrypted tenant-local snapshots and external read-only MSP radar |
 
-The compiled Entra surface contains eight T0 reads and one T1 write:
-`entra.user.operational_profile.update`. The T1 contract changes only
-`department`, `jobTitle` and `officeLocation` for an allowlisted,
-cloud-managed, non-privileged member. It uses `standing_policy` by default and
-can be hardened by Governance to `explicit_plan`.
+The compiled write `entra.user.operational_profile.update` is the reference
+vertical. It changes only `department`, `jobTitle` and `officeLocation` for an
+allowlisted, cloud-managed, non-privileged Member. It uses `standing_policy`
+by default and signed external `explicit_plan` approval when Governance raises
+the floor.
 
-The first signed playbook,
-`entra.workload_identity.readiness.playbook`, composes the permission-grant and
-application-credential T0 contracts. It introduces no Graph endpoint or scope,
-uses `automatic_read`, correlates both views with opaque tenant-local HMAC
-references, and fails closed on incomplete nodes or stale Governance.
-
-The wider fixed catalog remains available under its existing static controls.
-It will be migrated to compiled contracts incrementally; migration never
-creates a generic Graph escape hatch.
+Governance v2 validates signed Posture Control configuration, including exact
+control-manifest and compatibility-metadata digests. It does not evaluate
+evidence or produce assessments. Posture runtime is intentionally postponed
+until the first Secure Operations slices provide a useful operational plane.
 
 ## Risk and authorization matrix
 
-Authorization is an enforceable floor, not a suggestion. Governance may move a
-contract to a stronger mode but may never weaken it.
+Governance may strengthen but never weaken a contract's authorization floor.
 
-| Tier | Meaning | Default authorization | Per-operation friction |
+| Tier | Meaning | Default authorization | Expected friction |
 |---|---|---|---|
-| T0 | bounded read-only evidence or inventory | `automatic_read` | none after profile/policy approval |
-| T1 | bounded, reversible routine change | `standing_policy` | none when the signed standing policy covers the exact operation |
-| T2 | disruptive or materially consequential operation | `explicit_plan` | one host/broker approval bound to the exact plan |
-| T3 | privileged, high-impact or cross-domain operation | `dual_control` or `break_glass_only` | deliberate hard gate and independent authority |
-| T4 | prohibited capability | `prohibited` | cannot execute |
+| T0 | bounded read, diagnostic or preflight | `automatic_read` | none after signed profile/policy selection |
+| T1 | bounded, routine and reversible effect | `standing_policy` | no per-call prompt under exact standing authority |
+| T2 | disruptive identity, relationship or endpoint effect | `explicit_plan` | one external approval bound to a single immutable plan |
+| T3 | privileged policy or cross-domain effect | `dual_control` or `break_glass_only` | deliberate hard gate with independent authority |
+| T4 | prohibited effect | `prohibited` | unavailable |
 
-All calls still pass identity, token, contract, policy, fence, rate-limit and
-precondition checks. An in-contract action is not automatically executable.
-The host must retain an operator-visible halt/override capability, but that
-capability is never exposed as a model-controlled tool argument.
+The host always retains monitor, override and halt capability. Oversight does
+not require repetitive confirmation for already governed T0/T1 operations.
 
-## Completed vertical slice: Workload Identity Readiness
+## Completed foundations
 
-Implemented in `0.9.0`:
-`entra.workload_identity.readiness.playbook`, a signed T0 read-only playbook.
-It combines existing application-permission drift, application
-credential posture and ownership evidence into one operator-focused result.
+Completed and retained:
 
-### Scope
+- signed contract and playbook compiler;
+- eight Entra T0 contracts and the T1 operational-profile contract;
+- signed Workload Identity Readiness T0 playbook;
+- common result, finding, receipt, change-record and playbook state schemas;
+- Change-safe T1 plan/preflight/fence/TOCTOU/verify flow;
+- signed write windows and external single-use approval;
+- profile debt, application permission drift and credential posture;
+- bounded runtime/release doctor checks;
+- isolated external multi-tenant Assurance radar;
+- Posture Control Library M1/M1.1 build/signing foundation;
+- Governance v2 and M2.1 freshness-compatibility binding.
 
-- Define a tenant-neutral, signed playbook manifest whose nodes reference exact
-  compiled contract IDs and fixed edges.
-- Extend the compiler to validate playbook nodes, authorization floors,
-  permission closure, output schemas and manifest digests.
-- Add private Governance selection for the exact playbook, applications,
-  service principals, contract mappings and baseline version.
-- Execute only the fixed T0 DAG. Do not duplicate Graph collection when a
-  verified result from the same run can be reused safely.
-- Correlate grants, credential lifetime/redundancy and ownership coverage into
-  deterministic findings.
-- Return a bounded executive summary, findings and opaque evidence references.
-  Keep normalized identifiers and detailed evidence in the encrypted
-  tenant-local capsule.
-- Emit a deterministic playbook record using the existing parent state
-  machine. A read-only playbook has no compensation or remediation path.
+These foundations do not imply T2 support, real dual control, effectful
+playbooks or runtime Posture assessment.
 
-### Acceptance criteria
+## Canonical milestone order
 
-- The playbook cannot name an arbitrary tool, URL, method, scope or output
-  field.
-- Its permission closure is exactly the union of the referenced compiled
-  contracts; it introduces no additional Graph scope.
-- Runtime rejects an unsigned/stale playbook, a missing tenant policy
-  selection, cross-tenant evidence, incomplete pagination or changed contract
-  digest.
-- One failing node cannot be presented as complete coverage. The result marks
-  the affected control `not_evaluated` and identifies the safe operator action.
-- No write, consent grant, credential mutation, owner mutation or remediation
-  can be reached from this playbook.
-- Tests cover success, empty inventory, partial evidence, pagination, policy
-  mismatch, contract-digest mismatch, snapshot isolation and output privacy.
-- Compiler check, Ruff, strict mypy, tests, dependency audit and package build
-  pass.
+### Secure Operations 0 — Contract Effect Model
 
-**Status:** completed in `0.9.0`.
+Status: implemented on the Secure Operations foundation branch; not part of
+the active runtime until reviewed and merged.
 
-**Dependencies:** existing three Entra Assurance contracts and encrypted
-snapshot store.
+Introduce a closed semantic vocabulary:
 
-**Completion evidence:** signed playbook artifact, generated permission
-closure, evaluation fixtures and documentation.
-
-## Prioritized backlog
-
-### P0 — Complete the governed workflow foundation
-
-#### 1. Signed playbook compiler and evaluation harness — completed in `0.9.0`
-
-Create the reusable build-time playbook schema/compiler used by the readiness
-vertical. Add realistic, sanitized workflow evaluations for authorization,
-fences, incomplete evidence, deterministic next actions and context-efficient
-outputs.
+`read`, `create_object`, `update_properties`, `state_transition`,
+`relationship_add`, `relationship_remove`, `invoke_action`, `object_delete`.
 
 Acceptance:
 
-- DAGs are acyclic unless a bounded, explicitly declared verification loop is
-  supported later.
-- Every node resolves to a pinned contract digest at build time.
-- Playbook definitions cannot be added or altered by tenant data at runtime.
-- Evaluations contain no real tenant IDs, resource IDs, people or content.
+- `object_delete` is always T4/prohibited;
+- only `relationship_remove` may use `DELETE`;
+- every such endpoint ends literally in `/$ref`;
+- path normalization, encoding, traversal or placeholder substitution cannot
+  remove or alter the suffix;
+- caller-controlled Graph URL, method, query, body, scope, headers and suffix
+  remain impossible;
+- Graph beta remains prohibited;
+- unknown effects and invalid effect/method combinations fail closed;
+- existing signed endpoints, permissions, manifest digests and runtime tools
+  remain unchanged;
+- the canonical effect-model digest is bound into generated artifacts,
+  provenance and SBOM.
 
-Depends on: current contract compiler and operation/playbook schemas.
+This milestone does not add a Graph operation, T2 execution, dual control or
+effectful playbook.
 
-#### 2. Workload Identity Readiness T0 playbook — completed in `0.9.0`
+### Secure Operations 1 — Operator Foundation
 
-Implement the vertical slice above. This is the first product workflow that is
-more valuable than invoking isolated Graph reads while adding no write scope.
+Implement the infrastructure required before higher-impact writes:
 
-Depends on: item 1.
-
-#### 3. Reusable Change-safe operator engine — completed in `0.10.0`
-
-Extract the existing T1 flow into a contract-independent deterministic engine:
-
-`plan → preflight → Permission Impact Preview → fences → authorize → TOCTOU
-revalidation → execute → contract-specific verify → receipt → change record`
-
-Acceptance:
-
-- T0/T1 friction remains unchanged.
-- A preflight-only mode can produce the complete plan and impact preview
-  without calling a write endpoint; it is never described as a guaranteed
-  Microsoft Graph simulation.
-- Governance can impose deterministic write windows. The runtime uses a
-  trusted local time source, enforces plan expiry and rechecks the window at
-  execution.
-- Resource fences prefer immutable object IDs and verify any security-relevant
-  relationship at preflight and again before execution.
-- Host/broker approval is a signed, single-use artifact bound to tenant,
-  profile, operator, contract/policy digests, normalized parameters, resources,
-  preconditions and expiry.
-- Approval is not an MCP tool and `execute` accepts no caller-controlled
-  `approved=true` equivalent.
-- `EXECUTED_UNCERTAIN` is never retried automatically.
-- Verification modes remain explicit:
-  `strong_readback`, `async_status`, `resource_observed`,
-  `provider_acknowledged` or `not_verifiable`.
-
-Depends on: current T1 Entra implementation.
-
-### P1 — MSP Assurance and the first T2 operation
-
-#### 4. Scope, contract and resource debt for profiles — completed in `0.11.0`
-
-Compare each profile's effective token/grant posture with the exact permission
-closure of its enabled contracts. Report unused or unexpected scopes, missing
-scopes, stale policy versions, contracts without evidence, unused resource
-allowlists and persistently failing or unused tools. Never change a grant,
-consent or allowlist.
+- T2 `explicit_plan` execution independent of any one domain handler;
+- real dual control using two distinct trusted authorities;
+- async operation handles that distinguish provider acceptance from
+  verification;
+- resumable execution checkpoints bound to manifest, policy and plan digests;
+- signed effectful playbooks with explicit halt and compensation ownership.
 
 Acceptance:
 
-- tenant/private identifiers remain encrypted or HMAC-referenced;
-- severity comes from the signed customer baseline;
-- a finding distinguishes `aligned`, `not_aligned`, `not_applicable`,
-  `not_evaluated` and `exception_approved`;
-- Assurance proposes a governed contract or admin action but never remediates.
+- approvals are external, signed, single-use and bound to the exact private
+  plan;
+- the same signer cannot satisfy both dual-control authorities;
+- TOCTOU revalidates identity, policy, resources, preconditions and write
+  window immediately before effect;
+- `EXECUTED_UNCERTAIN` never retries or advances a DAG automatically;
+- an async `202`/`204` remains `EXECUTED_ACCEPTED` until its contract-specific
+  observation rule succeeds;
+- no v1/v2 Governance policy is auto-migrated or re-signed.
 
-Depends on: playbook compiler and current permission-drift vertical.
+### Secure Operations 2 — Identity Slice
 
-Completion evidence:
+Add five separately reviewed signed operations:
 
-- fixed signed `entra.profile_debt.posture.snapshot` T0 contract;
-- signed customer severity, lifecycle, evidence and exception baseline;
-- correlation of validated token claims, current-app grant evidence, active
-  profile closure, audit outcomes and private/local resource fences;
-- explicit complete versus `not_evaluated` coverage per evidence source;
-- encrypted raw IDs/evidence with public counts, contract/scope names and HMAC
-  references only;
-- no consent, grant, policy, allowlist or baseline mutation path.
+1. `entra.user.sessions.revoke`
+2. `entra.user.account_state.set`
+3. `entra.group.user_membership.add`
+4. `entra.group.user_membership.remove`
+5. `entra.user.direct_license.set`
 
-#### 5. Runtime self-check expansion — completed in `0.12.0`
-
-Extend `--doctor` and release verification with bounded local checks:
-manifest/playbook digests, installed package/provenance/SBOM consistency,
-owner/mode/symlink protections, profile isolation and excessive effective
-scopes.
-
-Acceptance:
-
-- checks inspect only known configuration and application-owned paths;
-- there is no indiscriminate home-directory or secret search;
-- checks never print secrets, tokens, tenant IDs or raw private policy;
-- the result gives one deterministic operator action for each failure;
-- no self-check changes configuration, permissions or the installed release.
-
-Depends on: signed playbook artifacts and stable release metadata.
-
-Completion evidence:
-
-- offline verification of both signed manifests and their packaged digest
-  maps;
-- compiler-packaged provenance and CycloneDX SBOM checked against the runtime
-  version and installed runtime dependencies;
-- bounded metadata checks for only configured/application-owned private paths,
-  without traversal or secret search;
-- tenant/profile cache namespace, state-role separation and Governance/runtime
-  profile-class checks;
-- exact effective scope closure versus the exposed fixed tool surface;
-- one deterministic `operator_action` on every diagnostic check; no check
-  mutates files, permissions, configuration or the installed release.
-
-#### 6. Multi-tenant drift radar — completed in `0.13.0`
-
-Provide an external orchestrator pattern for scheduled, read-only Assurance
-across MSP customers. Every customer run launches the same single-tenant
-runtime boundary already documented.
+All are planned as T2/`explicit_plan`. Exact endpoints, least-privilege
+permissions, roles, fences, exclusions, verification and compensation must be
+confirmed from current Microsoft Graph v1.0 documentation before signing.
+No contract may accept an arbitrary Graph request component.
 
 Acceptance:
 
-- no central token pool, cross-tenant runtime switch or shared policy;
-- one process, registration, keychain namespace, snapshot and baseline per
-  tenant/profile;
-- failures are isolated per tenant and do not expose another tenant's state;
-- the aggregate report contains tenant-assigned opaque references and
-  minimized status metadata, not raw Graph content;
-- no remediation route exists from the radar.
+- exact tenant/profile/resource fences;
+- protected, emergency and privileged identities fail closed;
+- role-assignable, dynamic, protected or unclassified groups fail closed;
+- license changes target one allowlisted directly assigned SKU state;
+- relationship removal uses only the literal compiled `/$ref` endpoint;
+- postconditions are observed without exposing raw private identifiers;
+- the equivalent legacy effect cannot be active in the same profile.
 
-Depends on: item 4 and stable Assurance output schemas.
+### Secure Operations 3 — Endpoint/Intune Slice
 
-Completion evidence:
+Prioritize fixed managed-device actions:
 
-- external `m365-msp-radar` process launches one fixed MCP child per private
-  policy rather than switching tenant inside one runtime;
-- owner-only configuration accepts only five fixed read-only Assurance tools,
-  unique opaque deployment references and unique policy files;
-- concurrency is bounded to four and a child failure cannot stop or expose
-  another deployment;
-- aggregate output retains only status, coverage, severity/alignment counts
-  and evidence availability—never Graph content, tenant/resource IDs, paths or
-  child errors;
-- the report asserts zero writes, no remediation route and no shared token
-  pool.
+- device sync;
+- Defender scan;
+- Defender signature update;
+- remote lock;
+- reboot.
 
-#### 7. Posture control library — 5 points
+Wipe, retire, fresh start and destructive reset remain prohibited. Platform,
+enrollment, licensing and capability checks are preconditions. Provider
+acknowledgement is not verification, recovery secrets never enter MCP output,
+and non-compensatable/ambiguous actions halt.
 
-**M1 build-plane foundation and M2 Governance v2 completed; M3 runtime
-evaluation remains planned.**
+### Secure Operations 4 — Defender Slice
 
-Generalize deterministic controls and baseline exceptions across Entra first,
-then sharing, endpoint and security domains. Map evidence to current Microsoft
-guidance and selected public security frameworks.
+Introduce exact contracts for:
 
-Acceptance:
+- incident assignment;
+- incident status;
+- incident classification/determination;
+- allowlisted tags;
+- signed fixed comment templates.
 
-- mappings identify source/version and evidence coverage;
-- reports say “alignment”, never claim automatic legal or regulatory
-  compliance;
-- missing license, role, scope or API evidence becomes `not_evaluated`, not a
-  pass;
-- exceptions are signed, scoped and expiring.
+Incident prose, alerts, email and ticket content are untrusted data and never
+authorization. Free-form model-generated comments are excluded. Concurrent
+collection updates require precondition digests and fail closed on drift.
 
-Implemented in M1:
+### Secure Operations 5 — Operational Playbooks
 
-- independently signed public control manifest with ten tenant-neutral Entra
-  control IDs and monotonic lifecycle rules;
-- closed evaluator identifiers with no rule language or dynamic evaluation;
-- verified Microsoft and NIS2 source/mapping registry with explicit technical,
-  organizational and legal-claim limitations;
-- deterministic generated registry, control matrix, digests, compiler tests,
-  diagnostics, provenance and SBOM binding;
-- no Governance v2, evaluator runtime, Graph endpoint, permission, write or
-  remediation change.
+Implement complete signed workflows only after Secure Operations 1–4:
 
-M1.1 hardens only the signing lifecycle: external encrypted signer input,
-current/retired/compromised public-key metadata, closed historical verification,
-direct-cutover rotation, local-build provenance labels and an explicit future
-release gate. It does not begin Governance v2 or runtime control evaluation.
+1. compromised-account containment;
+2. bounded onboarding;
+3. preserve-data offboarding.
 
-Implemented in M2:
+Each child effect is an independently compiled contract. The parent record
+lists completed, pending and ambiguous nodes. An ambiguous effect pauses the
+entire DAG. No playbook creates users, passwords, Temporary Access Passes,
+roles, consent grants, application credentials, deletes tenant objects or
+removes workload data.
 
-- backward-compatible signed Governance schemas `1.0` and `2.0`, with no
-  automatic migration or v2-to-v1 fallback;
-- exact control-manifest digest/schema/library and definition-major binding;
-- explicit enabled controls and mandatory customer severity;
-- deterministic public freshness ceilings that customer policy may only
-  tighten, supplied for M1 by canonically digested compatibility metadata
-  pinned in the signed Governance v2 policy;
-- exact tenant/profile-fenced, signed and expiring exceptions with
-  deterministic matching primitives;
-- fail-closed CLI and diagnostics validation without private identifier output;
-- no ControlEngine, evidence timestamp inspection, assessment output, Graph
-  endpoint, permission, write or remediation change.
+### Reduced Posture runtime
 
-M2.1 hardens the temporary M1 freshness bridge. M1 itself has no signed
-freshness field, so the bridge remains explicitly separate from the signed
-definitions. Its schema, exact manifest coverage and content digest are
-compiled into diagnostics, generated artifacts, local provenance and SBOM
-metadata. A future reviewed control-manifest rotation will move freshness into
-the signed definitions; M3 remains unstarted.
+Implement the smallest deterministic ControlEngine slice after operational
+contracts exist:
 
-Next milestone (M3):
-
-- implement the deterministic ControlEngine over existing bounded Assurance
-  evidence;
-- preserve `not_evaluated` for missing, stale, unlicensed, unscoped or
-  incomplete evidence;
-- consume Governance v2 severity, freshness and effective exceptions without
-  allowing runtime policy mutation;
-- emit bounded assessment results with opaque evidence references and retain
-  normalized detail only in the encrypted tenant-local capsule.
-
-Depends on: items 1 and 4.
-
-#### 8. First compiled T2 write: bounded group membership addition — 8 points
-
-Migrate the existing fixed member-add capability to a compiled contract only
-after the reusable Change-safe operator exists. Treat membership as T2 because
-a group can confer application, workload or administrative access.
-
-Required boundaries:
-
-- exact allowlisted group and member;
-- cloud-managed member identity;
-- reject role-assignable groups, protected/admin groups and any group whose
-  privilege status cannot be proved;
-- `explicit_plan` authorization;
-- duplicate membership handled idempotently;
-- post-read membership verification and deterministic receipt;
-- no batch input, group creation, owner change, role assignment or removal.
-
-Compensation must be documented as a separate future contract or manual
-runbook. Absence of an agent removal tool must not be described as automatic
-rollback.
-
-Depends on: item 3 and dedicated non-production Graph integration tests.
-
-### P2 — Readiness playbooks and operational learning
-
-#### 9. Onboarding readiness T0 playbook — 5 points
-
-Assess identity source, target groups, license prerequisites, mailbox/Teams/
-OneDrive readiness and policy fences without changing the tenant. Return
-missing prerequisites and the only safe next action for each gap.
-
-Depends on: signed playbooks and compiled read coverage for each included
-domain.
-
-#### 10. Bounded onboarding T1/T2 playbook — 13 points, split before work
-
-Build only after every effectful node is an independently compiled contract.
-Split the epic into identity metadata, selected group membership and workload
-readiness slices. The parent DAG must support resume, partial completion,
-explicit compensation requirements and operator halt.
-
-No all-or-nothing guarantee may be claimed across Microsoft 365 workloads.
-License assignment, role assignment and destructive cleanup remain excluded
-until separate contracts and authorization tiers are approved.
-
-Depends on: items 3, 8 and 9.
-
-#### 11. Failure analytics and deterministic recovery guidance — 5 points
-
-Store metadata-only failure fingerprints and effective recovery guidance in a
-tenant-local database.
+`evidence → deterministic finding → non-authorizing proposal candidate →
+governed operational contract → approval → execution → verification`
 
 Acceptance:
 
-- it can recommend a documented precheck or operator action;
-- it cannot modify contracts, policy, risk tiers, authorization or retries;
-- it never automatically repeats a write;
-- documented guidance covers 401/403 identity and scope checks, 412 fresh
-  preflight/ETag, 429 `Retry-After`, and manual verification for uncertain
-  outcomes;
-- message/file content, raw parameters, tokens and Graph error bodies are not
-  stored.
+- missing, stale, unlicensed, unscoped or incomplete evidence is
+  `not_evaluated`, never aligned;
+- severity and exceptions come only from signed Governance v2;
+- Assurance cannot call a write or manufacture authorization;
+- normalized private detail remains in the encrypted tenant-local capsule;
+- output makes no automatic legal or regulatory compliance claim.
 
-Depends on: stable operation/receipt schemas.
+### Progressive legacy catalog migration
 
-#### 12. Deterministic risk rules in audit-only mode — 8 points
+Migrate useful writes contract by contract under the
+[legacy-write freeze](SECURE_OPERATIONS.md#binding-legacy-write-freeze).
 
-Add transparent rules for unusual volume, new contract use, write windows and
-privileged profile use. Begin with observation only.
+Priority:
 
-Acceptance:
+1. identity operations required by the first three playbooks;
+2. Intune/endpoint actions;
+3. Defender incident operations;
+4. bounded handoff tools such as Planner;
+5. remaining useful Exchange/Teams operations.
 
-- no LLM/ML makes authorization decisions;
-- every score is reproducible from versioned rules and metadata;
-- rules can only add warnings in audit-only mode;
-- any future enforcement requires signed Governance opt-in, evaluations and a
-  separate review; it can only tighten authorization.
+Office content and Power BI writes remain compatibility surfaces but are
+removed from the canonical roadmap. Tool count is not an acceptance metric.
 
-Depends on: evaluation harness, failure analytics and sufficient sanitized
-operational evidence.
+## Supporting work after operational slices
 
-#### 13. Optional SIEM sink — 5 points
+The following remain valuable but cannot displace the canonical order:
 
-Export structured, redacted audit/Assurance metadata to an operator-configured
-sink. The local audit/receipt remains authoritative.
+- metadata-only failure analytics and deterministic recovery guidance;
+- transparent risk rules beginning in audit-only mode;
+- optional outbound SIEM metadata sink with no inbound authority;
+- SPDX alongside CycloneDX and verifiable release provenance;
+- a separate operator-invoked updater with signature verification and
+  rollback;
+- separately threat-modeled remote multi-user deployment.
 
-Acceptance:
+## Operator states and next safe action
 
-- no complete parameters, tokens, content or tenant identifiers by default;
-- queue bounds, TLS validation, backpressure and sink health are explicit;
-- a sink outage is visible but cannot silently discard the local write record;
-- inbound SIEM data cannot change MCP policy or trigger a tool.
-
-Depends on: stable event schema and redaction tests.
-
-### P3 — Controlled domain expansion and release assurance
-
-#### 14. Migrate the fixed catalog contract by contract — 3–8 points per vertical
-
-Priority order:
-
-1. Entra users, groups, applications and devices;
-2. Teams and SharePoint sharing boundaries;
-3. Intune and Defender operations;
-4. Exchange-backed administrative workflows.
-
-Each operation receives its own exact schema, least-privilege permission set,
-fences, tier, authorization, retry semantics and verification. Coverage count
-is not an acceptance criterion. Word, PowerPoint and Power BI expansion is not
-a roadmap priority; existing fixed capabilities remain documented but do not
-drive the control-plane design.
-
-#### 15. Phishing containment readiness, then containment — 13 points, split
-
-Start with a T0/T1 evidence playbook. Any effectful cross-domain containment
-must be split into individually reviewable contracts and treated as T3 unless
-the impact analysis proves a lower tier. It requires dual control, halt,
-partial-completion evidence and explicit recovery ownership. No bulk delete or
-implicit tenant-wide search-and-act loop is allowed.
-
-Depends on: mature Exchange/Defender contracts and the playbook engine.
-
-#### 16. Release assurance and external updater — 8 points
-
-Add SPDX alongside CycloneDX, release signing and verifiable provenance.
-Design any updater as a separate operator-invoked component:
-
-`download → verify signature/checksum/provenance → compatibility check → offline
-tests → snapshot → promote → smoke test → rollback on failure`
-
-The MCP process itself never downloads, installs or activates an update.
-
-Depends on: stable manifest/playbook schemas and release compatibility rules.
-
-#### 17. Remote multi-user deployment — deferred, estimate after separate approval
-
-The local stdio server must not be exposed through a generic network proxy. A
-future remote service would require a separately reviewed OAuth 2.1 resource
-server, audience-bound tokens, per-client/session isolation, CSRF/state
-protection, tenant routing outside tool arguments, OBO design and independent
-threat modeling. Until that project exists, remote multi-user mode is a
-documented no-go.
-
-## Operator states and the next safe action
-
-Every effectful result must answer: what happened, who must act and what is the
-single next safe action?
+Every effectful result must explain what happened, who must act and the single
+next safe action.
 
 | State | Meaning | Next safe action |
 |---|---|---|
-| `DENIED_OUT_OF_CONTRACT` | the capability does not exist in the signed build contract | select an existing contract or review/add one in the Build plane |
-| `DENIED_BY_POLICY` | the contract exists but this tenant/profile/resource is not authorized | Governance owner reviews and signs a tighter-scope policy change or uses the correct profile |
-| `BLOCKED_PRECONDITION` | identity, scope, role, fence, ETag or safety evidence failed | satisfy the named precondition, then generate a new plan |
-| `AWAITING_APPROVAL` | exact T2/T3 plan is valid but lacks host/broker authority | authorized operator approves that immutable plan; do not alter and reuse it |
-| `PLAN_EXPIRED` | approval/preflight evidence is no longer fresh | regenerate and review a new plan |
-| `EXECUTED_VERIFIED` | the effect matches the contract's verification rule | retain the receipt; no retry |
-| `EXECUTED_ACCEPTED` | the provider accepted an async/non-strongly-verifiable action | follow the contract's status-observation path; do not label it verified |
-| `EXECUTED_UNCERTAIN` | the effect may have committed but cannot be established | halt retries and perform the documented read/manual verification |
-| `FAILED_RETRYABLE` | no effect occurred and the contract permits a bounded retry | retry only after the stated delay and within the contract limit |
-| `HALTED_BY_OPERATOR` | the host/operator stop control prevented further effects | review evidence and create a new plan only if continuation is authorized |
-| `CANCELLED_BEFORE_EFFECT` | execution ended before the provider mutation | close the plan or generate a new one; the old authorization is not reusable |
+| `DENIED_OUT_OF_CONTRACT` | capability absent from the signed contract | select a current contract or review one in Build |
+| `DENIED_BY_POLICY` | tenant/profile/resource not authorized | Governance owner reviews the correct profile/policy |
+| `BLOCKED_PRECONDITION` | identity, role, scope, fence or state check failed | satisfy the named prerequisite and create a new plan |
+| `AWAITING_APPROVAL` | exact plan valid but external authority missing | approve that immutable plan through the host/broker |
+| `PLAN_EXPIRED` | plan or evidence no longer fresh | regenerate and review a new plan |
+| `EXECUTED_VERIFIED` | contract-specific postcondition is satisfied | retain the receipt; do not retry |
+| `EXECUTED_ACCEPTED` | provider accepted an asynchronous action | follow its bounded observation path |
+| `EXECUTED_UNCERTAIN` | effect may have committed | halt retries and perform documented verification |
+| `FAILED_RETRYABLE` | no effect occurred and bounded retry is permitted | retry only after the stated delay |
+| `HALTED_BY_OPERATOR` | host stop control prevented more effects | review evidence; any continuation requires a new plan |
+| `CANCELLED_BEFORE_EFFECT` | execution stopped before provider mutation | close or regenerate the plan |
 
-For playbooks, `PLAYBOOK_PARTIALLY_APPLIED` and
-`PLAYBOOK_COMPENSATION_REQUIRED` must enumerate completed nodes, unexecuted
-nodes and the responsible human owner. The system never invents or silently
-executes compensation.
+Effectful playbooks additionally use `PLAYBOOK_PARTIALLY_APPLIED` and
+`PLAYBOOK_COMPENSATION_REQUIRED`; neither state authorizes automatic
+compensation.
 
 ## Permanent no-go rules
 
-The following are architectural restrictions, not backlog items:
-
-- no arbitrary Graph URL, method, headers, query or body exposed to the model;
-- no Graph beta endpoint in a production contract;
-- no runtime generation, discovery, installation or activation of tools;
-- no runtime consent request, API permission grant, OAuth grant, directory-role
-  assignment, app-role assignment or PIM activation;
-- no model-controlled approval tool, boolean or reusable approval token;
-- no in-process auto-update;
+- no arbitrary Graph URL, method, header, query, raw body or scope;
+- no Graph beta;
+- no runtime tool generation, discovery or activation;
+- no runtime consent grant, OAuth grant, role/PIM assignment or activation;
+- no application secret or certificate creation;
+- no user, group, policy or other object deletion;
+- no routine device wipe;
+- no password, Temporary Access Pass, recovery PIN or secret in LLM-visible
+  output;
+- no model-controlled approval boolean, tool or reusable token;
+- no automatic permission widening or in-process auto-update;
+- no executable rule language, Python, CEL, JMESPath or dynamic expression;
 - no automatic retry after `EXECUTED_UNCERTAIN`;
-- no learned/failure/risk component that changes a contract, policy, tier,
-  authorization floor or resource allowlist;
-- no Assurance finding that directly triggers remediation;
-- no cross-tenant token, policy, baseline, receipt, audit or snapshot reuse;
-- no LLM-generated prose as the authoritative receipt or change record;
-- no promotion of `202`/`204` or provider acknowledgement to “verified” unless
-  the contract's verification rule is satisfied;
-- no legal/compliance certification inferred from posture evidence;
-- no public fixture, artifact, issue or documentation containing customer
-  tenant IDs, resource IDs, users, content, tokens or private policy.
+- no finding, email, ticket, document, incident or Graph text that authorizes
+  remediation;
+- no inbound webhook authority over policy, contracts, approval or execution;
+- no cross-tenant identity, token, policy, evidence or receipt reuse;
+- no provider acknowledgement promoted to verified without its contractual
+  postcondition;
+- no automatic legal/compliance conclusion from technical evidence;
+- no private customer identifiers, content, policies or credentials in public
+  artifacts.
 
-## Definition of done for every vertical slice
+## Definition of done
 
-A slice is complete only when all applicable gates pass:
+A vertical slice is complete only when:
 
-1. A tenant-neutral manifest/contract or signed playbook defines exact methods,
-   endpoints, fields, scopes, roles, tier, authorization, fences,
-   pre/postconditions, expiry, retry, verification and compensation.
-2. Private Governance selects exact tenants/profiles/resources and can only
-   harden the authorization floor.
-3. Runtime uses a static handler and fixed API route; administrative consent
-   remains a manual tenant-admin action.
-4. Tests cover the happy path, each denial class, pagination/limits, TOCTOU,
-   ambiguous outcomes, redaction and tenant isolation as applicable.
-5. Compiler output, permission matrix, digests, provenance and SBOM are current.
-6. Operator documentation identifies required roles/scopes, friction point,
-   result states and recovery.
-7. `m365-compile-contracts --check`, Ruff, strict mypy, tests, dependency audit
-   and package build pass.
-8. A privacy scan confirms that no customer identifiers, content, credentials
-   or private policies entered public artifacts.
-
-## Reference boundaries
-
-Implementation should continue to track primary specifications:
-
-- [Model Context Protocol tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
-- [Official MCP Python SDK](https://github.com/modelcontextprotocol/python-sdk)
-- [Microsoft Graph permissions reference](https://learn.microsoft.com/en-us/graph/permissions-reference)
-- [OWASP MCP Security Cheat Sheet](https://cheatsheetseries.owasp.org/cheatsheets/MCP_Security_Cheat_Sheet.html)
-- [EU AI Act, Regulation (EU) 2024/1689](https://eur-lex.europa.eu/eli/reg/2024/1689/oj)
-
-Oversight is implemented as understandable evidence, monitoring, host
-override/halt and tier-appropriate authorization—not repetitive confirmation
-dialogs for already governed routine work. This engineering model supports
-governance; it is not by itself a legal conformity assessment.
+1. a signed tenant-neutral contract defines effect, exact Graph v1.0 call,
+   closed fields, scopes, roles, tier, authorization, fences, pre/postconditions,
+   expiry, idempotency, retry, verification and compensation;
+2. signed private Governance selects exact tenant/profile/resources and can
+   only harden authorization;
+3. runtime uses a static handler and administrative consent remains manual;
+4. tests cover denial classes, TOCTOU, ambiguity, privacy and tenant isolation;
+5. generated registry, matrices, digests, provenance and SBOM are current;
+6. operator documentation states roles, scopes, friction and recovery;
+7. compiler check, tests, Ruff, strict mypy, dependency audit and build pass;
+8. public artifacts contain no customer data, private policy or key material.

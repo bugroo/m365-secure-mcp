@@ -10,6 +10,7 @@
     "entra.user.operational_profile.read": "sha256:cb10aea6c1691ea8401c80b4a61f7624f9b2e38abddd883bc698260e430cc13e",
     "entra.user.operational_profile.update": "sha256:329d50ad7cf61b0d707742611d3b9090bab7cfeecca82a9da0f77b2136a08a15"
   },
+  "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
   "manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
   "schema_version": "1.0"
 }

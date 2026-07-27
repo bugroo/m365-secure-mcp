@@ -1073,6 +1073,10 @@
       "name": "m365-secure-mcp",
       "properties": [
         {
+          "name": "m365-secure-mcp:contract-effect-model-digest",
+          "value": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60"
+        },
+        {
           "name": "m365-secure-mcp:control-compatibility-digest",
           "value": "sha256:741892a8dda46b4b468c0acd9b4b5f75230b4611001d41389c15e169e67c8d60"
         },
@@ -1085,7 +1089,7 @@
       "version": "0.13.0"
     }
   },
-  "serialNumber": "urn:uuid:ba1317b5-193a-5e7b-9d0c-bb626d4cb6a5",
+  "serialNumber": "urn:uuid:48ddfbaf-cb50-524c-aede-743cbd4cf1dc",
   "specVersion": "1.6",
   "version": 1
 }

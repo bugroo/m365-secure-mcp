@@ -17,6 +17,19 @@ This catalog, the [compiled contract matrix](CONTRACT_MATRIX.md), and the
 Items in the [official implementation roadmap](ROADMAP.md) are planned only; a
 roadmap name is never a runtime-discovered or dynamically registered tool.
 
+## Legacy-write freeze
+
+The 27 current write registrations are frozen compatibility surfaces. No new
+legacy write, parameter/effect expansion or Graph permission may be added;
+only security and regression fixes are permitted. Useful effects must migrate
+to signed compiled contracts and the common `ChangeSafeOperator`. A legacy
+tool and its compiled equivalent may never be enabled together for the same
+effect, and a legacy receipt is not a governed Change-safe operation record.
+
+The complete binding rule and disposition of all 27 writes are maintained in
+[Secure Operations](SECURE_OPERATIONS.md#legacy-write-inventory). No tool is
+removed from the runtime by this documentation milestone.
+
 ## Common
 
 - `m365_get_security_posture`
@@ -377,8 +390,10 @@ The application tool can change only `displayName` and
 `groupMembershipClaims`. The service-principal tool can change only
 `displayName`, `accountEnabled`, and `appRoleAssignmentRequired`. The
 Conditional Access tool can change only `displayName` and `state`.
-Credential, consent, owner, role, policy-condition, license, and delete
-surfaces are absent.
+Credential, consent, owner, role, policy-condition, license, and object-delete
+surfaces are absent. No current runtime DELETE exists. A future relationship
+removal must be an exact compiled `relationship_remove` path ending in
+`/$ref`; it cannot be added to this legacy surface.
 
 In particular, there is no tool for required-resource permissions, OAuth
 grants, admin consent, app-role assignments, directory-role assignments or PIM

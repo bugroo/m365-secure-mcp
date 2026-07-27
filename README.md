@@ -5,13 +5,18 @@
 [![CI](https://img.shields.io/github/actions/workflow/status/bugroo/m365-secure-mcp/ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/bugroo/m365-secure-mcp/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-Apache--2.0-555b61?style=flat-square)](LICENSE)
 
-A local-first Microsoft Graph control plane for Codex, Claude Code, and
-compatible MCP clients. Every operation is a fixed, reviewable contract bound
-to an identity, permission set, resource policy, and evidence trail.
+A policy-bound Microsoft 365 Operations Control Plane for Codex, Claude Code,
+and compatible MCP clients. It observes, diagnoses, plans, executes, verifies
+and documents bounded administrative operations through fixed Microsoft Graph
+contracts.
 
-| Fixed tools | Compiled contracts | Signed playbooks | Read profile | Opt-in writes | Delete tools |
+| Fixed tools | Compiled contracts | Signed playbooks | Read profile | Opt-in writes | Object deletes |
 |---:|---:|---:|---:|---:|---:|
 | 130 | 9 Entra contracts | 1 T0 workflow | 102 max | 27 | 0 |
+
+| Observe and diagnose | Operate and automate | Assure and provide evidence |
+|---|---|---|
+| bounded inventory, preflight and operational evidence | fixed effects, proportional authorization and verified workflows | deterministic findings, receipts, change records and drift |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
@@ -21,14 +26,17 @@ to an identity, permission set, resource policy, and evidence trail.
 [Governance v2](docs/GOVERNANCE.md) |
 [MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
+[Secure Operations](docs/SECURE_OPERATIONS.md) |
 [Roadmap](docs/ROADMAP.md) |
 [Open-source boundary](docs/OPEN_SOURCE_BOUNDARY.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
 ## Microsoft Graph control plane
 
-`m365-secure-mcp` is not a generic Microsoft Graph proxy. The model cannot
-choose a URL, HTTP method, permission scope, or request header.
+`m365-secure-mcp` is not a generic Microsoft Graph proxy, an autonomous tenant
+administrator, a primarily read-only product or a compliance summarizer. The
+model cannot choose a URL, HTTP method, permission scope, request body or
+request header.
 
 Microsoft Graph is the product surface. Microsoft 365 workloads are the
 catalog behind it: Entra, Exchange-backed user data, Teams, SharePoint,
@@ -96,22 +104,23 @@ never signs, generates a production key or changes a trust anchor. Local
 
 ### What comes next
 
-The signed, T0 read-only **Workload Identity Readiness** playbook, reusable
-Change-safe operator and **Profile Scope & Contract Debt** Assurance vertical
-and bounded runtime self-checks are implemented. The debt view correlates the
-active profile with validated token scopes, the current App Registration's
-signed grant posture, policy lifecycle, recent metadata-only audit evidence
-and resource fences. Offline doctor now verifies packaged release evidence,
-profile isolation, private-path metadata and effective scope closure. The
-external multi-tenant radar is also implemented without a central token pool.
-The signed build-plane foundation for the Posture Control Library and
-Governance v2 validation are implemented: ten public tenant-neutral
-definitions compile to a closed evaluator registry, while the tenant-private
-signed policy selects exact controls, severity, freshness and expiring
-exceptions. Because M1 definitions predate signed freshness metadata, the
-policy also pins the canonical digest of a closed M1 compatibility artifact;
-changed or incomplete metadata fails closed. M2 does not evaluate evidence or produce assessments; the
-deterministic ControlEngine remains M3. No new Graph surface was introduced.
+The signed T0 readiness playbook, reusable Change-safe T1 operator, Assurance
+verticals, multi-tenant radar, Posture Control build foundation and Governance
+v2 validation are implemented. The next canonical program is
+**Secure Operations**: a semantic effect model, an operator foundation for
+T2/dual-control/async/resumable execution, then bounded Identity, Intune,
+Defender and operational-playbook slices.
+
+Posture runtime is postponed until those operational slices exist. Its reduced
+role is to turn bounded evidence into deterministic findings and
+non-authorizing proposal candidates. A finding never calls or authorizes a
+write.
+
+The 27 current write registrations are frozen: no new legacy write, expanded
+legacy effect or new legacy permission is accepted. Useful operations migrate
+to compiled contracts and `ChangeSafeOperator`; equivalent legacy and compiled
+effects may never be active together. See
+[Secure Operations](docs/SECURE_OPERATIONS.md).
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -219,7 +228,7 @@ does not need before granting Graph consent.
 | Identity | tenant, user object IDs, UPN domains | `/me` is verified before data access |
 | Surface | modules, exact tool allowlist and denylist | unknown or unavailable names stop startup |
 | Resources | users, devices, Cloud PCs, files, sites, teams, plans, Office, Power BI, Purview and Entra | non-allowlisted identifiers are rejected locally |
-| Writes | signed authorization floor plus exact non-delete action | standing T1 or host gate, TOCTOU revalidation, receipts |
+| Writes | signed authorization floor plus exact semantic effect; object delete prohibited | standing T1 or host gate, TOCTOU revalidation, receipts |
 | Egress | Microsoft APIs | pinned Graph v1.0, Power BI REST and validated Office download hosts |
 | Evidence | every tool result | versioned schema, operation ID, explicit retry state |
 
@@ -375,13 +384,20 @@ responses are normalized, bounded, and marked as untrusted external data.
 
 ### Write profile
 
-The write process exposes **27 non-delete actions**, each separately enabled.
+The write process exposes **27 existing actions**, each separately enabled.
 Across the Graph-backed workloads they cover bounded Entra user/group and
 application controls, Conditional Access state, mail/calendar/contact work,
 Teams and Planner operations, Intune sync, Windows 365 reboot, and selected
 Office/OneNote/Excel edits. Power BI refresh/rebind uses its separate API
 audience under the same policy model. Exact tool contracts are listed in the
 [tool catalog](docs/TOOL_CATALOG.md).
+
+These registrations are under the binding
+[legacy-write freeze](docs/SECURE_OPERATIONS.md#binding-legacy-write-freeze).
+Only `m365_update_entra_user_operational_profile` currently uses the compiled
+Change-safe contract path. The others remain compatibility surfaces pending
+reviewed migration; no legacy receipt is represented as a governed
+Change-safe operation.
 
 Every write requires a UUID idempotency key. The local ledger commits before
 Graph is called and returns a durable operation receipt. An uncertain result
@@ -1069,7 +1085,9 @@ confirmed, are rejected before any metadata or membership write.
 Application and service-principal updates cannot touch secrets, certificates,
 owners, redirect URIs, app roles, or consent grants. Conditional Access updates
 can change only `state` and `displayName`; conditions and controls are
-read-only. No delete operation exists.
+read-only. No current runtime DELETE exists. Future exact relationship removal
+is allowed only through a compiled `relationship_remove` contract whose fixed
+path ends literally in `/$ref`; object deletion remains prohibited.
 
 ## Workload example: Planner task details
 
@@ -1189,7 +1207,7 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 295 passed |
+| Tests | 340 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
@@ -1204,6 +1222,7 @@ explicit operator consent.
 | Document | Purpose |
 |---|---|
 | [Tool catalog](docs/TOOL_CATALOG.md) | All 130 fixed tools and their boundaries |
+| [Secure Operations](docs/SECURE_OPERATIONS.md) | Product pillars, legacy-write freeze, effect model and operational slices |
 | [Compiled playbook matrix](docs/PLAYBOOK_MATRIX.md) | Signed DAG, contract closure and exact permissions |
 | [Compiled control matrix](docs/CONTROL_MATRIX.md) | Signed public control IDs, evaluator bindings, evidence dependencies and framework mappings |
 | [Control signing runbook](docs/CONTROL_SIGNING_RUNBOOK.md) | Offline custody, signing, rotation, compromise response and future release gate |

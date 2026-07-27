@@ -10,6 +10,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import json
+import re
 from enum import StrEnum
 from importlib.resources import files
 from typing import Any, Literal
@@ -74,8 +75,90 @@ class CompensationClass(StrEnum):
     NOT_COMPENSATABLE = "not_compensatable"
 
 
+class ContractEffect(StrEnum):
+    """Closed semantic effect vocabulary for compiled Graph contracts."""
+
+    READ = "read"
+    CREATE_OBJECT = "create_object"
+    UPDATE_PROPERTIES = "update_properties"
+    STATE_TRANSITION = "state_transition"
+    RELATIONSHIP_ADD = "relationship_add"
+    RELATIONSHIP_REMOVE = "relationship_remove"
+    INVOKE_ACTION = "invoke_action"
+    OBJECT_DELETE = "object_delete"
+
+
+EFFECT_MODEL_SCHEMA_VERSION = "1.0"
+CALLER_CONTROLLED_GRAPH_FIELDS = frozenset(
+    {
+        "api_version",
+        "body",
+        "endpoint",
+        "graph_endpoint",
+        "headers",
+        "method",
+        "query",
+        "query_params",
+        "request_body",
+        "scope",
+        "scopes",
+        "suffix",
+        "url",
+    }
+)
+_V1_PLACEHOLDERS = frozenset(
+    {
+        "application_id",
+        "resource_service_principal_id",
+        "service_principal_id",
+        "user_id",
+    }
+)
+_V2_PLACEHOLDERS = _V1_PLACEHOLDERS | frozenset(
+    {
+        "directory_object_id",
+        "group_id",
+        "incident_id",
+        "managed_device_id",
+        "policy_id",
+        "sku_id",
+    }
+)
+_PLACEHOLDER = re.compile(r"^\{([a-z][a-z0-9_]*)\}$")
+SAFE_GRAPH_PATH_PARAMETER_PATTERN = (
+    r"^(?!\.{1,2}$)[A-Za-z0-9][A-Za-z0-9._~-]{0,127}$"
+)
+
+
 class StrictModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
+
+
+def _validate_fixed_graph_path(
+    value: str,
+    *,
+    allowed_placeholders: frozenset[str],
+) -> str:
+    if (
+        not value.startswith("/")
+        or "://" in value
+        or "/beta/" in value.lower()
+        or value.lower().startswith("/beta")
+        or any(character in value for character in ("\r", "\n", "\x00"))
+        or any(character in value for character in ("?", "#", "\\", "%"))
+    ):
+        raise ValueError("contract endpoint must be a fixed Graph v1.0 path")
+
+    for segment in value.split("/")[1:]:
+        if not segment or segment in {".", ".."}:
+            raise ValueError("contract endpoint contains an unsafe path segment")
+        if "{" in segment or "}" in segment:
+            match = _PLACEHOLDER.fullmatch(segment)
+            if match is None or match.group(1) not in allowed_placeholders:
+                raise ValueError(
+                    "contract endpoint contains an unsupported placeholder"
+                )
+    return value
 
 
 class GraphCall(StrictModel):
@@ -86,27 +169,26 @@ class GraphCall(StrictModel):
     @field_validator("endpoint")
     @classmethod
     def fixed_graph_path(cls, value: str) -> str:
-        if (
-            not value.startswith("/")
-            or "://" in value
-            or "/beta/" in value.lower()
-            or value.startswith("/beta")
-            or any(character in value for character in ("\r", "\n", "\x00"))
-        ):
-            raise ValueError("contract endpoint must be a fixed Graph v1.0 path")
-        placeholders = {
-            segment[1:-1]
-            for segment in value.split("/")
-            if segment.startswith("{") and segment.endswith("}")
-        }
-        if placeholders - {
-            "application_id",
-            "resource_service_principal_id",
-            "service_principal_id",
-            "user_id",
-        }:
-            raise ValueError("contract endpoint contains an unsupported placeholder")
-        return value
+        return _validate_fixed_graph_path(
+            value,
+            allowed_placeholders=_V1_PLACEHOLDERS,
+        )
+
+
+class EffectGraphCall(StrictModel):
+    """Graph call schema reserved for future explicit-effect manifests."""
+
+    method: Literal["GET", "POST", "PATCH", "DELETE"]
+    endpoint: str = Field(min_length=2, max_length=300)
+    api_version: Literal["v1.0"]
+
+    @field_validator("endpoint")
+    @classmethod
+    def fixed_graph_path(cls, value: str) -> str:
+        return _validate_fixed_graph_path(
+            value,
+            allowed_placeholders=_V2_PLACEHOLDERS,
+        )
 
 
 class ContractPermissions(StrictModel):
@@ -142,6 +224,40 @@ class IdempotencyContract(StrictModel):
     ]
 
 
+def _validate_common_contract_semantics(
+    *,
+    input_schema: dict[str, Any],
+    preflight_graph_calls: list[GraphCall],
+    graph_method: str,
+    risk_tier: RiskTier,
+    authorization_mode: AuthorizationMode,
+) -> None:
+    if (
+        input_schema.get("type") != "object"
+        or input_schema.get("additionalProperties") is not False
+        or not isinstance(input_schema.get("properties"), dict)
+    ):
+        raise ValueError("contract input schema must be a closed JSON object")
+    input_fields = set(input_schema["properties"])
+    if input_fields & CALLER_CONTROLLED_GRAPH_FIELDS:
+        raise ValueError(
+            "contract input schema exposes caller-controlled Graph request fields"
+        )
+    if any(call.method != "GET" for call in preflight_graph_calls):
+        raise ValueError("contract preflight Graph calls must be read-only")
+    is_write = graph_method != "GET"
+    if is_write and risk_tier is RiskTier.T0:
+        raise ValueError("write contracts cannot be T0")
+    if not is_write and authorization_mode is not AuthorizationMode.AUTOMATIC_READ:
+        raise ValueError("initial read contracts must use automatic_read")
+    if is_write and authorization_mode is AuthorizationMode.AUTOMATIC_READ:
+        raise ValueError("write contracts cannot use automatic_read")
+    if risk_tier is RiskTier.T4 and (
+        authorization_mode is not AuthorizationMode.PROHIBITED
+    ):
+        raise ValueError("T4 contracts must be prohibited")
+
+
 class ContractSpec(StrictModel):
     id: str = Field(pattern=r"^[a-z][a-z0-9_.]{5,120}$")
     tool_name: str = Field(pattern=r"^m365_[a-z0-9_]{3,96}$")
@@ -164,24 +280,102 @@ class ContractSpec(StrictModel):
 
     @model_validator(mode="after")
     def validate_contract_semantics(self) -> ContractSpec:
-        schema = self.input_schema
-        if (
-            schema.get("type") != "object"
-            or schema.get("additionalProperties") is not False
-            or not isinstance(schema.get("properties"), dict)
-        ):
-            raise ValueError("contract input schema must be a closed JSON object")
-        is_write = self.graph.method in {"POST", "PATCH"}
-        if is_write and self.risk_tier is RiskTier.T0:
-            raise ValueError("write contracts cannot be T0")
-        if not is_write and self.authorization_mode is not AuthorizationMode.AUTOMATIC_READ:
-            raise ValueError("initial read contracts must use automatic_read")
-        if is_write and self.authorization_mode is AuthorizationMode.AUTOMATIC_READ:
-            raise ValueError("write contracts cannot use automatic_read")
-        if self.risk_tier is RiskTier.T4 and (
-            self.authorization_mode is not AuthorizationMode.PROHIBITED
-        ):
-            raise ValueError("T4 contracts must be prohibited")
+        if self.graph.method == "POST":
+            raise ValueError(
+                "contract schema 1.0 cannot infer a safe semantic effect for POST"
+            )
+        _validate_common_contract_semantics(
+            input_schema=self.input_schema,
+            preflight_graph_calls=self.preflight_graph_calls,
+            graph_method=self.graph.method,
+            risk_tier=self.risk_tier,
+            authorization_mode=self.authorization_mode,
+        )
+        return self
+
+
+class ContractSpecV2(StrictModel):
+    """Future signed contract schema with an explicit semantic effect.
+
+    No v2 manifest is shipped by Secure Operations 0. This closed schema makes
+    the next reviewed manifest fail closed before any T2 or new Graph operation
+    is introduced.
+    """
+
+    id: str = Field(pattern=r"^[a-z][a-z0-9_.]{5,120}$")
+    tool_name: str = Field(pattern=r"^m365_[a-z0-9_]{3,96}$")
+    description: str = Field(min_length=20, max_length=500)
+    module: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
+    graph: EffectGraphCall
+    preflight_graph_calls: list[GraphCall] = Field(default_factory=list)
+    input_schema: dict[str, Any]
+    output_fields: list[str] = Field(min_length=1)
+    permissions: ContractPermissions
+    risk_tier: RiskTier
+    authorization_mode: AuthorizationMode
+    resource_fences: list[str] = Field(min_length=1)
+    preconditions: list[str] = Field(min_length=1)
+    postconditions: list[str] = Field(min_length=1)
+    plan_ttl_seconds: int = Field(ge=0, le=3_600)
+    idempotency: IdempotencyContract
+    verification: VerificationMode
+    compensation: CompensationClass
+    effect: ContractEffect
+
+    @model_validator(mode="after")
+    def validate_explicit_effect(self) -> ContractSpecV2:
+        _validate_common_contract_semantics(
+            input_schema=self.input_schema,
+            preflight_graph_calls=self.preflight_graph_calls,
+            graph_method=self.graph.method,
+            risk_tier=self.risk_tier,
+            authorization_mode=self.authorization_mode,
+        )
+        if self.effect is ContractEffect.OBJECT_DELETE:
+            raise ValueError("object_delete contracts are prohibited")
+
+        properties = self.input_schema["properties"]
+        placeholders = {
+            match.group(1)
+            for segment in self.graph.endpoint.split("/")
+            if (match := _PLACEHOLDER.fullmatch(segment)) is not None
+        }
+        for placeholder in placeholders:
+            field = properties.get(placeholder)
+            if not isinstance(field, dict) or field.get("type") != "string":
+                raise ValueError(
+                    "endpoint placeholders require a closed string input field"
+                )
+            if (
+                field.get("format") != "uuid"
+                and field.get("pattern") != SAFE_GRAPH_PATH_PARAMETER_PATTERN
+            ):
+                raise ValueError(
+                    "endpoint placeholders require a safe path-segment schema"
+                )
+
+        allowed_methods: dict[ContractEffect, frozenset[str]] = {
+            ContractEffect.READ: frozenset({"GET"}),
+            ContractEffect.CREATE_OBJECT: frozenset({"POST"}),
+            ContractEffect.UPDATE_PROPERTIES: frozenset({"PATCH"}),
+            ContractEffect.STATE_TRANSITION: frozenset({"POST", "PATCH"}),
+            ContractEffect.RELATIONSHIP_ADD: frozenset({"POST"}),
+            ContractEffect.RELATIONSHIP_REMOVE: frozenset({"DELETE"}),
+            ContractEffect.INVOKE_ACTION: frozenset({"POST"}),
+        }
+        if self.graph.method not in allowed_methods[self.effect]:
+            raise ValueError("contract effect and Graph method are incompatible")
+
+        if self.effect is ContractEffect.READ and self.risk_tier is not RiskTier.T0:
+            raise ValueError("read effects must be T0")
+
+        if self.effect is ContractEffect.RELATIONSHIP_REMOVE:
+            if not self.graph.endpoint.endswith("/$ref"):
+                raise ValueError(
+                    "relationship_remove endpoint must end literally in /$ref"
+                )
+        elif self.graph.method == "DELETE":
+            raise ValueError("DELETE is reserved for relationship_remove")
         return self
 
 
@@ -207,6 +401,24 @@ class ContractManifest(StrictModel):
         raise KeyError(f"unknown compiled contract: {contract_id}")
 
 
+class ContractManifestV2(StrictModel):
+    """Future explicit-effect manifest schema; no v2 artifact is active yet."""
+
+    schema_version: Literal["2.0"]
+    product: Literal["m365-secure-mcp"]
+    contracts: list[ContractSpecV2] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def unique_contracts(self) -> ContractManifestV2:
+        ids = [contract.id for contract in self.contracts]
+        tools = [contract.tool_name for contract in self.contracts]
+        if len(ids) != len(set(ids)):
+            raise ValueError("contract manifest contains duplicate IDs")
+        if len(tools) != len(set(tools)):
+            raise ValueError("contract manifest contains duplicate tool names")
+        return self
+
+
 class ManifestSignature(StrictModel):
     schema_version: Literal["1.0"]
     algorithm: Literal["ed25519"]
@@ -230,6 +442,55 @@ def canonical_json(document: object) -> bytes:
 
 def sha256_digest(document: object) -> str:
     return f"sha256:{hashlib.sha256(canonical_json(document)).hexdigest()}"
+
+
+def contract_effect(contract: ContractSpec | ContractSpecV2) -> ContractEffect:
+    """Return the signed/derived effect without guessing ambiguous POST semantics."""
+
+    if isinstance(contract, ContractSpecV2):
+        return contract.effect
+    if contract.graph.method == "GET":
+        return ContractEffect.READ
+    if contract.graph.method == "PATCH":
+        return ContractEffect.UPDATE_PROPERTIES
+    raise ValueError(
+        "contract schema 1.0 cannot infer a safe semantic effect for POST"
+    )
+
+
+def effect_model_document() -> dict[str, object]:
+    """Return canonical public rules bound into compiler provenance."""
+
+    return {
+        "schema_version": EFFECT_MODEL_SCHEMA_VERSION,
+        "graph_api_version": "v1.0",
+        "effects": sorted(effect.value for effect in ContractEffect),
+        "legacy_schema_1_0_method_effects": {
+            "GET": ContractEffect.READ.value,
+            "PATCH": ContractEffect.UPDATE_PROPERTIES.value,
+        },
+        "explicit_effect_method_rules": {
+            ContractEffect.CREATE_OBJECT.value: ["POST"],
+            ContractEffect.INVOKE_ACTION.value: ["POST"],
+            ContractEffect.READ.value: ["GET"],
+            ContractEffect.RELATIONSHIP_ADD.value: ["POST"],
+            ContractEffect.RELATIONSHIP_REMOVE.value: ["DELETE"],
+            ContractEffect.STATE_TRANSITION.value: ["PATCH", "POST"],
+            ContractEffect.UPDATE_PROPERTIES.value: ["PATCH"],
+        },
+        "object_delete": "prohibited",
+        "relationship_remove_suffix": "/$ref",
+        "safe_path_parameter_pattern": SAFE_GRAPH_PATH_PARAMETER_PATTERN,
+        "supported_path_placeholders": sorted(_V2_PLACEHOLDERS),
+        "caller_controlled_graph_fields": sorted(
+            CALLER_CONTROLLED_GRAPH_FIELDS
+        ),
+        "beta_allowed": False,
+    }
+
+
+def effect_model_digest() -> str:
+    return sha256_digest(effect_model_document())
 
 
 def _data_bytes(name: str) -> bytes:

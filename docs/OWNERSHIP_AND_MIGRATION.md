@@ -50,7 +50,7 @@ Use a staged transition:
 
 | Workload | Read | Write | Boundary |
 |---|---:|---:|---|
-| Mail, calendar, contacts, To Do | yes | selected non-delete actions | principal and recipient domains |
+| Mail, calendar, contacts, To Do | yes | selected frozen legacy effects | principal and recipient domains |
 | OneDrive, SharePoint, Office, OneNote | metadata/selected content | bounded Word/PPT/Excel/OneNote edits | drive/item/page allowlists and ETags |
 | Planner | yes | create, basic update, details/checklist update | plan and assignee allowlists |
 | Teams and groups | yes | messages, group metadata/member add | team/chat/group/user allowlists |

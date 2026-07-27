@@ -13,6 +13,11 @@ the blast radius of:
 - confused-deputy behavior between an MCP client and Microsoft identity;
 - accidental or repeated writes.
 
+The security objective supports three equal capabilities: observe/diagnose,
+operate/automate and assure/provide evidence. The server is neither a generic
+Graph proxy nor an autonomous administrator, but it is intentionally capable
+of bounded administrative effects under signed authority.
+
 ## Trust boundaries
 
 1. **MCP client → local server.** The client controls tool inputs. Tool
@@ -331,7 +336,9 @@ the blast radius of:
 - Each write tool has an independent process-local per-minute rate limit.
 - The receipt ledger is stamped with a tenant/profile deployment namespace and
   refuses reuse by another namespace.
-- No delete tools are implemented.
+- No current runtime DELETE is implemented. `object_delete` is permanently
+  prohibited. A future `relationship_remove` may use DELETE only through a
+  compiled exact path ending literally in `/$ref`.
 - Every tool logs an attempt and result metadata correlated by operation ID.
 
 ### Contract and supply-chain assurance
@@ -343,6 +350,14 @@ the blast radius of:
   CycloneDX 1.6 SBOM.
 - CI runs the compiler in `--check` mode. A manifest or generated-artifact
   change without an updated valid signature fails closed.
+- The closed semantic effect vocabulary distinguishes reads, object creation,
+  property updates, state transitions, relationship addition/removal, action
+  invocation and prohibited object deletion. Unknown effects, Graph beta,
+  unsafe path segments and invalid method/effect combinations fail closed.
+- Only `relationship_remove` may declare DELETE; percent encoding, traversal,
+  placeholders or caller input cannot alter its required literal `/$ref`
+  suffix. No tool input can supply a URL, method, query, raw body, scope,
+  header, API version or suffix.
 - Tenant Governance policies use an external Ed25519 trust anchor and
   owner-only files. Runtime re-reads and verifies policy and manifest before
   the write, and rejects any digest change after preflight.
@@ -418,15 +433,23 @@ the blast radius of:
 ## Security roadmap boundary
 
 The [official implementation roadmap](docs/ROADMAP.md) records planned
-playbooks, Assurance expansion and Change-safe operations. Roadmap entries are
-not active capabilities and cannot weaken the controls documented here.
+Secure Operations, Assurance and Change-safe workflows. The binding
+[legacy-write freeze](docs/SECURE_OPERATIONS.md#binding-legacy-write-freeze)
+prohibits new legacy writes, expanded legacy effects and new legacy
+permissions. Security/regression fixes remain permitted; useful effects must
+migrate to compiled contracts and the common operator engine. Equivalent
+legacy and compiled effects cannot be active together. Roadmap entries are not
+active capabilities and cannot weaken the controls documented here.
 
 Every future vertical must preserve the permanent no-go rules: no arbitrary
 Graph proxy, runtime tool generation, dynamic consent, model-controlled
-approval, in-process auto-update, cross-tenant evidence reuse, Assurance-driven
-remediation or automatic retry after an uncertain write. New capabilities
-require an exact signed contract, private tenant policy, deterministic
-verification and the definition-of-done gates in the roadmap.
+approval, OAuth grant, role/PIM assignment, application credential creation,
+object deletion, routine device wipe, Graph beta, executable rule language,
+secret-bearing LLM output, in-process auto-update, inbound webhook authority,
+automatic permission widening, cross-tenant evidence reuse, remediation
+authorized by untrusted content or automatic retry after an uncertain write.
+New capabilities require an exact signed contract, private tenant policy,
+deterministic verification and the definition-of-done gates in the roadmap.
 
 ## Vulnerability reporting
 
