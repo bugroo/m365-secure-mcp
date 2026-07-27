@@ -13,12 +13,15 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 from pydantic import ValidationError
 
 from .contract_manifest import load_global_manifest, sha256_digest
+from .control_manifest import load_global_control_manifest
 from .governance import (
-    GovernancePolicy,
     GovernancePolicyError,
+    GovernancePolicyV2,
     load_policy_signer,
     load_verified_governance_policy,
+    parse_governance_policy,
     public_key_text,
+    resolve_control_library_configuration,
     sign_governance_policy,
     validate_policy_against_manifest,
 )
@@ -130,17 +133,18 @@ def _sign(args: argparse.Namespace) -> None:
                 label="unsigned governance policy",
             )
         )
-        policy = GovernancePolicy.model_validate(document)
+        policy = parse_governance_policy(document)
     except (UnicodeDecodeError, json.JSONDecodeError, ValidationError) as exc:
         raise PrivateStateError("unsigned governance policy is invalid") from exc
     manifest = load_global_manifest()
     playbooks = load_global_playbook_manifest(manifest)
+    controls = load_global_control_manifest()
     expected_manifest_digest = sha256_digest(manifest)
     if policy.contract_manifest_digest != expected_manifest_digest:
         raise PrivateStateError(
             "governance policy is not bound to the current signed contract manifest"
         )
-    validate_policy_against_manifest(policy, manifest, playbooks)
+    validate_policy_against_manifest(policy, manifest, playbooks, controls)
     bundle = sign_governance_policy(
         policy,
         load_policy_signer(
@@ -181,11 +185,22 @@ def _verify(args: argparse.Namespace) -> None:
     )
     manifest = load_global_manifest()
     playbooks = load_global_playbook_manifest(manifest)
+    controls = load_global_control_manifest()
     if verified.policy.contract_manifest_digest != sha256_digest(manifest):
         raise PrivateStateError(
             "governance policy is not bound to the current signed contract manifest"
         )
-    validate_policy_against_manifest(verified.policy, manifest, playbooks)
+    validate_policy_against_manifest(
+        verified.policy,
+        manifest,
+        playbooks,
+        controls,
+    )
+    control_configuration = (
+        resolve_control_library_configuration(verified.policy, controls)
+        if isinstance(verified.policy, GovernancePolicyV2)
+        else None
+    )
     print(
         json.dumps(
             {
@@ -195,6 +210,25 @@ def _verify(args: argparse.Namespace) -> None:
                 "tenant_bound": True,
                 "active_profile": verified.policy.active_profile.value,
                 "policy_version": verified.policy.policy_version,
+                "schema_version": verified.policy.schema_version,
+                "control_library_configured": (
+                    control_configuration is not None
+                ),
+                "enabled_control_count": (
+                    len(control_configuration.settings)
+                    if control_configuration is not None
+                    else 0
+                ),
+                "control_exception_count": (
+                    len(control_configuration.exceptions)
+                    if control_configuration is not None
+                    else 0
+                ),
+                "control_compatibility_digest": (
+                    control_configuration.compatibility_digest
+                    if control_configuration is not None
+                    else None
+                ),
             },
             indent=2,
         )
@@ -210,7 +244,13 @@ def main() -> None:
             _sign(args)
         else:
             _verify(args)
-    except (GovernancePolicyError, PrivateStateError, ValidationError) as exc:
+    except GovernancePolicyError as exc:
+        raise SystemExit(
+            "Governance error "
+            f"[{exc.reason_code}]:\n{exc}\n"
+            f"Operator action: {exc.operator_action}"
+        ) from None
+    except (PrivateStateError, ValidationError) as exc:
         raise SystemExit(f"Governance error:\n{exc}") from None
 
 

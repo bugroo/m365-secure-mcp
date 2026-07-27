@@ -146,6 +146,23 @@ the blast radius of:
 
 ### Assurance and drift
 
+- Governance v2 extends the existing signed tenant policy with an exact
+  control-manifest digest/schema/library binding and an exact canonical
+  M1-compatibility-metadata digest, explicit enabled control IDs, customer
+  severity, non-relaxing evidence freshness and exact expiring exceptions.
+  Unknown fields, controls, versions, selectors, changed compatibility
+  metadata and relaxed freshness fail closed. Governance v1 remains valid for
+  existing tools but cannot enable the Control Library and is never migrated
+  automatically.
+- The M1 signed definitions do not contain freshness metadata. The public
+  compatibility artifact is not signed-manifest metadata; Governance v2 pins
+  its independent content digest so installed-code drift cannot silently
+  change effective freshness. A future signed definition revision must retire
+  this bridge through reviewed manifest and policy rotation.
+- M2 validates and deterministically resolves Control Library configuration
+  only. It does not inspect evidence, execute evaluators, change assessment
+  statuses or produce compliance conclusions. The runtime cannot choose an
+  evaluator, Graph route, evidence source, expression or severity.
 - The optional Entra Identity Governance baseline is part of the signed private
   Governance policy. It stores keyed domain digests and administrator-selected
   severity, not raw tenant configuration.

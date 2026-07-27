@@ -12,6 +12,9 @@ from pydantic import ValidationError
 
 import m365_secure_mcp.control_manifest as control_module
 from m365_secure_mcp._generated_controls import (
+    CONTROL_COMPATIBILITY_DIGEST,
+    CONTROL_COMPATIBILITY_FRESHNESS,
+    CONTROL_COMPATIBILITY_SCHEMA_VERSION,
     CONTROL_DEFINITIONS,
     CONTROL_FRAMEWORK_MAPPINGS,
     CONTROL_FRAMEWORK_SOURCES,
@@ -20,6 +23,10 @@ from m365_secure_mcp._generated_controls import (
 from m365_secure_mcp.contract_compiler import check_outputs, compile_outputs
 from m365_secure_mcp.contract_manifest import load_global_manifest, sha256_digest
 from m365_secure_mcp.contract_trust import CONTROL_SIGNING_AUTHORITIES
+from m365_secure_mcp.control_compatibility import (
+    control_compatibility_digest,
+    load_control_compatibility_metadata,
+)
 from m365_secure_mcp.control_manifest import (
     ControlDefinition,
     ControlLifecycleState,
@@ -70,6 +77,14 @@ FROZEN_GRAPH_ARTIFACT_HASHES = {
     ),
     "contract-artifacts/playbook-digests.json": (
         "539d393c49dece88c5ea71ebea1185f44f8a49a6835fa2f0404dc928f3028f32"
+    ),
+}
+FROZEN_M1_SIGNED_CONTROL_HASHES = {
+    "src/m365_secure_mcp/contract_data/global-controls.json": (
+        "3b3b4b9f69991b878ee5828db613bd2bdc612057d9c6fe8943b2ae66a9a2901f"
+    ),
+    "src/m365_secure_mcp/contract_data/global-controls.sig.json": (
+        "63199795e7933e29961fd4c26695f740e53f9701f0e0191b76360740e5886aae"
     ),
 }
 
@@ -279,7 +294,17 @@ def test_canonical_serialization_normalizes_permutations() -> None:
 
 def test_generated_registry_matches_signed_manifest() -> None:
     manifest = load_global_control_manifest()
+    compatibility = load_control_compatibility_metadata(manifest)
     assert CONTROL_MANIFEST_DIGEST == sha256_digest(manifest)
+    assert CONTROL_COMPATIBILITY_SCHEMA_VERSION == compatibility.schema_version
+    assert CONTROL_COMPATIBILITY_DIGEST == control_compatibility_digest(
+        compatibility
+    )
+    assert set(CONTROL_COMPATIBILITY_FRESHNESS) == set(CANONICAL_CONTROL_IDS)
+    assert all(
+        item["maximum_evidence_age_seconds"] == 86_400
+        for item in CONTROL_COMPATIBILITY_FRESHNESS.values()
+    )
     assert set(CONTROL_DEFINITIONS) == set(CANONICAL_CONTROL_IDS)
     assert set(CONTROL_FRAMEWORK_SOURCES) == {
         item.source_id for item in manifest.sources
@@ -295,6 +320,12 @@ def test_generated_registry_matches_signed_manifest() -> None:
 
 def test_graph_contract_playbook_and_permission_artifacts_are_frozen() -> None:
     for relative_path, expected in FROZEN_GRAPH_ARTIFACT_HASHES.items():
+        actual = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
+        assert actual == expected
+
+
+def test_m1_signed_control_artifacts_are_byte_for_byte_frozen() -> None:
+    for relative_path, expected in FROZEN_M1_SIGNED_CONTROL_HASHES.items():
         actual = hashlib.sha256((ROOT / relative_path).read_bytes()).hexdigest()
         assert actual == expected
 

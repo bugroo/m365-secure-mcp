@@ -14,7 +14,9 @@ from m365_secure_mcp.contract_manifest import (
 )
 from m365_secure_mcp.governance import (
     ApplicationCredentialBaseline,
+    ControlLibraryGovernance,
     GovernancePolicy,
+    GovernancePolicyV2,
     GovernanceProfile,
     GovernanceProfileName,
     GovernanceResources,
@@ -49,6 +51,7 @@ def write_signed_governance(
     enable_profile_debt: bool = False,
     write_window_utc: str | None = None,
     policy_version: int = 1,
+    control_library: ControlLibraryGovernance | None = None,
 ) -> tuple[Path, Path]:
     """Create owner-only test policy material outside the repository."""
 
@@ -91,7 +94,8 @@ def write_signed_governance(
             break_glass_ttl_seconds=900
         ),
     }
-    policy = GovernancePolicy(
+    policy_type = GovernancePolicyV2 if control_library is not None else GovernancePolicy
+    policy = policy_type(
         policy_version=policy_version,
         tenant_id=UUID(tenant_id),
         active_profile=active_profile,
@@ -128,6 +132,11 @@ def write_signed_governance(
         ),
         issued_at=datetime.now(UTC),
         expires_at=datetime.now(UTC) + timedelta(hours=1),
+        **(
+            {"control_library": control_library}
+            if control_library is not None
+            else {}
+        ),
     )
     validate_policy_against_manifest(policy, manifest, playbooks)
     signer = Ed25519PrivateKey.generate()

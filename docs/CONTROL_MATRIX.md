@@ -2,19 +2,20 @@
 
 Generated from the independently signed, tenant-neutral control manifest.
 Definitions contain no customer severity, tenant selectors or executable rules.
+The separate M1 freshness compatibility artifact is not signed control definition metadata. Governance v2 pins its canonical digest: `sha256:741892a8dda46b4b468c0acd9b4b5f75230b4611001d41389c15e169e67c8d60`.
 
-| Control ID | Definition | Evaluator | Evidence dependency | Intended result | Lifecycle |
-|---|---|---|---|---|---|
-| `entra.applications.active_credential_count` | `1.0.0` | `ENTRA_APPLICATION_ACTIVE_CREDENTIAL_COUNT_V1` | `entra.app_credentials.posture.snapshot` | `application_active_credential_counts_match_policy` | `active` |
-| `entra.applications.credential_expiry_posture` | `1.0.0` | `ENTRA_APPLICATION_CREDENTIAL_EXPIRY_POSTURE_V1` | `entra.app_credentials.posture.snapshot` | `application_credentials_meet_expiry_policy` | `active` |
-| `entra.applications.owner_coverage` | `1.0.0` | `ENTRA_APPLICATION_OWNER_COVERAGE_V1` | `entra.app_credentials.posture.snapshot` | `application_owner_count_meets_policy` | `active` |
-| `entra.applications.password_credential_policy` | `1.0.0` | `ENTRA_APPLICATION_PASSWORD_CREDENTIAL_POLICY_V1` | `entra.app_credentials.posture.snapshot` | `application_password_credentials_match_policy` | `active` |
-| `entra.applications.permission_contract_closure` | `1.0.0` | `ENTRA_APPLICATION_PERMISSION_CONTRACT_CLOSURE_V1` | `entra.permission_grants.drift.snapshot` | `application_permissions_match_compiled_contracts` | `active` |
-| `entra.conditional_access.mfa_policy_coverage` | `1.0.0` | `ENTRA_CA_MFA_POLICY_COVERAGE_V1` | `entra.identity_governance.posture.snapshot` | `mfa_policy_covers_required_identities_and_resources` | `active` |
-| `entra.directory_roles.permanent_active_assignment` | `1.0.0` | `ENTRA_DIRECTORY_ROLE_PERMANENT_ACTIVE_ASSIGNMENT_V1` | `entra.identity_governance.posture.snapshot` | `no_unexcepted_permanent_active_role_assignment` | `active` |
-| `entra.profiles.contract_closure` | `1.0.0` | `ENTRA_PROFILE_CONTRACT_CLOSURE_V1` | `entra.profile_debt.posture.snapshot` | `active_profile_contracts_have_current_evidence` | `active` |
-| `entra.profiles.resource_fence_closure` | `1.0.0` | `ENTRA_PROFILE_RESOURCE_FENCE_CLOSURE_V1` | `entra.profile_debt.posture.snapshot` | `active_profile_resource_fences_are_closed` | `active` |
-| `entra.profiles.scope_closure` | `1.0.0` | `ENTRA_PROFILE_SCOPE_CLOSURE_V1` | `entra.profile_debt.posture.snapshot` | `active_profile_scopes_match_contract_closure` | `active` |
+| Control ID | Definition | Evaluator | Evidence dependency | Maximum evidence age | Intended result | Lifecycle |
+|---|---|---|---|---|---|---|
+| `entra.applications.active_credential_count` | `1.0.0` | `ENTRA_APPLICATION_ACTIVE_CREDENTIAL_COUNT_V1` | `entra.app_credentials.posture.snapshot` | `86400` seconds | `application_active_credential_counts_match_policy` | `active` |
+| `entra.applications.credential_expiry_posture` | `1.0.0` | `ENTRA_APPLICATION_CREDENTIAL_EXPIRY_POSTURE_V1` | `entra.app_credentials.posture.snapshot` | `86400` seconds | `application_credentials_meet_expiry_policy` | `active` |
+| `entra.applications.owner_coverage` | `1.0.0` | `ENTRA_APPLICATION_OWNER_COVERAGE_V1` | `entra.app_credentials.posture.snapshot` | `86400` seconds | `application_owner_count_meets_policy` | `active` |
+| `entra.applications.password_credential_policy` | `1.0.0` | `ENTRA_APPLICATION_PASSWORD_CREDENTIAL_POLICY_V1` | `entra.app_credentials.posture.snapshot` | `86400` seconds | `application_password_credentials_match_policy` | `active` |
+| `entra.applications.permission_contract_closure` | `1.0.0` | `ENTRA_APPLICATION_PERMISSION_CONTRACT_CLOSURE_V1` | `entra.permission_grants.drift.snapshot` | `86400` seconds | `application_permissions_match_compiled_contracts` | `active` |
+| `entra.conditional_access.mfa_policy_coverage` | `1.0.0` | `ENTRA_CA_MFA_POLICY_COVERAGE_V1` | `entra.identity_governance.posture.snapshot` | `86400` seconds | `mfa_policy_covers_required_identities_and_resources` | `active` |
+| `entra.directory_roles.permanent_active_assignment` | `1.0.0` | `ENTRA_DIRECTORY_ROLE_PERMANENT_ACTIVE_ASSIGNMENT_V1` | `entra.identity_governance.posture.snapshot` | `86400` seconds | `no_unexcepted_permanent_active_role_assignment` | `active` |
+| `entra.profiles.contract_closure` | `1.0.0` | `ENTRA_PROFILE_CONTRACT_CLOSURE_V1` | `entra.profile_debt.posture.snapshot` | `86400` seconds | `active_profile_contracts_have_current_evidence` | `active` |
+| `entra.profiles.resource_fence_closure` | `1.0.0` | `ENTRA_PROFILE_RESOURCE_FENCE_CLOSURE_V1` | `entra.profile_debt.posture.snapshot` | `86400` seconds | `active_profile_resource_fences_are_closed` | `active` |
+| `entra.profiles.scope_closure` | `1.0.0` | `ENTRA_PROFILE_SCOPE_CLOSURE_V1` | `entra.profile_debt.posture.snapshot` | `86400` seconds | `active_profile_scopes_match_contract_closure` | `active` |
 
 ## Published framework mappings
 

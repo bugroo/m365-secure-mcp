@@ -8,6 +8,54 @@ CONTROL_LIBRARY_VERSION: Final = '1.0.0'
 CONTROL_MANIFEST_DIGEST: Final = (
     'sha256:aab4fbabbf8757b6b2bf54bec9f23e60849807f65b5c0ec7deedbc9d9d7217d1'
 )
+CONTROL_COMPATIBILITY_SCHEMA_VERSION: Final = '1.0'
+CONTROL_COMPATIBILITY_DIGEST: Final = (
+    'sha256:741892a8dda46b4b468c0acd9b4b5f75230b4611001d41389c15e169e67c8d60'
+)
+CONTROL_COMPATIBILITY_FRESHNESS: Final[dict[str, dict[str, Any]]] = json.loads(
+    r'''{
+  "entra.applications.active_credential_count": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.applications.credential_expiry_posture": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.applications.owner_coverage": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.applications.password_credential_policy": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.applications.permission_contract_closure": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.conditional_access.mfa_policy_coverage": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.directory_roles.permanent_active_assignment": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.profiles.contract_closure": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.profiles.resource_fence_closure": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  },
+  "entra.profiles.scope_closure": {
+    "definition_major_version": 1,
+    "maximum_evidence_age_seconds": 86400
+  }
+}'''
+)
 CONTROL_DEFINITIONS: Final[dict[str, dict[str, Any]]] = json.loads(
     r'''{
   "entra.applications.active_credential_count": {

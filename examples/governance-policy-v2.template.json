@@ -1,0 +1,91 @@
+{
+  "active_profile": "privileged-read",
+  "authorization_overrides": {},
+  "contract_manifest_digest": "sha256:<generated-by-m365-compile-contracts>",
+  "control_library": {
+    "control_compatibility_digest": "sha256:741892a8dda46b4b468c0acd9b4b5f75230b4611001d41389c15e169e67c8d60",
+    "control_library_version": "1.0.0",
+    "control_manifest_digest": "sha256:aab4fbabbf8757b6b2bf54bec9f23e60849807f65b5c0ec7deedbc9d9d7217d1",
+    "control_manifest_schema_version": "1.0",
+    "controls": {
+      "entra.conditional_access.mfa_policy_coverage": {
+        "allow_control_wide_exception": false,
+        "definition_major_version": 1,
+        "maximum_evidence_age_seconds": 3600,
+        "severity": "high"
+      },
+      "entra.directory_roles.permanent_active_assignment": {
+        "allow_control_wide_exception": false,
+        "definition_major_version": 1,
+        "maximum_evidence_age_seconds": 3600,
+        "severity": "critical"
+      }
+    },
+    "enabled_control_ids": [
+      "entra.conditional_access.mfa_policy_coverage",
+      "entra.directory_roles.permanent_active_assignment"
+    ],
+    "exceptions": []
+  },
+  "expires_at": null,
+  "issued_at": "2026-07-27T00:00:00Z",
+  "policy_version": 1,
+  "profiles": {
+    "break-glass": {
+      "break_glass_ttl_seconds": 900,
+      "enabled_contracts": [],
+      "enabled_playbooks": [],
+      "maximum_targets_per_operation": 1,
+      "write_window_utc": null
+    },
+    "privileged-read": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [
+        "entra.identity_governance.posture.snapshot"
+      ],
+      "enabled_playbooks": [],
+      "maximum_targets_per_operation": 50,
+      "write_window_utc": null
+    },
+    "routine-read": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [],
+      "enabled_playbooks": [],
+      "maximum_targets_per_operation": 50,
+      "write_window_utc": null
+    },
+    "routine-write": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [],
+      "enabled_playbooks": [],
+      "maximum_targets_per_operation": 1,
+      "write_window_utc": null
+    },
+    "selected-write": {
+      "break_glass_ttl_seconds": null,
+      "enabled_contracts": [],
+      "enabled_playbooks": [],
+      "maximum_targets_per_operation": 1,
+      "write_window_utc": null
+    }
+  },
+  "application_credential_baseline": null,
+  "identity_governance_baseline": null,
+  "permission_grant_baseline": null,
+  "playbook_manifest_digest": null,
+  "profile_debt_baseline": null,
+  "resources": {
+    "applications": [],
+    "groups": [],
+    "protected_user_ids": [],
+    "service_principals": [],
+    "tenants": [
+      "<tenant-guid>"
+    ],
+    "users": [
+      "<allowlisted-user-guid>"
+    ]
+  },
+  "schema_version": "2.0",
+  "tenant_id": "<tenant-guid>"
+}

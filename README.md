@@ -18,6 +18,7 @@ to an identity, permission set, resource policy, and evidence trail.
 [Graph control plane](#microsoft-graph-control-plane) |
 [Capabilities](#capabilities) |
 [Private policy](#private-policy-and-resource-discovery) |
+[Governance v2](docs/GOVERNANCE.md) |
 [MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Roadmap](docs/ROADMAP.md) |
@@ -103,10 +104,14 @@ signed grant posture, policy lifecycle, recent metadata-only audit evidence
 and resource fences. Offline doctor now verifies packaged release evidence,
 profile isolation, private-path metadata and effective scope closure. The
 external multi-tenant radar is also implemented without a central token pool.
-The signed build-plane foundation for the Posture Control Library is
-implemented: ten public tenant-neutral definitions compile to a closed
-evaluator registry and versioned mapping matrix. Runtime evaluation and
-Governance v2 remain later milestones; no new Graph surface was introduced.
+The signed build-plane foundation for the Posture Control Library and
+Governance v2 validation are implemented: ten public tenant-neutral
+definitions compile to a closed evaluator registry, while the tenant-private
+signed policy selects exact controls, severity, freshness and expiring
+exceptions. Because M1 definitions predate signed freshness metadata, the
+policy also pins the canonical digest of a closed M1 compatibility artifact;
+changed or incomplete metadata fails closed. M2 does not evaluate evidence or produce assessments; the
+deterministic ControlEngine remains M3. No new Graph surface was introduced.
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -468,6 +473,14 @@ content, search execution, holds, exports, label assignment, policy mutation,
 close, or delete action.
 
 ## Private policy and resource discovery
+
+Governance schema `1.0` remains supported without migration or tool-surface
+changes. Schema `2.0` adds signed Posture Control Library configuration and
+fails closed on manifest/version drift, unknown or retired controls, relaxed
+freshness, ambiguous exceptions and private-resource fence violations. It
+does not run controls. See [Signed tenant Governance](docs/GOVERNANCE.md) and
+the fabricated
+[v2 template](examples/governance-policy-v2.template.json).
 
 Resource IDs belong in one local owner-only policy, not in a public repository
 or repeated across client configs. The operator can discover candidates through
@@ -1176,7 +1189,7 @@ Current baseline:
 
 | Check | Result |
 |---|---|
-| Tests | 217 passed |
+| Tests | 295 passed |
 | Ruff | clean |
 | Mypy | strict, clean |
 | Dependency audit | no known vulnerabilities |
@@ -1194,6 +1207,7 @@ explicit operator consent.
 | [Compiled playbook matrix](docs/PLAYBOOK_MATRIX.md) | Signed DAG, contract closure and exact permissions |
 | [Compiled control matrix](docs/CONTROL_MATRIX.md) | Signed public control IDs, evaluator bindings, evidence dependencies and framework mappings |
 | [Control signing runbook](docs/CONTROL_SIGNING_RUNBOOK.md) | Offline custody, signing, rotation, compromise response and future release gate |
+| [Signed tenant Governance](docs/GOVERNANCE.md) | Governance v1 compatibility and v2 Control Library policy validation |
 | [Workflow evaluations](evaluations/README.md) | Sanitized security and failure-mode fixtures |
 | [Official roadmap](docs/ROADMAP.md) | Prioritized vertical slices, acceptance criteria, friction and no-go rules |
 | [Security architecture](SECURITY.md) | Threat model, controls, residual risks |
