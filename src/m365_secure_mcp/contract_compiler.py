@@ -249,18 +249,15 @@ def compile_outputs(
             for item in manifest.contracts
         ],
     }
-    provenance = {
+    contract_digest_document = {
         "schema_version": "1.0",
-        "builder": "m365_secure_mcp.contract_compiler",
-        "compiler_version": COMPILER_VERSION,
-        "source_repository": "https://github.com/bugroo/m365-secure-mcp",
-        "source_revision": "release-attestation-required",
         "manifest_digest": manifest_digest,
-        "manifest_signature_required": True,
+        "contracts": contract_digests,
+    }
+    playbook_digest_document = {
+        "schema_version": "1.0",
         "playbook_manifest_digest": playbook_manifest_digest,
-        "playbook_manifest_signature_required": True,
-        "dependency_lock_digest": lock_digest,
-        "runtime_tool_generation": False,
+        "playbooks": playbook_digests,
     }
     sbom_serial = uuid5(
         NAMESPACE_URL,
@@ -268,6 +265,11 @@ def compile_outputs(
             f"m365-secure-mcp:{manifest_digest}:"
             f"{playbook_manifest_digest}:{lock_digest}"
         ),
+    )
+    package_version = str(
+        tomllib.loads(
+            (root / "pyproject.toml").read_text()
+        )["project"]["version"]
     )
     sbom = {
         "bomFormat": "CycloneDX",
@@ -278,12 +280,31 @@ def compile_outputs(
             "component": {
                 "type": "application",
                 "name": "m365-secure-mcp",
-                "version": tomllib.loads(
-                    (root / "pyproject.toml").read_text()
-                )["project"]["version"],
+                "version": package_version,
             }
         },
         "components": _dependency_components(root),
+    }
+    provenance = {
+        "schema_version": "1.0",
+        "builder": "m365_secure_mcp.contract_compiler",
+        "compiler_version": COMPILER_VERSION,
+        "package_version": package_version,
+        "source_repository": "https://github.com/bugroo/m365-secure-mcp",
+        "source_revision": "release-attestation-required",
+        "manifest_digest": manifest_digest,
+        "manifest_signature_required": True,
+        "playbook_manifest_digest": playbook_manifest_digest,
+        "playbook_manifest_signature_required": True,
+        "contract_digests_digest": sha256_digest(
+            contract_digest_document
+        ),
+        "playbook_digests_digest": sha256_digest(
+            playbook_digest_document
+        ),
+        "sbom_digest": sha256_digest(sbom),
+        "dependency_lock_digest": lock_digest,
+        "runtime_tool_generation": False,
     }
 
     def encoded(value: object) -> bytes:
@@ -303,19 +324,11 @@ def compile_outputs(
             _playbook_matrix(playbooks, manifest).encode()
         ),
         root / "contract-artifacts/contract-digests.json": encoded(
-            {
-                "schema_version": "1.0",
-                "manifest_digest": manifest_digest,
-                "contracts": contract_digests,
-            }
+            contract_digest_document
         ),
         root / "contract-artifacts/contract-tests.json": encoded(tests),
         root / "contract-artifacts/playbook-digests.json": encoded(
-            {
-                "schema_version": "1.0",
-                "playbook_manifest_digest": playbook_manifest_digest,
-                "playbooks": playbook_digests,
-            }
+            playbook_digest_document
         ),
         root / "contract-artifacts/playbook-tests.json": encoded(
             {
@@ -345,6 +358,18 @@ def compile_outputs(
         ),
         root / "contract-artifacts/provenance.json": encoded(provenance),
         root / "contract-artifacts/sbom.cdx.json": encoded(sbom),
+        root / "src/m365_secure_mcp/release_data/contract-digests.json": (
+            encoded(contract_digest_document)
+        ),
+        root / "src/m365_secure_mcp/release_data/playbook-digests.json": (
+            encoded(playbook_digest_document)
+        ),
+        root / "src/m365_secure_mcp/release_data/provenance.json": (
+            encoded(provenance)
+        ),
+        root / "src/m365_secure_mcp/release_data/sbom.cdx.json": encoded(
+            sbom
+        ),
     }
 
 

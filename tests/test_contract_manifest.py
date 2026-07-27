@@ -112,6 +112,10 @@ def test_public_contract_artifacts_contain_no_test_tenant_identifiers() -> None:
         root / "contract-artifacts/playbook-tests.json",
         root / "contract-artifacts/provenance.json",
         root / "contract-artifacts/sbom.cdx.json",
+        root / "src/m365_secure_mcp/release_data/contract-digests.json",
+        root / "src/m365_secure_mcp/release_data/playbook-digests.json",
+        root / "src/m365_secure_mcp/release_data/provenance.json",
+        root / "src/m365_secure_mcp/release_data/sbom.cdx.json",
         root / "docs/CONTRACT_MATRIX.md",
         root / "docs/PLAYBOOK_MATRIX.md",
     ]

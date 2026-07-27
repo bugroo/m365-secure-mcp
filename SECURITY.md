@@ -179,6 +179,26 @@ the blast radius of:
   domain counts, an opaque snapshot ID and ciphertext; there is no MCP
   retrieval tool.
 
+### Runtime and release self-check
+
+- Offline doctor verifies the independently signed contract and playbook
+  manifests before comparing their exact per-item digests with compiler
+  evidence packaged inside the installed distribution.
+- Packaged provenance binds the manifest digests, digest maps, CycloneDX SBOM,
+  dependency lock digest and package version. Doctor compares installed
+  runtime dependency versions with that SBOM; external release
+  signature/attestation remains an install-pipeline responsibility.
+- Filesystem checks inspect metadata only for explicit configuration paths and
+  application-owned audit, receipt, snapshot, recovery and approval paths.
+  There is no recursive directory traversal, home-directory search, secret
+  discovery or automatic permission repair.
+- Profile isolation checks cache namespacing, distinct state roles and
+  compatibility between runtime read/write class and the active signed
+  Governance profile without printing tenant/client IDs or private paths.
+- Effective-scope closure is derived from the actual exposed static tool
+  surface. A missing or excessive scope fails with one operator action; doctor
+  never edits Entra consent or local configuration.
+
 ### Writes
 
 - Write profile refuses startup unless `M365_WRITE_ENABLED=true` and at least

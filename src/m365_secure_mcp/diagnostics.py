@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-import base64
+import importlib.metadata
 import json
 import os
+import re
 import stat
+from importlib.resources import files
 from pathlib import Path
 from typing import Any, Literal
 
 import keyring
 
+from . import __version__
 from .auth import TokenProvider
 from .config import (
     POWERBI_RESOURCE,
@@ -21,43 +24,211 @@ from .config import (
     Profile,
     Settings,
 )
+from .contract_manifest import load_global_manifest, sha256_digest
+from .governance import (
+    GovernanceProfileName,
+    load_verified_governance_policy,
+    validate_policy_against_manifest,
+)
 from .graph import GRAPH_BASE_URL, GraphClient, classify_agent_error
 from .permissions import READ_TOOL_PERMISSIONS
+from .playbook_manifest import load_global_playbook_manifest
 from .powerbi import POWERBI_BASE_URL
 from .security import SecurityPolicy
 from .server import WRITE_TOOL_ACTIONS, create_server
 
 CheckStatus = Literal["pass", "warn", "info", "fail"]
 KEYRING_CACHE_MODE = "keyring"  # noqa: S105
+MAX_RELEASE_EVIDENCE_BYTES = 2_000_000
+RUNTIME_REQUIREMENT_PATTERN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9_.-]*)")
+
+
 def _check(
     name: str,
     status: CheckStatus,
     detail: str,
     *,
     evidence: dict[str, Any] | None = None,
+    operator_action: str | None = None,
 ) -> dict[str, Any]:
     result: dict[str, Any] = {
         "name": name,
         "status": status,
         "detail": detail,
+        "operator_action": operator_action
+        or (
+            "No action required."
+            if status in {"pass", "info"}
+            else "Review this check before starting the MCP server."
+        ),
     }
     if evidence:
         result["evidence"] = evidence
     return result
 
 
-def _jwt_claims_unverified(token: str) -> dict[str, Any]:
-    """Decode claims for diagnostics only; never use them for authorization."""
+def _release_document(name: str) -> dict[str, Any]:
+    payload = (
+        files("m365_secure_mcp.release_data")
+        .joinpath(name)
+        .read_bytes()
+    )
+    if len(payload) > MAX_RELEASE_EVIDENCE_BYTES:
+        raise ValueError("packaged release evidence exceeds the byte limit")
+    document = json.loads(payload)
+    if not isinstance(document, dict):
+        raise ValueError("packaged release evidence has an invalid shape")
+    return dict(document)
 
-    parts = token.split(".")
-    if len(parts) != 3:
-        return {}
+
+def _distribution_name(requirement: str) -> str | None:
+    match = RUNTIME_REQUIREMENT_PATTERN.match(requirement)
+    return match.group(1) if match is not None else None
+
+
+def _release_integrity_check() -> dict[str, Any]:
+    """Verify packaged evidence against signed manifests and installed metadata."""
+
+    issues: list[str] = []
+    evidence: dict[str, Any] = {
+        "contract_manifest_signature_verified": False,
+        "playbook_manifest_signature_verified": False,
+        "packaged_evidence_files": 0,
+        "runtime_dependencies_checked": 0,
+        "external_release_attestation_required": True,
+    }
     try:
-        payload = base64.urlsafe_b64decode(parts[1] + "=" * (-len(parts[1]) % 4))
-        claims = json.loads(payload)
-    except (ValueError, json.JSONDecodeError):
-        return {}
-    return dict(claims) if isinstance(claims, dict) else {}
+        manifest = load_global_manifest()
+        evidence["contract_manifest_signature_verified"] = True
+        playbooks = load_global_playbook_manifest(manifest)
+        evidence["playbook_manifest_signature_verified"] = True
+        contract_digests = _release_document("contract-digests.json")
+        playbook_digests = _release_document("playbook-digests.json")
+        provenance = _release_document("provenance.json")
+        sbom = _release_document("sbom.cdx.json")
+        evidence["packaged_evidence_files"] = 4
+
+        expected_contracts = {
+            contract.id: sha256_digest(contract)
+            for contract in manifest.contracts
+        }
+        expected_playbooks = {
+            playbook.id: sha256_digest(playbook)
+            for playbook in playbooks.playbooks
+        }
+        if contract_digests.get("manifest_digest") != sha256_digest(manifest):
+            issues.append("contract digest artifact does not match signed manifest")
+        if contract_digests.get("contracts") != expected_contracts:
+            issues.append("one or more packaged contract digests do not match")
+        if (
+            playbook_digests.get("playbook_manifest_digest")
+            != sha256_digest(playbooks)
+        ):
+            issues.append("playbook digest artifact does not match signed manifest")
+        if playbook_digests.get("playbooks") != expected_playbooks:
+            issues.append("one or more packaged playbook digests do not match")
+
+        expected_provenance = {
+            "manifest_digest": sha256_digest(manifest),
+            "playbook_manifest_digest": sha256_digest(playbooks),
+            "contract_digests_digest": sha256_digest(contract_digests),
+            "playbook_digests_digest": sha256_digest(playbook_digests),
+            "sbom_digest": sha256_digest(sbom),
+            "package_version": __version__,
+            "runtime_tool_generation": False,
+        }
+        for field, expected in expected_provenance.items():
+            if provenance.get(field) != expected:
+                issues.append(f"provenance field {field} does not match")
+
+        try:
+            installed_version = importlib.metadata.version(
+                "m365-secure-mcp"
+            )
+        except importlib.metadata.PackageNotFoundError:
+            installed_version = ""
+        evidence["installed_version_matches"] = (
+            installed_version == __version__
+        )
+        if installed_version != __version__:
+            issues.append("installed package version does not match runtime")
+
+        metadata = sbom.get("metadata")
+        component = (
+            metadata.get("component")
+            if isinstance(metadata, dict)
+            else None
+        )
+        if (
+            not isinstance(component, dict)
+            or component.get("name") != "m365-secure-mcp"
+            or component.get("version") != __version__
+        ):
+            issues.append("SBOM root component does not match runtime package")
+        raw_components = sbom.get("components")
+        if not isinstance(raw_components, list):
+            raise ValueError("packaged SBOM components are invalid")
+        sbom_versions = {
+            str(item["name"]).lower().replace("_", "-"): str(
+                item["version"]
+            )
+            for item in raw_components
+            if (
+                isinstance(item, dict)
+                and isinstance(item.get("name"), str)
+                and isinstance(item.get("version"), str)
+            )
+        }
+        runtime_requirements = (
+            importlib.metadata.requires("m365-secure-mcp") or []
+        )
+        checked = 0
+        for requirement in runtime_requirements:
+            name = _distribution_name(requirement)
+            if name is None:
+                continue
+            normalized = name.lower().replace("_", "-")
+            try:
+                version = importlib.metadata.version(name)
+            except importlib.metadata.PackageNotFoundError:
+                issues.append(f"runtime dependency {normalized} is not installed")
+                continue
+            checked += 1
+            if sbom_versions.get(normalized) != version:
+                issues.append(
+                    f"runtime dependency {normalized} differs from packaged SBOM"
+                )
+        evidence["runtime_dependencies_checked"] = checked
+    except (
+        OSError,
+        TypeError,
+        ValueError,
+        json.JSONDecodeError,
+        RuntimeError,
+    ) as exc:
+        issues.append(f"release evidence could not be verified: {type(exc).__name__}")
+
+    evidence["issue_count"] = len(issues)
+    evidence["issues"] = issues
+    return _check(
+        "release_integrity",
+        "pass" if not issues else "fail",
+        (
+            "Signed manifests, packaged digests, provenance, SBOM, package "
+            "version, and installed runtime dependencies are consistent."
+            if not issues
+            else "Packaged release evidence is inconsistent or incomplete."
+        ),
+        evidence=evidence,
+        operator_action=(
+            "No action required."
+            if not issues
+            else (
+                "Stop this profile and reinstall a verified, signed release; "
+                "do not edit packaged evidence in place."
+            )
+        ),
+    )
 
 
 def _private_path_check(label: str, path: Path) -> dict[str, Any]:
@@ -91,6 +262,189 @@ def _private_path_check(label: str, path: Path) -> dict[str, Any]:
             issues.append("file permissions are broader than 0600")
     evidence["issues"] = issues
     return evidence
+
+
+def _private_directory_check(label: str, path: Path) -> dict[str, Any]:
+    """Inspect one configured application-owned directory without traversing it."""
+
+    issues: list[str] = []
+    evidence: dict[str, Any] = {
+        "label": label,
+        "directory_exists": path.exists() or path.is_symlink(),
+    }
+    if path.exists() or path.is_symlink():
+        directory_stat = path.lstat()
+        mode = stat.S_IMODE(directory_stat.st_mode)
+        evidence["directory_mode"] = oct(mode)
+        if not stat.S_ISDIR(directory_stat.st_mode) or path.is_symlink():
+            issues.append("path is not a real directory")
+        if hasattr(os, "getuid") and directory_stat.st_uid != os.getuid():
+            issues.append("directory is not owned by the current user")
+        if mode & 0o077:
+            issues.append("directory permissions are broader than 0700")
+    evidence["issues"] = issues
+    return evidence
+
+
+def _profile_isolation_check(settings: Settings) -> dict[str, Any]:
+    """Check namespacing and path separation without exposing private paths."""
+
+    state_paths = [
+        settings.effective_audit_log_path,
+        settings.effective_idempotency_db_path,
+        settings.effective_assurance_snapshot_path,
+        settings.effective_recovery_capsule_path,
+    ]
+    normalized_paths = [
+        os.path.abspath(os.fspath(path.expanduser()))
+        for path in state_paths
+    ]
+    distinct = len(normalized_paths) == len(set(normalized_paths))
+    cache_namespaced = (
+        settings.tenant_id in settings.cache_username
+        and settings.client_id in settings.cache_username
+        and settings.profile.value in settings.cache_username
+        and settings.deployment_kind in settings.cache_username
+    )
+    active_profile_compatible = True
+    active_governance_profile: str | None = None
+    if (
+        settings.governance_policy_path is not None
+        and settings.governance_public_key_path is not None
+    ):
+        verified = load_verified_governance_policy(
+            settings.governance_policy_path,
+            settings.governance_public_key_path,
+        )
+        manifest = load_global_manifest()
+        playbooks = load_global_playbook_manifest(manifest)
+        validate_policy_against_manifest(
+            verified.policy,
+            manifest,
+            playbooks,
+        )
+        active = verified.policy.active_profile
+        active_governance_profile = active.value
+        allowed = (
+            {
+                GovernanceProfileName.ROUTINE_READ,
+                GovernanceProfileName.PRIVILEGED_READ,
+            }
+            if settings.profile is Profile.READ
+            else {
+                GovernanceProfileName.ROUTINE_WRITE,
+                GovernanceProfileName.SELECTED_WRITE,
+                GovernanceProfileName.BREAK_GLASS,
+            }
+        )
+        active_profile_compatible = active in allowed
+    issues: list[str] = []
+    if not distinct:
+        issues.append("two application state roles share the same path")
+    if not cache_namespaced:
+        issues.append("token-cache identity is not profile namespaced")
+    if not active_profile_compatible:
+        issues.append("runtime and signed Governance profile classes differ")
+    return _check(
+        "profile_isolation",
+        "pass" if not issues else "fail",
+        (
+            "Tenant/profile cache identity, state roles, and signed profile "
+            "class are isolated."
+            if not issues
+            else "Tenant/profile isolation checks found a collision."
+        ),
+        evidence={
+            "deployment_namespace_configured": True,
+            "state_role_count": len(state_paths),
+            "state_paths_distinct": distinct,
+            "token_cache_namespaced": cache_namespaced,
+            "governance_profile_configured": (
+                active_governance_profile is not None
+            ),
+            "active_governance_profile": active_governance_profile,
+            "runtime_profile_compatible": active_profile_compatible,
+            "issues": issues,
+        },
+        operator_action=(
+            "No action required."
+            if not issues
+            else (
+                "Stop this profile and assign distinct tenant/profile state "
+                "paths and a compatible signed Governance profile."
+            )
+        ),
+    )
+
+
+def _effective_scope_check(
+    settings: Settings,
+    *,
+    tool_names: list[str],
+) -> dict[str, Any]:
+    """Prove every locally requested scope has at least one exposed consumer."""
+
+    expected_graph: set[str] = set()
+    expected_powerbi: set[str] = set()
+    for tool in tool_names:
+        action = WRITE_TOOL_ACTIONS.get(tool)
+        permission = READ_TOOL_PERMISSIONS.get(tool)
+        if action is not None:
+            target = (
+                expected_graph
+                if WRITE_ACTION_RESOURCES[action] == "graph"
+                else expected_powerbi
+            )
+            target.update(WRITE_ACTION_SCOPES[action])
+        elif permission is not None:
+            target = (
+                expected_graph
+                if permission.resource == "graph"
+                else expected_powerbi
+            )
+            target.update(permission.scopes)
+    if any(
+        tool != "m365_get_security_posture"
+        for tool in tool_names
+    ):
+        expected_graph.add("User.Read")
+    actual_graph = set(settings.scopes)
+    actual_powerbi = {
+        scope.rsplit("/", 1)[-1]
+        for scope in settings.powerbi_scopes
+    }
+    missing = sorted(
+        (expected_graph - actual_graph)
+        | (expected_powerbi - actual_powerbi)
+    )
+    excessive = sorted(
+        (actual_graph - expected_graph)
+        | (actual_powerbi - expected_powerbi)
+    )
+    issues = bool(missing or excessive)
+    return _check(
+        "effective_scope_closure",
+        "pass" if not issues else "fail",
+        (
+            "Every effective scope is required by an exposed fixed tool."
+            if not issues
+            else "Effective scopes differ from the exposed tool closure."
+        ),
+        evidence={
+            "graph_scope_count": len(actual_graph),
+            "powerbi_scope_count": len(actual_powerbi),
+            "missing_scopes": missing,
+            "excessive_scopes": excessive,
+        },
+        operator_action=(
+            "No action required."
+            if not issues
+            else (
+                "Stop this profile and reduce its module/tool/action selection "
+                "or restore the missing exact permission."
+            )
+        ),
+    )
 
 
 async def permission_report(settings: Settings) -> dict[str, Any]:
@@ -202,6 +556,7 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
             evidence={"tools": tool_names},
         )
     )
+    checks.append(_release_integrity_check())
     result_schema_ok = all(
         tool.outputSchema is not None
         and {
@@ -252,7 +607,48 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
                 settings.effective_assurance_snapshot_path,
             )
         )
+    if settings.profile is Profile.WRITE:
+        state_paths.append(
+            _private_path_check(
+                "recovery_capsules",
+                settings.effective_recovery_capsule_path,
+            )
+        )
+    if settings.governance_policy_path is not None:
+        state_paths.append(
+            _private_path_check(
+                "governance_policy",
+                settings.governance_policy_path.expanduser(),
+            )
+        )
+    if settings.governance_public_key_path is not None:
+        state_paths.append(
+            _private_path_check(
+                "governance_verifier",
+                settings.governance_public_key_path.expanduser(),
+            )
+        )
+    if settings.approval_public_key_path is not None:
+        state_paths.append(
+            _private_path_check(
+                "approval_verifier",
+                settings.approval_public_key_path.expanduser(),
+            )
+        )
+    private_directories = []
+    if settings.approval_broker_dir is not None:
+        private_directories.append(
+            _private_directory_check(
+                "approval_broker",
+                settings.approval_broker_dir.expanduser(),
+            )
+        )
     state_issues = [issue for item in state_paths for issue in item["issues"]]
+    state_issues.extend(
+        issue
+        for item in private_directories
+        for issue in item["issues"]
+    )
     checks.append(
         _check(
             "private_state_paths",
@@ -262,7 +658,25 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
                 if not state_issues
                 else "Local state path metadata is unsafe."
             ),
-            evidence={"paths": state_paths},
+            evidence={
+                "paths": state_paths,
+                "directories": private_directories,
+            },
+            operator_action=(
+                "No action required."
+                if not state_issues
+                else (
+                    "Stop this profile and restore owner-only 0700 directories "
+                    "and 0600 regular non-symlink files."
+                )
+            ),
+        )
+    )
+    checks.append(_profile_isolation_check(settings))
+    checks.append(
+        _effective_scope_check(
+            settings,
+            tool_names=tool_names,
         )
     )
     checks.append(
@@ -403,7 +817,14 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
         _check(
             "client_approval",
             "info",
-            "Client-side approval mode cannot be proven by this server; keep writes on prompt.",
+            (
+                "Host oversight mode cannot be proven by the server; retain "
+                "operator-visible halt/override and contract-tier hard gates."
+            ),
+            operator_action=(
+                "Verify the host/broker oversight configuration when enabling "
+                "T2/T3 or explicit-plan operations."
+            ),
         )
     )
 
@@ -411,28 +832,34 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
         tokens = TokenProvider(settings)
         graph = GraphClient(settings, tokens, SecurityPolicy(settings))
         try:
-            token = await tokens.get_access_token()
-            claims = _jwt_claims_unverified(token)
-            granted = frozenset(str(claims.get("scp", "")).split())
+            granted = await tokens.get_delegated_scope_claims()
             missing = sorted(set(settings.scopes) - granted)
+            unexpected = sorted(
+                granted - set(settings.scopes)
+            )
             checks.append(
                 _check(
                     "delegated_scope_claims",
-                    "pass" if not missing else "fail",
+                    "pass" if not missing and not unexpected else "fail",
                     (
-                        "The delegated token contains every effective requested scope."
-                        if not missing
-                        else "The delegated token is missing effective requested scopes."
+                        "The delegated token exactly matches effective scopes."
+                        if not missing and not unexpected
+                        else "The delegated token differs from effective scopes."
                     ),
                     evidence={
                         "requested_scopes": list(settings.scopes),
                         "granted_scopes": sorted(granted),
                         "missing_scopes": missing,
-                        "claim_note": (
-                            "decoded for diagnostics; authorization uses Graph "
-                            "and local policy"
-                        ),
+                        "unexpected_scopes": unexpected,
                     },
+                    operator_action=(
+                        "No action required."
+                        if not missing and not unexpected
+                        else (
+                            "Stop this profile, correct Entra consent manually, "
+                            "then clear/reacquire its isolated token cache."
+                        )
+                    ),
                 )
             )
             await graph.ensure_principal()
@@ -449,29 +876,37 @@ async def doctor_report(settings: Settings, *, live: bool = False) -> dict[str, 
                     scopes=settings.powerbi_scopes,
                     resource="powerbi",
                 )
-                powerbi_token = await powerbi_tokens.get_access_token()
-                powerbi_claims = _jwt_claims_unverified(powerbi_token)
-                powerbi_granted = frozenset(
-                    str(powerbi_claims.get("scp", "")).split()
+                powerbi_granted = (
+                    await powerbi_tokens.get_delegated_scope_claims()
                 )
                 requested = {
                     scope.rsplit("/", 1)[-1]
                     for scope in settings.powerbi_scopes
                 }
                 missing_powerbi = sorted(requested - powerbi_granted)
+                unexpected_powerbi = sorted(
+                    powerbi_granted - requested
+                )
                 checks.append(
                     _check(
                         "powerbi_scope_claims",
-                        "pass" if not missing_powerbi else "fail",
                         (
-                            "The Power BI token contains every requested scope."
+                            "pass"
                             if not missing_powerbi
-                            else "The Power BI token is missing requested scopes."
+                            and not unexpected_powerbi
+                            else "fail"
+                        ),
+                        (
+                            "The Power BI token exactly matches requested scopes."
+                            if not missing_powerbi
+                            and not unexpected_powerbi
+                            else "The Power BI token differs from requested scopes."
                         ),
                         evidence={
                             "requested_scopes": sorted(requested),
                             "granted_scopes": sorted(powerbi_granted),
                             "missing_scopes": missing_powerbi,
+                            "unexpected_scopes": unexpected_powerbi,
                         },
                     )
                 )

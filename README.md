@@ -89,11 +89,13 @@ closed.
 
 The signed, T0 read-only **Workload Identity Readiness** playbook, reusable
 Change-safe operator and **Profile Scope & Contract Debt** Assurance vertical
-are implemented. The debt view correlates the active profile with validated
-token scopes, the current App Registration's signed grant posture, policy
-lifecycle, recent metadata-only audit evidence and resource fences. The next
-official vertical slice is bounded runtime self-checks, followed by the
-multi-tenant drift radar and the first compiled T2 contract.
+and bounded runtime self-checks are implemented. The debt view correlates the
+active profile with validated token scopes, the current App Registration's
+signed grant posture, policy lifecycle, recent metadata-only audit evidence
+and resource fences. Offline doctor now verifies packaged release evidence,
+profile isolation, private-path metadata and effective scope closure. The next
+official vertical slice is the multi-tenant drift radar, followed by the first
+compiled T2 contract.
 
 The complete implementation order, acceptance criteria, friction matrix and
 permanent no-go rules live in the
@@ -305,10 +307,10 @@ filename, task text, or token.
 The CLI can explain the effective deployment without starting MCP stdio:
 
 ```bash
-# Tool/result surface, delete check, private state, cache mode, and egress
+# Signed release evidence, exact scopes, isolation, private state, and surface
 uv run m365-secure-mcp --doctor
 
-# Adds delegated-token scope comparison and a read-only Graph /me policy check
+# Adds exact delegated-token scope comparison and read-only Graph /me
 uv run m365-secure-mcp --doctor live
 
 # Tool-by-tool reason for every Graph scope
@@ -323,10 +325,18 @@ uv run m365-secure-mcp --discover-resources \
   ediscovery_cases retention_labels
 ```
 
-The offline doctor never signs in or calls Graph. Live mode may open the normal
-interactive Microsoft sign-in, but prints neither the token nor M365 content.
-Client-side approval configuration remains an explicit informational check
-because a stdio server cannot prove the host's approval policy.
+The offline doctor never signs in, calls Graph, changes a permission, repairs a
+file or searches the workstation. It verifies both signed manifests, packaged
+digests/provenance/CycloneDX SBOM, installed runtime dependencies, exact
+tool-to-scope closure, tenant/profile namespacing and metadata for only known
+configuration/application-owned paths. Every check returns one
+`operator_action`.
+
+Live mode may open the normal interactive Microsoft sign-in, but prints neither
+the token nor M365 content. It compares validated token scope names in both
+directions and performs the policy-checked `/me` read. Host oversight remains
+informational because a stdio server cannot prove the host's approval, halt or
+override controls.
 
 ## Capabilities
 
@@ -982,6 +992,14 @@ Version `0.11.0` adds the signed profile-debt contract and the signed
 changes the global manifest digest. Existing tenants must review the new
 contract selection, update `contract_manifest_digest`, and re-sign their
 private policy; runtime never migrates or signs a tenant policy automatically.
+
+Version `0.12.0` packages the deterministic contract/playbook digests,
+provenance and CycloneDX SBOM inside the installed distribution and verifies
+them through offline doctor. It does not change either signed manifest digest,
+so a policy already re-signed for `0.11.0` needs no capability migration.
+Distribution signature/attestation verification remains an external install
+or release-pipeline responsibility; doctor verifies installed consistency and
+never self-updates or repairs files.
 
 ## Selected administrative writes
 

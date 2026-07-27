@@ -1,0 +1,7 @@
+{
+  "playbook_manifest_digest": "sha256:13a3dada2e106bc8f56f35301e4b57e601a75668adebe73be07b829d39819ca4",
+  "playbooks": {
+    "entra.workload_identity.readiness.playbook": "sha256:65c54da2e21d559c9577e40c7f5ebf023b730c577e748b81a31370316e8491e9"
+  },
+  "schema_version": "1.0"
+}

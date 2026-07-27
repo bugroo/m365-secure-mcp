@@ -376,8 +376,8 @@ Graph rejects the operation before an encrypted snapshot is written.
 
 | Command | Network | Purpose |
 |---|---:|---|
-| `m365-secure-mcp --doctor` | no | Tool/result surface, delete check, private state, egress, identity, cache, write gates |
-| `m365-secure-mcp --doctor live` | read-only Graph | Delegated scope claims plus policy-checked `/me` |
+| `m365-secure-mcp --doctor` | no | Signed manifests, packaged digests/provenance/SBOM, installed dependency consistency, tool/result surface, exact scope closure, profile isolation, known private paths, egress, cache and write gates |
+| `m365-secure-mcp --doctor live` | read-only Graph | Exact validated delegated scope claims plus policy-checked `/me` |
 | `m365-secure-mcp --explain-permissions` | no | Tool-by-tool module/action reason for every requested scope |
 | `m365-secure-mcp --print-policy` | no | Operator-only effective policy and stable SHA-256 digest |
 | `m365-secure-mcp --export-policy PATH` | no | Create a new owner-only private policy; never overwrite |

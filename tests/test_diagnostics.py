@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import m365_secure_mcp.diagnostics as diagnostics_module
 from m365_secure_mcp.config import Settings
 from m365_secure_mcp.diagnostics import doctor_report, permission_report
 
@@ -45,6 +46,10 @@ async def test_offline_doctor_is_secret_free_and_reports_exact_surface(
     assert checks["result_contract"]["status"] == "pass"
     assert checks["private_state_paths"]["status"] == "pass"
     assert checks["private_api_scope"]["evidence"]["scopes"] == ["User.Read"]
+    assert checks["release_integrity"]["status"] == "pass"
+    assert checks["profile_isolation"]["status"] == "pass"
+    assert checks["effective_scope_closure"]["status"] == "pass"
+    assert all(check["operator_action"] for check in report["checks"])
     assert "access_token" not in str(report).lower()
 
 
@@ -91,3 +96,52 @@ async def test_permission_explanation_and_policy_digest_are_effective() -> None:
     assert report["scope_to_tools"]["Tasks.ReadWrite"] == [
         "m365_update_planner_task_details"
     ]
+
+
+def test_release_integrity_fails_with_one_safe_operator_action(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = diagnostics_module._release_document
+
+    def tampered(name: str) -> dict[str, object]:
+        document = original(name)
+        if name == "provenance.json":
+            document["package_version"] = "0.0.0"
+        return document
+
+    monkeypatch.setattr(
+        diagnostics_module,
+        "_release_document",
+        tampered,
+    )
+
+    check = diagnostics_module._release_integrity_check()
+
+    assert check["status"] == "fail"
+    assert check["operator_action"].startswith("Stop this profile")
+    assert check["evidence"]["issue_count"] == 1
+
+
+@pytest.mark.asyncio
+async def test_doctor_detects_state_role_collision_and_excessive_scope(
+    tmp_path: Path,
+) -> None:
+    shared = tmp_path / "private" / "shared.state"
+    report = await doctor_report(
+        make_settings(
+            enabled_tools="m365_get_security_posture",
+            audit_log_path=shared,
+            idempotency_db_path=shared,
+        ),
+        live=False,
+    )
+
+    checks = {check["name"]: check for check in report["checks"]}
+    assert checks["profile_isolation"]["status"] == "fail"
+    assert checks["profile_isolation"]["evidence"][
+        "state_paths_distinct"
+    ] is False
+    assert checks["effective_scope_closure"]["status"] == "fail"
+    assert checks["effective_scope_closure"]["evidence"][
+        "excessive_scopes"
+    ] == ["User.Read"]

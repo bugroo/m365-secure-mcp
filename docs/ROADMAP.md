@@ -209,9 +209,7 @@ Completion evidence:
   references only;
 - no consent, grant, policy, allowlist or baseline mutation path.
 
-#### 5. Runtime self-check expansion — 5 points
-
-**Current implementation target.**
+#### 5. Runtime self-check expansion — completed in `0.12.0`
 
 Extend `--doctor` and release verification with bounded local checks:
 manifest/playbook digests, installed package/provenance/SBOM consistency,
@@ -228,7 +226,23 @@ Acceptance:
 
 Depends on: signed playbook artifacts and stable release metadata.
 
+Completion evidence:
+
+- offline verification of both signed manifests and their packaged digest
+  maps;
+- compiler-packaged provenance and CycloneDX SBOM checked against the runtime
+  version and installed runtime dependencies;
+- bounded metadata checks for only configured/application-owned private paths,
+  without traversal or secret search;
+- tenant/profile cache namespace, state-role separation and Governance/runtime
+  profile-class checks;
+- exact effective scope closure versus the exposed fixed tool surface;
+- one deterministic `operator_action` on every diagnostic check; no check
+  mutates files, permissions, configuration or the installed release.
+
 #### 6. Multi-tenant drift radar — 8 points
+
+**Current implementation target.**
 
 Provide an external orchestrator pattern for scheduled, read-only Assurance
 across MSP customers. Every customer run launches the same single-tenant
