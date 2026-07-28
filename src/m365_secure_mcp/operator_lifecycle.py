@@ -182,7 +182,10 @@ _ALLOWED_TRANSITIONS: dict[
         {OperatorLifecycleStatus.AUTHORIZED}
     ),
     OperatorLifecycleStatus.AUTHORIZED: frozenset(
-        {OperatorLifecycleStatus.EXECUTING}
+        {
+            OperatorLifecycleStatus.EXECUTING,
+            OperatorLifecycleStatus.FAILED_CONFIRMED,
+        }
     ),
     OperatorLifecycleStatus.EXECUTING: frozenset(
         {
@@ -424,7 +427,17 @@ class DurableOperatorLifecycle:
 
     @staticmethod
     def public(record: DurableOperationRecord) -> PublicOperationProgress:
-        safe_to_retry = record.status is OperatorLifecycleStatus.FAILED_CONFIRMED
+        retryable_terminal_reasons = {
+            "PROVIDER_FAILED_CONFIRMED",
+            "TRANSPORT_FAILURE_BEFORE_COMMIT",
+        }
+        safe_to_retry = (
+            record.status is OperatorLifecycleStatus.FAILED_CONFIRMED
+            or (
+                record.status is OperatorLifecycleStatus.COMPLETED
+                and record.terminal_reason in retryable_terminal_reasons
+            )
+        )
         action_by_status = {
             OperatorLifecycleStatus.PLANNED: "operator.submit_for_approval",
             OperatorLifecycleStatus.AWAITING_APPROVAL: "approver.review_exact_plan",
@@ -440,7 +453,11 @@ class DurableOperatorLifecycle:
             OperatorLifecycleStatus.COMPENSATION_REQUIRED: (
                 "operator.plan_separate_compensation"
             ),
-            OperatorLifecycleStatus.COMPLETED: "operator.retain_receipt",
+            OperatorLifecycleStatus.COMPLETED: (
+                "operator.create_new_plan_if_needed"
+                if safe_to_retry
+                else "operator.retain_receipt"
+            ),
         }
         return PublicOperationProgress(
             status=record.status,
@@ -503,10 +520,32 @@ class DurableOperatorLifecycle:
         if record.status is not OperatorLifecycleStatus.AUTHORIZED:
             return record
         if not plan.not_before <= as_of < plan.expires_at:
-            raise SecurityError("operator plan is outside its signed write window")
+            failed = self.store.transition(
+                record,
+                OperatorLifecycleStatus.FAILED_CONFIRMED,
+                as_of=as_of,
+                terminal_reason="PLAN_WINDOW_EXPIRED",
+            )
+            return self.store.transition(
+                failed,
+                OperatorLifecycleStatus.COMPLETED,
+                as_of=as_of,
+                terminal_reason="PLAN_WINDOW_EXPIRED",
+            )
         observed_preconditions = await provider.preflight(plan)
         if observed_preconditions != plan.preconditions:
-            raise SecurityError("TOCTOU preconditions changed before execution")
+            failed = self.store.transition(
+                record,
+                OperatorLifecycleStatus.FAILED_CONFIRMED,
+                as_of=as_of,
+                terminal_reason="TOCTOU_PRECONDITION_CHANGED",
+            )
+            return self.store.transition(
+                failed,
+                OperatorLifecycleStatus.COMPLETED,
+                as_of=as_of,
+                terminal_reason="TOCTOU_PRECONDITION_CHANGED",
+            )
         record = self.store.transition(
             record,
             OperatorLifecycleStatus.EXECUTING,

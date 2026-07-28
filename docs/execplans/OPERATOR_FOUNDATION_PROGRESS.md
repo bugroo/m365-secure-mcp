@@ -27,10 +27,19 @@ This log is the durable resume point for
 - [x] Governance v3 operational bindings and approval authorities.
 - [x] Durable asynchronous operator lifecycle.
 - [x] Signed synthetic effectful playbook foundation.
-- [ ] Evaluation fixtures and community documentation.
+- [x] Evaluation fixtures, canonical metadata, and community documentation.
 - [ ] Full validation, commits, push, PR, and remote CI.
 
 ## Resume action
 
-Continue with machine-readable metadata, adversarial evaluation fixtures,
-Governance/operator documentation, and the operation Definition of Done.
+Run every final validation and artifact-boundary check, publish the branch,
+open one PR, and wait for green remote CI. Do not start the Identity Slice.
+
+## Security hardening discovered during M5
+
+- A changed TOCTOU precondition now ends the authorized operation without a
+  provider effect. The consumed approval cannot be reused to execute later.
+- A plan whose signed write window expires after authorization ends without a
+  provider effect and requires a new plan.
+- Confirmed pre-commit provider failures remain distinguishable from uncertain
+  outcomes; public output recommends a new plan but the runtime never retries.

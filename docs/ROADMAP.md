@@ -113,7 +113,11 @@ effectful playbook.
 
 ### Secure Operations 1 — Operator Foundation
 
-Implement the infrastructure required before higher-impact writes:
+Status: implemented as an inactive, synthetic-fixture-tested foundation. No
+new production Graph contract, permission, tool, or effectful playbook is
+activated.
+
+The common infrastructure for higher-impact writes includes:
 
 - T2 `explicit_plan` execution independent of any one domain handler;
 - real dual control using two distinct trusted authorities;
@@ -133,6 +137,9 @@ Acceptance:
 - an async `202`/`204` remains `EXECUTED_ACCEPTED` until its contract-specific
   observation rule succeeds;
 - no v1/v2 Governance policy is auto-migrated or re-signed.
+
+Implementation and integration requirements are documented in
+[Operator Foundation](OPERATOR_FOUNDATION.md).
 
 ### Secure Operations 2 — Identity Slice
 

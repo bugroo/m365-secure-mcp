@@ -421,18 +421,98 @@ async def test_toctou_change_blocks_before_provider_effect(tmp_path: Path) -> No
             ),
         ),
     )
-    with pytest.raises(SecurityError, match="TOCTOU"):
-        await operator.execute_effectful(
-            plan=plan,
-            governance=governance,
-            approvals=approvals,
-            validator=validator,
-            lifecycle=_lifecycle(tmp_path),
-            provider=provider,
-            operation_id=uuid4(),
-            as_of=NOW,
-        )
+    operation_id = uuid4()
+    record = await operator.execute_effectful(
+        plan=plan,
+        governance=governance,
+        approvals=approvals,
+        validator=validator,
+        lifecycle=_lifecycle(tmp_path),
+        provider=provider,
+        operation_id=operation_id,
+        as_of=NOW,
+    )
+    assert record.status is OperatorLifecycleStatus.COMPLETED
+    assert record.terminal_reason == "TOCTOU_PRECONDITION_CHANGED"
     assert provider.execute_count == 0
+
+    replay = await operator.execute_effectful(
+        plan=plan,
+        governance=governance,
+        approvals=(),
+        validator=validator,
+        lifecycle=_lifecycle(tmp_path),
+        provider=provider,
+        operation_id=operation_id,
+        as_of=NOW + timedelta(seconds=1),
+    )
+    assert replay.status is OperatorLifecycleStatus.COMPLETED
+    assert provider.execute_count == 0
+
+
+@pytest.mark.asyncio
+async def test_expired_write_window_is_terminal_without_provider_effect(
+    tmp_path: Path,
+) -> None:
+    _, plan, _, _, _ = operator_context(tmp_path)
+    lifecycle = _lifecycle(tmp_path)
+    provider = SyntheticProvider(execution=_execution(ProviderExecutionKind.VERIFIED))
+    operation_id = uuid4()
+    record = lifecycle.store.ensure(
+        plan=plan,
+        operation_id=operation_id,
+        as_of=NOW,
+        observation_deadline=plan.expires_at,
+        max_polls=plan.maximum_observation_polls,
+    )
+    record = lifecycle.store.transition(
+        record,
+        OperatorLifecycleStatus.AWAITING_APPROVAL,
+        as_of=NOW,
+    )
+    lifecycle.store.transition(
+        record,
+        OperatorLifecycleStatus.AUTHORIZED,
+        as_of=NOW,
+    )
+    record = await lifecycle.execute(
+        plan=plan,
+        operation_id=operation_id,
+        provider=provider,
+        as_of=plan.expires_at,
+        authorized=True,
+        async_allowed=False,
+    )
+    assert record.status is OperatorLifecycleStatus.COMPLETED
+    assert record.terminal_reason == "PLAN_WINDOW_EXPIRED"
+    assert provider.execute_count == 0
+    assert DurableOperatorLifecycle.public(record).safe_to_retry is False
+
+
+@pytest.mark.asyncio
+async def test_confirmed_precommit_failure_requires_a_new_plan(
+    tmp_path: Path,
+) -> None:
+    operator, plan, governance, validator, approvals = operator_context(tmp_path)
+    provider = SyntheticProvider(
+        execution=ProviderTransportError(
+            "synthetic pre-commit transport failure",
+            commit_possible=False,
+        )
+    )
+    record = await operator.execute_effectful(
+        plan=plan,
+        governance=governance,
+        approvals=approvals,
+        validator=validator,
+        lifecycle=_lifecycle(tmp_path),
+        provider=provider,
+        operation_id=uuid4(),
+        as_of=NOW,
+    )
+    public = DurableOperatorLifecycle.public(record)
+    assert public.safe_to_retry is True
+    assert public.operator_action == "operator.create_new_plan_if_needed"
 
 
 @pytest.mark.asyncio

@@ -130,6 +130,8 @@ def _plan(tmp_path: Path, *, dual: bool = False):
         compensation=CompensationDeclaration(
             classification=CompensationClass.CONDITIONAL_RESTORE,
         ),
+        observation_timeout_seconds=120,
+        maximum_observation_polls=3,
         created_at=NOW - timedelta(seconds=10),
         not_before=NOW - timedelta(seconds=5),
         expires_at=NOW + timedelta(minutes=4),

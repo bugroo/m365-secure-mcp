@@ -27,6 +27,7 @@ contracts.
 [MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Secure Operations](docs/SECURE_OPERATIONS.md) |
+[Operator Foundation](docs/OPERATOR_FOUNDATION.md) |
 [Project north star](docs/PROJECT_NORTH_STAR.md) |
 [Roadmap](docs/ROADMAP.md) |
 [Open-source boundary](docs/OPEN_SOURCE_BOUNDARY.md) |
@@ -63,7 +64,7 @@ flowchart TB
     B --> K["Receipt + change record"]
 ```
 
-### Four-plane design
+### Five-plane design
 
 | Plane | Authority | Runtime behavior |
 |---|---|---|
@@ -71,6 +72,7 @@ flowchart TB
 | Governance | tenant-private signed profiles, allowlists and authorization overrides | may tighten a contract, never weaken it |
 | Runtime | fixed MCP handlers, Graph v1.0 calls, preconditions, TOCTOU checks, external approval verification and post-read verification | cannot edit/sign policy or approve itself |
 | Assurance | posture, findings, audit, receipts, drift and release checks | produces evidence; does not remediate autonomously |
+| Experience and Evaluation | canonical tool metadata, deterministic security scenarios, client-facing diagnostics and contributor acceptance gates | annotations inform clients but never authorize execution |
 
 The first compiled vertical slices are Entra Identity & Governance. Their
 signed contract manifest contains eight bounded reads and one T1 write. A
@@ -106,11 +108,13 @@ never signs, generates a production key or changes a trust anchor. Local
 ### What comes next
 
 The signed T0 readiness playbook, reusable Change-safe T1 operator, Assurance
-verticals, multi-tenant radar, Posture Control build foundation and Governance
-v2 validation are implemented. The next canonical program is
-**Secure Operations**: a semantic effect model, an operator foundation for
-T2/dual-control/async/resumable execution, then bounded Identity, Intune,
-Defender and operational-playbook slices.
+verticals, multi-tenant radar, Posture Control build foundation, Governance
+v2, semantic Effect Model, and inactive Operator Foundation are implemented.
+Operator Foundation proves exact T2 plans, real T3 dual control, durable
+accepted/verified/uncertain outcomes, and resumable signed synthetic DAGs. It
+activates no new Graph operation. The next canonical workload program is the
+bounded Identity slice, followed by Intune, Defender, and production
+operational playbooks.
 
 Posture runtime is postponed until those operational slices exist. Its reduced
 role is to turn bounded evidence into deterministic findings and

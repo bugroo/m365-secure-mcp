@@ -159,9 +159,11 @@ operation executable.
 ## Canonical milestone order
 
 1. **Secure Operations 0 — Contract Effect Model.**
-2. **Secure Operations 1 — Operator Foundation:** T2 explicit plans, real dual
-   control, asynchronous handles, resumable execution and signed effectful
-   playbooks.
+2. **Secure Operations 1 — Operator Foundation:** implemented with inactive
+   synthetic fixtures: T2 explicit plans, real dual control, asynchronous
+   handles, resumable execution and signed effectful playbooks. It activates
+   no production Graph operation. See
+   [Operator Foundation](OPERATOR_FOUNDATION.md).
 3. **Secure Operations 2 — Identity Slice:** the five planned operations above.
 4. **Secure Operations 3 — Endpoint/Intune Slice.**
 5. **Secure Operations 4 — Defender Slice.**

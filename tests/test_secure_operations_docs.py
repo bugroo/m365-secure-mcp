@@ -7,6 +7,8 @@ from m365_secure_mcp.server import WRITE_TOOL_ACTIONS
 
 ROOT = Path(__file__).resolve().parents[1]
 SECURE_OPERATIONS = ROOT / "docs/SECURE_OPERATIONS.md"
+NORTH_STAR = ROOT / "docs/PROJECT_NORTH_STAR.md"
+OPERATOR_FOUNDATION = ROOT / "docs/OPERATOR_FOUNDATION.md"
 FROZEN_WRITE_ACTIONS = {
     "m365_add_user_to_group": "groups.add_user_member",
     "m365_append_onenote_page_text": "onenote.append_page_text",
@@ -163,3 +165,32 @@ def test_permanent_prohibitions_remain_explicit() -> None:
         "findings that self-authorize remediation",
     ]
     assert all(item in document for item in required)
+
+
+def test_north_star_is_canonical_and_guarded_by_repository_instructions() -> None:
+    north_star = NORTH_STAR.read_text()
+    agents = (ROOT / "AGENTS.md").read_text()
+    contributing = (ROOT / "CONTRIBUTING.md").read_text()
+    for pillar in [
+        "Observe and diagnose",
+        "Operate and automate",
+        "Assure and provide evidence",
+        "Experience and evaluation",
+        "Community and verifiable distribution",
+    ]:
+        assert pillar in north_star
+    assert "Apache-2.0" in north_star
+    assert "complete administrative workflows" in north_star
+    assert "No milestone may silently revert the product to read-only" in north_star
+    assert "docs/PROJECT_NORTH_STAR.md" in agents
+    assert "project north star" in contributing
+
+
+def test_operator_foundation_does_not_claim_production_graph_activation() -> None:
+    document = OPERATOR_FOUNDATION.read_text()
+    normalized = " ".join(document.split())
+    assert "does not activate a new Microsoft Graph endpoint" in normalized
+    assert "production signed playbook manifest remains schema v1" in normalized
+    assert "No expression language" not in document
+    assert "no expression language" in normalized
+    assert "Governance and runtime enforce security" in normalized

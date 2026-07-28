@@ -1,23 +1,26 @@
 # Signed tenant Governance
 
 Governance is the tenant-private authority that selects profiles, resources,
-contracts and, beginning with schema `2.0`, Posture Control Library settings.
+contracts, Posture Control Library settings in schema `2.0`, and inactive
+future operational bindings in schema `3.0`.
 The policy is signed by the tenant administrator's external Ed25519 authority.
 The MCP can verify and enforce it, but cannot create, migrate, sign, approve or
 modify it.
 
 ## Schema compatibility
 
-| Schema | Existing contracts and playbooks | Posture Control Library |
-|---|---|---|
-| `1.0` | supported without behavior or tool-surface changes | unavailable |
-| `2.0` | supported with the same authorization floors and fences | signed configuration validation only |
+| Schema | Existing contracts and playbooks | Posture Control Library | Operator Foundation |
+|---|---|---|---|
+| `1.0` | supported without behavior or tool-surface changes | unavailable | unavailable |
+| `2.0` | supported with the same authorization floors and fences | signed configuration validation only | unavailable |
+| `3.0` | explicit compatibility; no automatic migration | optional v2-compatible section | exact inactive schema-v2 operational bindings |
 
 A v1 policy remains valid and is never migrated or re-signed automatically. A
 v1 document containing `control_library` fails with
 `CONTROL_LIBRARY_REQUIRES_GOVERNANCE_V2` and one action: create and sign a
 separate v2 policy while leaving the v1 policy unchanged. A malformed v2
-policy never falls back to v1.
+policy never falls back to v1. Governance v3 is separate and is not inferred,
+migrated or substituted after a v1/v2 validation failure.
 
 M2 does not execute a control, inspect evidence timestamps, change an
 assessment status or produce an assessment result. Those deterministic
@@ -26,6 +29,29 @@ identity, endpoint, Defender and effectful-playbook slices. The reduced
 Posture runtime may produce only deterministic findings and non-authorizing
 proposal candidates; Governance and a compiled operational contract remain
 required for any effect.
+
+## Governance v3 operational section
+
+Governance v3 is the signed private authority for future T2/T3 schema-v2
+contracts. It pins:
+
+- exact contract-manifest and Effect Model content digests and compatible
+  schema versions;
+- exact operation/contract ID, contract digest, semantic effect, minimum tier,
+  authorization mode, verification and async requirements;
+- closed resource-fence classes and protected-object policy;
+- allowed approval authority IDs, cryptographic identities, signer groups,
+  key IDs and public-key fingerprints.
+
+The section contains no Graph URL, method, scope, body, evaluator or expression.
+An outdated Effect Model, changed contract, missing fence, unrepresentable
+verification, aliased authority or authorization downgrade fails closed.
+Governance may raise T2 to T3 but cannot lower the compiled floor.
+
+The production contract manifest remains schema v1, so v3 operational bindings
+are exercised only with synthetic inactive fixtures in Operator Foundation.
+Governance v1/v2 continue to authorize the existing tool surface unchanged.
+See [Operator Foundation](OPERATOR_FOUNDATION.md).
 
 ## Governance v2 control section
 
