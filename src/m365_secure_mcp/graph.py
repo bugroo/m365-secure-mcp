@@ -237,6 +237,53 @@ class GraphClient:
         except UnicodeDecodeError as exc:
             raise GraphError("Microsoft Graph returned invalid UTF-8 content") from exc
 
+    async def remove_exact_group_member_reference(
+        self,
+        group_id: str,
+        user_id: str,
+    ) -> None:
+        """Delete only ``/groups/{group}/members/{user}/$ref``.
+
+        No suffix, method, body, query, API version, or URL is caller supplied.
+        Transport loss is always classified as potentially committed and is
+        never retried automatically.
+        """
+
+        await self.ensure_principal()
+        endpoint = (
+            f"/groups/{path_segment(group_id)}/members/"
+            f"{path_segment(user_id)}/$ref"
+        )
+        if not endpoint.endswith("/$ref"):
+            raise GraphError("exact membership-reference suffix was lost")
+        url = validate_graph_url(urljoin(GRAPH_BASE_URL, endpoint.lstrip("/")))
+        token = await self.tokens.get_access_token()
+        self._write_attempt_count += 1
+        try:
+            response = await self._client.delete(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Accept": "application/json",
+                },
+            )
+        except (httpx.TimeoutException, httpx.RequestError) as exc:
+            self._write_ambiguous_count += 1
+            raise GraphError(
+                "Microsoft Graph membership removal lost its response; "
+                "the external outcome is uncertain",
+                write_may_have_committed=True,
+            ) from exc
+        if response.status_code >= 400:
+            raise self._safe_http_error(response)
+        if response.status_code != 204:
+            self._write_ambiguous_count += 1
+            raise GraphError(
+                "Microsoft Graph returned an unexpected membership-removal response",
+                write_may_have_committed=True,
+            )
+        self._write_confirmed_count += 1
+
     async def download_drive_item(
         self,
         drive_id: str,

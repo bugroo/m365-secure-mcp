@@ -27,12 +27,16 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import (
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .contract_manifest import (
+    AsyncBehavior,
     AuthorizationMode,
     ContractEffect,
     ContractManifest,
     ContractSpec,
     ContractSpecV2,
+    ProtectedObjectPolicyId,
+    ResourceFenceId,
     RiskTier,
+    VerificationContractId,
     VerificationMode,
     authorization_is_at_least,
     canonical_json,
@@ -184,8 +188,27 @@ class GovernanceResources(StrictModel):
     applications: list[UUID] = Field(default_factory=list, max_length=100)
     service_principals: list[UUID] = Field(default_factory=list, max_length=100)
     protected_user_ids: list[UUID] = Field(default_factory=list, max_length=1_000)
+    break_glass_user_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    emergency_access_user_ids: list[UUID] = Field(default_factory=list, max_length=100)
+    protected_group_ids: list[UUID] = Field(default_factory=list, max_length=1_000)
+    allowed_sku_ids: list[UUID] = Field(default_factory=list, max_length=1_000)
+    allowed_service_plan_ids: dict[UUID, list[UUID]] = Field(
+        default_factory=dict,
+        max_length=1_000,
+    )
+    synchronized_user_policy: Literal["reject"] = "reject"
 
-    @field_validator("applications", "service_principals")
+    @field_validator(
+        "applications",
+        "service_principals",
+        "users",
+        "groups",
+        "protected_user_ids",
+        "break_glass_user_ids",
+        "emergency_access_user_ids",
+        "protected_group_ids",
+        "allowed_sku_ids",
+    )
     @classmethod
     def directory_resources_are_unique_and_sorted(
         cls,
@@ -204,6 +227,24 @@ class GovernanceResources(StrictModel):
         protected = set(self.protected_user_ids)
         if protected - set(self.users):
             raise ValueError("protected users must also be present in the user allowlist")
+        special_users = set(self.break_glass_user_ids) | set(
+            self.emergency_access_user_ids
+        )
+        if special_users - protected:
+            raise ValueError(
+                "break-glass and emergency-access users must be protected"
+            )
+        if set(self.protected_group_ids) - set(self.groups):
+            raise ValueError("protected groups must also be in the group allowlist")
+        if set(self.allowed_service_plan_ids) - set(self.allowed_sku_ids):
+            raise ValueError("service-plan allowlists require an allowlisted SKU")
+        for plans in self.allowed_service_plan_ids.values():
+            if [str(item) for item in plans] != sorted(
+                {str(item) for item in plans}
+            ):
+                raise ValueError(
+                    "allowed service plans must be unique and sorted"
+                )
         return self
 
 
@@ -762,6 +803,10 @@ class OperationGovernanceBinding(StrictModel):
     protected_object_policy: ProtectedObjectPolicy
     async_requirement: AsyncRequirement
     verification: VerificationMode
+    resource_fence_id: ResourceFenceId | None = None
+    protected_object_policy_id: ProtectedObjectPolicyId | None = None
+    verification_contract_id: VerificationContractId | None = None
+    async_behavior: AsyncBehavior | None = None
     approval_authority_ids: list[str] = Field(min_length=1, max_length=8)
     required_signer_groups: list[str] = Field(min_length=1, max_length=8)
 
@@ -812,6 +857,16 @@ class OperationGovernanceBinding(StrictModel):
             raise ValueError("effectful operation has an unsupported authorization mode")
         if self.verification is VerificationMode.NOT_VERIFIABLE:
             raise ValueError("effectful operation must define representable verification")
+        if self.operation_id.startswith("entra.") and None in {
+            self.resource_fence_id,
+            self.protected_object_policy_id,
+            self.verification_contract_id,
+            self.async_behavior,
+        }:
+            raise ValueError(
+                "Identity operations require exact fence, protection, async, and "
+                "verification bindings"
+            )
         return self
 
 
@@ -1658,6 +1713,18 @@ def resolve_operation_governance(
         raise GovernancePolicyError(
             "operation verification differs from the compiled contract",
             reason_code="VERIFICATION_CHANGED",
+        )
+    if contract.module != "synthetic" and (
+        binding.resource_fence_id is not contract.resource_fence_id
+        or binding.protected_object_policy_id
+        is not contract.protected_object_policy_id
+        or binding.verification_contract_id
+        is not contract.verification_contract_id
+        or binding.async_behavior is not contract.async_behavior
+    ):
+        raise GovernancePolicyError(
+            "operation safety binding differs from the compiled contract",
+            reason_code="OPERATION_SAFETY_BINDING_CHANGED",
         )
     if (
         binding.async_requirement is AsyncRequirement.PROVIDER_ASYNC_REQUIRED

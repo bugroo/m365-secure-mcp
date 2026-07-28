@@ -92,7 +92,9 @@
       "resource_fence_id": "identity.allowlisted_user.v1",
       "resource_fences": [
         "single_runtime_tenant_and_profile",
-        "signed_governance_user_allowlist"
+        "signed_governance_user_allowlist",
+        "tenant_id",
+        "user_id"
       ],
       "risk_tier": "T2",
       "tool_name": "m365_entra_user_sessions_revoke",
@@ -195,7 +197,9 @@
       "resource_fence_id": "identity.allowlisted_user.v1",
       "resource_fences": [
         "single_runtime_tenant_and_profile",
-        "signed_governance_user_allowlist"
+        "signed_governance_user_allowlist",
+        "tenant_id",
+        "user_id"
       ],
       "risk_tier": "T2",
       "tool_name": "m365_entra_user_account_state_set",
@@ -302,9 +306,12 @@
       "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
       "resource_fence_id": "identity.allowlisted_user_and_group.v1",
       "resource_fences": [
+        "group_id",
         "signed_governance_group_allowlist",
         "signed_governance_user_allowlist",
-        "single_runtime_tenant_and_profile"
+        "single_runtime_tenant_and_profile",
+        "tenant_id",
+        "user_id"
       ],
       "risk_tier": "T2",
       "tool_name": "m365_entra_group_user_membership_add",
@@ -411,9 +418,12 @@
       "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
       "resource_fence_id": "identity.allowlisted_user_and_group.v1",
       "resource_fences": [
+        "group_id",
         "signed_governance_group_allowlist",
         "signed_governance_user_allowlist",
-        "single_runtime_tenant_and_profile"
+        "single_runtime_tenant_and_profile",
+        "tenant_id",
+        "user_id"
       ],
       "risk_tier": "T2",
       "tool_name": "m365_entra_group_user_membership_remove",
@@ -539,9 +549,12 @@
       "protected_object_policy_id": "identity.non_privileged_member_user.v1",
       "resource_fence_id": "identity.allowlisted_user_and_sku.v1",
       "resource_fences": [
+        "sku_id",
         "signed_governance_sku_allowlist",
         "signed_governance_user_allowlist",
-        "single_runtime_tenant_and_profile"
+        "single_runtime_tenant_and_profile",
+        "tenant_id",
+        "user_id"
       ],
       "risk_tier": "T2",
       "tool_name": "m365_entra_user_direct_license_set",

@@ -6,11 +6,11 @@
   "compiler_version": "1.6",
   "distribution_status": "not-a-release",
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
-  "manifest_digest": "sha256:1c0de0c9fb647d711bd1f8193d158db04ddc699b0af5d47edba1c8d555594c14",
-  "registry_digest": "sha256:7d35bf301c2f464a2c242584f7fc671d0b502868de34b78000a88ea29ed5d107",
+  "manifest_digest": "sha256:23fe919fbd65566a1b61d5fadd058cd151e6ab8a95011bb1900bdfa8476fd847",
+  "registry_digest": "sha256:bea22af91577989f506a848916cf86ad633b6ddde67624eef19913c96a9f6505",
   "release_attestation_status": "external-required",
   "runtime_tool_generation": false,
   "schema_version": "1.0",
   "signature_present": false,
-  "surface_diff_digest": "sha256:4bf165afd93f25e7c62729808fad2160f56eb6715940f60ec2480571c845c863"
+  "surface_diff_digest": "sha256:1d1ad0e72efd9291121d8c4cef0b5cb34a678404c2ae8b731d54148c352c3b9c"
 }

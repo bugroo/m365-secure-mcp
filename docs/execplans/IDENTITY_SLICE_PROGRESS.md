@@ -20,12 +20,12 @@ This is the durable resume point for
 - [x] Contract authority registry and direct-cutover verification primitives.
 - [x] Contract signing CLI and runbook.
 - [x] Identity candidate manifest and generated candidate artifacts.
-- [ ] Governance and runtime/provider integration.
+- [x] Governance and runtime/provider integration.
 - [ ] Recorded/live-lab/evaluation fixtures.
 - [ ] Roadmap, signing request and full validation.
 - [ ] Push, PR and remote CI.
 
 ## Resume action
 
-Extend Governance and the common operator/provider path for the five candidate
-operations. Do not activate or register candidate operations.
+Add sanitized recorded playback, disabled live-lab harness, and deterministic
+agent-facing evaluations for all five candidate operations.

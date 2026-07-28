@@ -107,6 +107,7 @@ class ContractPrivacyClass(StrEnum):
 
 
 class IdentityExecutorId(StrEnum):
+    SYNTHETIC_STATE_TRANSITION_V1 = "synthetic.state_transition.v1"
     USER_SESSIONS_REVOKE_V1 = "identity.user_sessions_revoke.v1"
     USER_ACCOUNT_STATE_SET_V1 = "identity.user_account_state_set.v1"
     GROUP_USER_MEMBERSHIP_ADD_V1 = "identity.group_user_membership_add.v1"
@@ -115,6 +116,7 @@ class IdentityExecutorId(StrEnum):
 
 
 class ProtectedObjectPolicyId(StrEnum):
+    SYNTHETIC_EXCLUDE_PROTECTED_V1 = "synthetic.exclude_protected.v1"
     NON_PRIVILEGED_MEMBER_USER_V1 = "identity.non_privileged_member_user.v1"
     NON_PRIVILEGED_MEMBER_USER_STATIC_GROUP_V1 = (
         "identity.non_privileged_member_user_static_group.v1"
@@ -122,12 +124,14 @@ class ProtectedObjectPolicyId(StrEnum):
 
 
 class ResourceFenceId(StrEnum):
+    SYNTHETIC_TENANT_USER_V1 = "synthetic.tenant_user.v1"
     ALLOWLISTED_USER_V1 = "identity.allowlisted_user.v1"
     ALLOWLISTED_USER_AND_GROUP_V1 = "identity.allowlisted_user_and_group.v1"
     ALLOWLISTED_USER_AND_SKU_V1 = "identity.allowlisted_user_and_sku.v1"
 
 
 class VerificationContractId(StrEnum):
+    SYNTHETIC_READBACK_V1 = "synthetic.readback.v1"
     SESSION_REVOCATION_ACCEPTANCE_V1 = "identity.session_revocation_acceptance.v1"
     USER_ACCOUNT_STATE_READBACK_V1 = "identity.user_account_state_readback.v1"
     GROUP_MEMBERSHIP_READBACK_V1 = "identity.group_membership_readback.v1"
@@ -380,7 +384,9 @@ class ContractSpecV2(StrictModel):
     description: str = Field(min_length=20, max_length=500)
     module: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
     graph: EffectGraphCall
-    preflight_graph_calls: list[PreflightGraphCallV2] = Field(default_factory=list)
+    preflight_graph_calls: list[GraphCall | PreflightGraphCallV2] = Field(
+        default_factory=list
+    )
     input_schema: dict[str, Any]
     output_fields: list[str] = Field(min_length=1)
     permissions: ContractPermissions
@@ -394,18 +400,29 @@ class ContractSpecV2(StrictModel):
     verification: VerificationMode
     compensation: CompensationClass
     effect: ContractEffect
-    lifecycle_state: ContractLifecycleState
-    executor_id: IdentityExecutorId
-    resource_fence_id: ResourceFenceId
-    protected_object_policy_id: ProtectedObjectPolicyId
-    verification_contract_id: VerificationContractId
-    async_behavior: AsyncBehavior
-    ambiguity_handling: Literal["never_retry_automatically"]
-    privacy_class: ContractPrivacyClass
-    maturity: ContractMaturity
-    license_prerequisites: list[str] = Field(min_length=1)
-    official_references: list[str] = Field(min_length=1)
-    verified_on: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
+    lifecycle_state: ContractLifecycleState = ContractLifecycleState.CANDIDATE
+    executor_id: IdentityExecutorId = IdentityExecutorId.SYNTHETIC_STATE_TRANSITION_V1
+    resource_fence_id: ResourceFenceId = ResourceFenceId.SYNTHETIC_TENANT_USER_V1
+    protected_object_policy_id: ProtectedObjectPolicyId = (
+        ProtectedObjectPolicyId.SYNTHETIC_EXCLUDE_PROTECTED_V1
+    )
+    verification_contract_id: VerificationContractId = (
+        VerificationContractId.SYNTHETIC_READBACK_V1
+    )
+    async_behavior: AsyncBehavior = AsyncBehavior.SYNCHRONOUS
+    ambiguity_handling: Literal["never_retry_automatically"] = (
+        "never_retry_automatically"
+    )
+    privacy_class: ContractPrivacyClass = (
+        ContractPrivacyClass.OPAQUE_PUBLIC_PRIVATE_RECEIPT
+    )
+    maturity: ContractMaturity = ContractMaturity.EXPERIMENTAL
+    license_prerequisites: list[str] = Field(default_factory=list)
+    official_references: list[str] = Field(default_factory=list)
+    verified_on: str | None = Field(
+        default=None,
+        pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+    )
 
     @model_validator(mode="after")
     def validate_explicit_effect(self) -> ContractSpecV2:
@@ -478,6 +495,21 @@ class ContractSpecV2(StrictModel):
             raise ValueError("official references must be unique and sorted")
         if self.license_prerequisites != sorted(set(self.license_prerequisites)):
             raise ValueError("license prerequisites must be unique and sorted")
+        synthetic_ids = {
+            IdentityExecutorId.SYNTHETIC_STATE_TRANSITION_V1,
+        }
+        if self.module == "synthetic":
+            if self.executor_id not in synthetic_ids:
+                raise ValueError("synthetic contracts require a synthetic executor")
+        elif (
+            self.executor_id in synthetic_ids
+            or not self.license_prerequisites
+            or not self.official_references
+            or self.verified_on is None
+        ):
+            raise ValueError(
+                "reviewed workload contracts require explicit executor and references"
+            )
         return self
 
 
@@ -794,6 +826,25 @@ def load_global_manifest() -> ContractManifest:
         signature,
         historical=authority.state is SigningKeyState.RETIRED,
     )
+    return manifest
+
+
+def load_active_identity_manifest() -> ContractManifestV2 | None:
+    """Load the optional signed Identity manifest; absence means no tool surface."""
+
+    try:
+        raw_manifest = json.loads(_data_bytes("global-identity-manifest.json"))
+        raw_signature = json.loads(_data_bytes("global-identity-manifest.sig.json"))
+    except FileNotFoundError:
+        return None
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("active Identity contract manifest is malformed") from exc
+    try:
+        manifest = ContractManifestV2.model_validate(raw_manifest)
+        signature = ManifestSignature.model_validate(raw_signature)
+    except ValueError as exc:
+        raise RuntimeError("active Identity contract manifest is malformed") from exc
+    authorize_candidate_activation(manifest, signature)
     return manifest
 
 

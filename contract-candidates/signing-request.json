@@ -1,9 +1,9 @@
 {
   "artifact_digests": {
-    "candidate_registry": "sha256:7d35bf301c2f464a2c242584f7fc671d0b502868de34b78000a88ea29ed5d107",
-    "graph_surface_diff": "sha256:4bf165afd93f25e7c62729808fad2160f56eb6715940f60ec2480571c845c863",
-    "provenance": "sha256:10f6504510f75b4da5ce44598f8ac38341320e9dd5ef4f948d7561833111e9a2",
-    "sbom_binding": "sha256:9f8ecea01b115a3429ed5b77c01e685484384016eba7dbe5abd990531b47bf67"
+    "candidate_registry": "sha256:bea22af91577989f506a848916cf86ad633b6ddde67624eef19913c96a9f6505",
+    "graph_surface_diff": "sha256:1d1ad0e72efd9291121d8c4cef0b5cb34a678404c2ae8b731d54148c352c3b9c",
+    "provenance": "sha256:9c297e5a005b661fb9de8a72def1068c15d69a05557ae47aac6c7e2dd387c47a",
+    "sbom_binding": "sha256:b08efb62c7ca54169a5238ff3b89992959fc203691f41bf7916726a114cd096b"
   },
   "contains_private_material": false,
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
@@ -27,7 +27,7 @@
       "POST /users/{user_id}/assignLicense",
       "POST /users/{user_id}/revokeSignInSessions"
     ],
-    "candidate_manifest_digest": "sha256:1c0de0c9fb647d711bd1f8193d158db04ddc699b0af5d47edba1c8d555594c14",
+    "candidate_manifest_digest": "sha256:23fe919fbd65566a1b61d5fadd058cd151e6ab8a95011bb1900bdfa8476fd847",
     "candidate_only_delegated_scopes": [
       "GroupMember.ReadWrite.All",
       "LicenseAssignment.Read.All",
@@ -46,7 +46,7 @@
   },
   "intended_key_id": "m365-contracts-2026-07",
   "intended_public_fingerprint": "pending-external-inspection",
-  "manifest_digest": "sha256:1c0de0c9fb647d711bd1f8193d158db04ddc699b0af5d47edba1c8d555594c14",
+  "manifest_digest": "sha256:23fe919fbd65566a1b61d5fadd058cd151e6ab8a95011bb1900bdfa8476fd847",
   "review_reference": "pull-request-required-before-signing",
   "schema_version": "1.0",
   "status": "awaiting_external_contract_authority",
