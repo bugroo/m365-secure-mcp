@@ -26,12 +26,11 @@ This log is the durable resume point for
 - [x] North star, repository instructions, ExecPlan, and progress log added.
 - [x] Governance v3 operational bindings and approval authorities.
 - [x] Durable asynchronous operator lifecycle.
-- [ ] Signed synthetic effectful playbook foundation.
+- [x] Signed synthetic effectful playbook foundation.
 - [ ] Evaluation fixtures and community documentation.
 - [ ] Full validation, commits, push, PR, and remote CI.
 
 ## Resume action
 
-Continue with the signed synthetic effectful playbook foundation. Keep its
-trust domain test-only, its node registries closed, and production manifests
-byte-for-byte unchanged.
+Continue with machine-readable metadata, adversarial evaluation fixtures,
+Governance/operator documentation, and the operation Definition of Done.

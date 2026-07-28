@@ -24,6 +24,7 @@ from m365_secure_mcp.contract_manifest import (
     IdempotencyContract,
     RiskTier,
     VerificationMode,
+    canonical_json,
     effect_model_digest,
     sha256_digest,
 )
@@ -52,6 +53,15 @@ from m365_secure_mcp.operator_authority import (
     PreconditionBinding,
     TargetReference,
     sign_operator_approval,
+)
+from m365_secure_mcp.playbook_manifest import (
+    EffectfulExecutorId,
+    EffectfulNodeKind,
+    EffectfulPlaybookManifest,
+    EffectfulPlaybookManifestSignature,
+    EffectfulPlaybookNode,
+    EffectfulPlaybookSpec,
+    verify_effectful_playbook_manifest,
 )
 
 TENANT_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -367,3 +377,116 @@ def operator_context(
         )
     )
     return operator, plan, governance, validator, approvals
+
+
+def signed_effectful_fixture(
+    *,
+    plan,
+    dual: bool = False,
+    manual_handoff: bool = False,
+):
+    operation_id = plan.operation_id
+    nodes = [
+        EffectfulPlaybookNode(
+            id="a_preflight",
+            kind=EffectfulNodeKind.READ_PREFLIGHT,
+            executor_id=EffectfulExecutorId.PREFLIGHT_EXACT,
+            contract_id=operation_id,
+            operation_id=operation_id,
+        ),
+        EffectfulPlaybookNode(
+            id="b_plan",
+            kind=EffectfulNodeKind.PLAN,
+            executor_id=EffectfulExecutorId.PLAN_EXACT,
+            depends_on=["a_preflight"],
+            contract_id=operation_id,
+            operation_id=operation_id,
+        ),
+        EffectfulPlaybookNode(
+            id="c_approval",
+            kind=EffectfulNodeKind.APPROVAL,
+            executor_id=EffectfulExecutorId.APPROVAL_EXTERNAL,
+            depends_on=["b_plan"],
+            contract_id=operation_id,
+            operation_id=operation_id,
+        ),
+        EffectfulPlaybookNode(
+            id="d_write",
+            kind=EffectfulNodeKind.WRITE,
+            executor_id=EffectfulExecutorId.WRITE_CHANGE_SAFE,
+            depends_on=["c_approval"],
+            contract_id=operation_id,
+            operation_id=operation_id,
+        ),
+        EffectfulPlaybookNode(
+            id="e_observe",
+            kind=EffectfulNodeKind.OBSERVE,
+            executor_id=EffectfulExecutorId.OBSERVE_BOUNDED,
+            depends_on=["d_write"],
+            contract_id=operation_id,
+            operation_id=operation_id,
+        ),
+        EffectfulPlaybookNode(
+            id="f_verify",
+            kind=EffectfulNodeKind.VERIFY,
+            executor_id=EffectfulExecutorId.VERIFY_EXACT,
+            depends_on=["e_observe"],
+            contract_id=operation_id,
+            operation_id=operation_id,
+        ),
+        EffectfulPlaybookNode(
+            id="g_checkpoint",
+            kind=EffectfulNodeKind.CHECKPOINT,
+            executor_id=EffectfulExecutorId.CHECKPOINT_DURABLE,
+            depends_on=["f_verify"],
+        ),
+    ]
+    if manual_handoff:
+        nodes.append(
+            EffectfulPlaybookNode(
+                id="h_handoff",
+                kind=EffectfulNodeKind.MANUAL_HANDOFF,
+                executor_id=EffectfulExecutorId.MANUAL_HANDOFF,
+                depends_on=["g_checkpoint"],
+            )
+        )
+    spec = EffectfulPlaybookSpec(
+        id=(
+            "synthetic.dual_control.workflow"
+            if dual
+            else "synthetic.explicit_plan.workflow"
+        ),
+        description=(
+            "Synthetic signed effectful workflow for Operator Foundation tests."
+        ),
+        risk_tier=RiskTier.T3 if dual else RiskTier.T2,
+        authorization_mode=(
+            AuthorizationMode.DUAL_CONTROL
+            if dual
+            else AuthorizationMode.EXPLICIT_PLAN
+        ),
+        contract_manifest_digest=plan.contract_manifest_digest,
+        effect_model_digest=plan.effect_model_digest,
+        nodes=nodes,
+        compensation=CompensationClass.CONDITIONAL_RESTORE,
+    )
+    manifest = EffectfulPlaybookManifest(
+        product="m365-secure-mcp",
+        playbooks=[spec],
+    )
+    signer = Ed25519PrivateKey.generate()
+    digest = sha256_digest(manifest)
+    signature = EffectfulPlaybookManifestSignature(
+        key_id="test-effectful-playbook-key",
+        playbook_manifest_digest=digest,
+        signature=base64.b64encode(signer.sign(canonical_json(manifest))).decode(
+            "ascii"
+        ),
+    )
+    verified = verify_effectful_playbook_manifest(
+        manifest,
+        signature,
+        trusted_key_id="test-effectful-playbook-key",
+        public_key=signer.public_key(),
+    )
+    return spec, manifest, signature, signer, verified
