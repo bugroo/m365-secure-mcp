@@ -5,6 +5,9 @@ This is the durable resume point for
 
 ## Baseline
 
+- PR #6 merge commit:
+  `9b7489ad67b637065bd38b47deeeef771a379b33`.
+- protected-main CI run `30363478703`: green.
 - PR #5 merge commit:
   `4af1f0ce607361925cfe511eb31392afe7c0de52`.
 - protected-main CI run `30358999180`: green.
@@ -40,6 +43,12 @@ This is the durable resume point for
 - [x] Single-tenant public-client authentication contract: browser PKCE
   primary, explicit device-code fallback, no secret and no ROPC.
 - [x] Core/Extended inventory, evidence and maturity gates.
+- [x] PR #6 merged; local and remote implementation branches removed.
+- [x] Protected `main` updated, clean and green.
+- [x] Identity Activation Program branch created from exact protected `main`.
+- [x] Availability probe completed without reading secret values or
+  authenticating: no lab environment, inventory, Azure CLI, repository-local
+  private material, contract signer or usable browser session is mounted.
 - [ ] Dedicated non-production tenant exists and is explicitly allowlisted.
 - [ ] Five external operator token sessions and profile-specific Governance
   material mounted.
@@ -53,8 +62,16 @@ This is the durable resume point for
 ## Environment discovery
 
 On 2026-07-28, the current process contained none of the dedicated live-lab
-environment variable names. No secret path or value was inspected. No
-authentication was attempted and no Graph call or tenant write occurred.
+environment variable names. The lab opt-in is disabled; no external inventory,
+repository-local private directory, Azure CLI session, contract signer
+configuration or usable browser session is available. No secret path or value
+was inspected. No authentication was attempted and no Graph call or tenant
+write occurred.
+
+This is one consolidated external boundary. The current candidate cannot be
+made signing-eligible by synthetic or recorded evidence, and a production
+contract authority cannot be improvised. No internal implementation change can
+safely replace those facts.
 
 ## Validation checkpoint
 
@@ -79,10 +96,10 @@ authentication was attempted and no Graph call or tenant write occurred.
 
 ## Exact resume action
 
-Provision the Core Identity Lab and external material listed in
+Mount the complete external input bundle listed in
 [`IDENTITY_LIVE_LAB.md`](../IDENTITY_LIVE_LAB.md). Render the committed
 schema-2.0 placeholder inventory outside Git, set it to owner-only `0600`,
-create one process environment per isolated operator profile, then run:
+create one process environment per isolated operator profile, and run for each:
 
 ```bash
 uv run m365-identity-live-lab validate-inventory \
@@ -94,3 +111,9 @@ Only after both succeed for all five profiles may the reviewed live runner
 authenticate and begin the Core sequence. Do not sign the current candidate
 digest. Extended cases may remain `not_executed`, but no operation can become
 `stable` until they are reviewed.
+
+After Core passes, regenerate with `uv run m365-compile-contracts`, rerun the
+full validation suite, review the new signing request, and follow
+[`CONTRACT_SIGNING_RUNBOOK.md`](../CONTRACT_SIGNING_RUNBOOK.md) against only
+the frozen final digest. Activation then occurs in the same program branch as
+one small reviewed change and one final pull request.

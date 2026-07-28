@@ -1,10 +1,10 @@
 # ExecPlan: Identity Live-Lab Validation and Activation
 
-Status: provisioning boundary validated; dedicated lab tenant unavailable
+Status: blocked only at the consolidated external Identity activation boundary
 
-Branch: `feat/identity-live-lab-and-activation`
+Branch: `feat/identity-activation-program`
 
-Baseline: `4af1f0ce607361925cfe511eb31392afe7c0de52`
+Baseline: `9b7489ad67b637065bd38b47deeeef771a379b33`
 
 ## Purpose and outcome
 
@@ -60,8 +60,11 @@ requirements without authenticating or writing to Graph.
 - M5 — External signing ceremony.
 - M6 — Separate activation PR and active `preview` contractual exposure.
 
-M1 and M2 are complete. M3 is blocked by the absence of a dedicated tenant and
-external lab material, not by a code or architectural defect.
+M1 and M2 are complete. The provider implementations, Operator Foundation,
+Governance v3 bindings, recorded playback, deterministic evaluations,
+candidate compiler, trust lifecycle and fail-closed lab boundary are present.
+M3 is blocked by the absence of the consolidated external lab input bundle,
+not by a code or architectural defect.
 
 ## Acceptance
 
@@ -132,3 +135,34 @@ halts the target and requires manual review rather than retry.
 - The merged PR #5 candidate digest is invalidated by the reviewed role-metadata
   correction. The current unsigned digest remains ineligible until live
   evidence exists and may change again after observed Graph behavior.
+
+## Consolidated external input boundary
+
+The program resumes only when all of the following are externally available:
+
+1. a dedicated, non-production Microsoft 365 tenant carrying the independent
+   lab marker;
+2. one single-tenant public-client App Registration with the exact reviewed
+   delegated scope closure and manual administrator consent;
+3. five isolated delegated operator sessions (session, account, group,
+   license and negative) with their exact roles and distinct owner-only
+   keychain namespaces;
+4. the Core synthetic users, groups, membership relationships, subscribed
+   SKUs, capacity, `usageLocation` and service-plan fixtures;
+5. four signed Governance v3 effect policies, one signed negative deny policy,
+   their verification keys, and four externally held T2 approval authorities;
+6. an externally rendered owner-only inventory matching the committed schema;
+7. after Core evidence passes and the final digest is frozen, the independent
+   encrypted production contract signer and its externally reviewed custody
+   procedure.
+
+These inputs are indispensable: without them the project cannot prove real
+Graph permissions, roles, replication, acceptance/verification semantics,
+protected-object rejection or ambiguous-transport handling. Without reviewed
+Core evidence the signing request must remain ineligible; without the
+independent signer the trust registry cannot cut over; without both, exposing
+the tools would violate the signed-manifest boundary.
+
+No customer or WERIXO production tenant may substitute for this bundle. The
+repository must not generate consent, roles, production approval authorities
+or the contract signer.
