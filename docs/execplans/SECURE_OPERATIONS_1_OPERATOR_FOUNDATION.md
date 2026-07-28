@@ -1,6 +1,6 @@
 # ExecPlan: Secure Operations 1 — Operator Foundation
 
-Status: in progress  
+Status: implementation complete; pull-request review pending
 Branch: `feat/secure-operations-operator-foundation`  
 Baseline: `b3c28ea925bd9de7797d755dcabb5a4ae8d0b6fe`
 
@@ -126,4 +126,5 @@ manifest artifact needs restoration.
 - Extend `ChangeSafeOperator`; do not create a second Graph write engine.
 - Use a closed provider-neutral execution adapter only for synthetic fixtures.
 - Treat approval-authority trust and playbook-fixture trust as separate domains.
-
+- End an authorized plan after write-window expiry or TOCTOU drift without a
+  provider effect; a consumed approval cannot be reused after either outcome.

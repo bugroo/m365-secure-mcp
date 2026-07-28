@@ -28,12 +28,13 @@ This log is the durable resume point for
 - [x] Durable asynchronous operator lifecycle.
 - [x] Signed synthetic effectful playbook foundation.
 - [x] Evaluation fixtures, canonical metadata, and community documentation.
-- [ ] Full validation, commits, push, PR, and remote CI.
+- [x] Full local validation and artifact-boundary checks.
+- [ ] Push, PR, and remote CI.
 
 ## Resume action
 
-Run every final validation and artifact-boundary check, publish the branch,
-open one PR, and wait for green remote CI. Do not start the Identity Slice.
+Publish the already validated branch, open one PR, and wait for green remote
+CI. Do not start the Identity Slice.
 
 ## Security hardening discovered during M5
 
@@ -43,3 +44,18 @@ open one PR, and wait for green remote CI. Do not start the Identity Slice.
   provider effect and requires a new plan.
 - Confirmed pre-commit provider failures remain distinguishable from uncertain
   outcomes; public output recommends a new plan but the runtime never retries.
+
+## Local completion evidence
+
+- `pytest`: 383 passed.
+- contract compiler check: verified, 21 generated artifacts.
+- Ruff: passed.
+- mypy: 48 source files, no issues.
+- `pip-audit`: no known vulnerabilities in auditable dependencies.
+- wheel and sdist: built as version `0.13.0`; no private-key material or
+  customer-named package entries detected.
+- signed contract, playbook, control and compatibility artifacts: unchanged
+  from baseline and signature tests passed.
+- Graph contract endpoint/permission artifacts: byte-for-byte unchanged.
+- release status remains `local-unattested`, `not-a-release`,
+  `external-required`.
