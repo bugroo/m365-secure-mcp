@@ -115,9 +115,11 @@ never signs, generates a production key or changes a trust anchor. Local
 Contract manifests use a separate
 [contract-signing lifecycle](docs/CONTRACT_SIGNING_RUNBOOK.md). The five
 Identity schema-2.0 contracts are currently `candidate`/`preview`: they compile,
-have Governance/provider/tests/recordings, but are not registered or
-executable through the production MCP surface. PR #5 merged them inactive. All
-five operations require reviewed
+have Governance/provider/tests/recordings and dormant production wiring, but
+are not registered or executable through the production MCP surface. The
+wiring itself loads only a current production-signed active manifest, signed
+Governance v3 and an external T2 approval trust registry; the unsigned
+candidate cannot satisfy that gate. All five operations require reviewed
 execution in a dedicated non-production
 [Identity live lab](docs/IDENTITY_LIVE_LAB.md) before the external authority
 signs the resulting final digest; any correction changes that digest.

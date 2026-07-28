@@ -5,10 +5,12 @@ tenant with synthetic resources and isolated operator profiles. Customer
 tenants, WERIXO production, everyday administration identities and real
 emergency-access accounts are prohibited.
 
-The five schema-2.0 Identity contracts remain inactive candidates. This lab
-gate neither authenticates nor calls Graph. It proves that a separately
-reviewed runner has the exact external inventory and authority boundary before
-any live operation.
+The five schema-2.0 Identity contracts remain inactive candidates. The `gate`
+command neither authenticates nor calls Graph. The separate `run-core-case`
+command is the reviewed runner: it can proceed only after the same gate,
+authenticates one isolated operator and routes one closed scenario through the
+candidate contract, Governance v3, external approval broker and
+`ChangeSafeOperator`.
 
 ## Authentication boundary
 
@@ -35,9 +37,13 @@ The process must set:
 - matching `M365_LAB_TENANT_ID` and `M365_TENANT_ID`;
 - matching `M365_CLIENT_ID`;
 - `M365_TOKEN_CACHE_MODE=keyring`;
+- `M365_PROFILE=write`, `M365_WRITE_ENABLED=true` and
+  `M365_IDENTITY_OPERATIONS_ENABLED=true`;
 - the profile-specific `M365_KEYRING_SERVICE`;
 - owner-only Governance policy and public verification-key paths;
-- the profile-specific approval public key for an effect operator;
+- the profile-specific owner-only operator approval trust registry and approval
+  exchange directory (`M365_OPERATOR_APPROVAL_TRUST_PATH` and
+  `M365_OPERATOR_APPROVAL_DIR`);
 - an owner-only regular `0600` external inventory path.
 
 The inventory path and all identifiers stay outside Git. The committed
@@ -51,6 +57,53 @@ uv run m365-identity-live-lab validate-inventory \
   --inventory /external-owner-only/identity-live-lab.json
 uv run m365-identity-live-lab gate
 ```
+
+Each effect case uses one externally chosen UUID idempotency key. The first
+invocation performs protected-object preflight, freezes the immutable plan and
+returns `AWAITING_APPROVAL`; it cannot write. An external approver signs the
+owner-only request with the separate T2 authority. Repeating the exact command
+with the same UUID consumes the approval once and executes or resumes:
+
+```bash
+uv run m365-identity-live-lab run-core-case \
+  --scenario account.disable \
+  --idempotency-key 00000000-0000-4000-8000-000000000000
+
+uv run m365-operator-approval sign \
+  --request /external-owner-only/approvals/<plan-id>.request.json \
+  --trust-registry /external-owner-only/account-approval-trust.json \
+  --authority-id <reviewed-authority-id> \
+  --signer /secure-mounted/account-approval-signer.pem \
+  --output /external-owner-only/approvals/<plan-id>.<authority-id>.approval.json \
+  --expected-plan-digest sha256:<reviewed-plan-digest>
+
+uv run m365-identity-live-lab run-core-case \
+  --scenario account.disable \
+  --idempotency-key 00000000-0000-4000-8000-000000000000
+```
+
+The example UUID and placeholders are not valid lab values. The signing CLI
+prompts interactively for an encrypted PKCS#8 key passphrase, never accepts it
+through arguments or environment, never generates an authority and never
+prints private material.
+
+`run-core-case` returns a private operator envelope. Before approval it
+contains the opaque approval-request reference and reviewed plan digest but no
+public evidence. A final successful or expected fail-closed invocation
+contains a nested `evidence` object. Store each final envelope in an
+owner-controlled result file; never commit the envelope itself.
+
+Four Core checks never send a Graph write. Cross-tenant binding, missing
+effect role, missing evidence role and profile isolation authenticate or
+validate only the exact negative boundary and emit a sanitized blocked result.
+The evidence-role case is run while the account test token intentionally lacks
+Global Reader; restore the canonical account operator role closure before any
+effect case. The `account.toctou_rejected` case requires changing the
+synthetic account state after plan creation but before approved resumption.
+The `session.uncertain_no_retry` case uses a closed lab-only backend that first
+receives Graph acceptance and then deliberately removes local transport
+certainty; durable state must become uncertain and a repeat must not issue a
+second revoke.
 
 ## Isolated operator profiles
 
@@ -165,12 +218,25 @@ expected/observed status, duration bucket, classification, sanitized error,
 contract digest and `passed`/`failed`/`not_executed` execution state.
 
 ```bash
+uv run m365-identity-live-lab assemble-evidence \
+  --result /external-owner-only/results/account.disable.final.json \
+  --result /external-owner-only/results/<each-other-core-final>.json \
+  --output /external-owner-only/sanitized-live-lab.evidence
+
 uv run m365-identity-live-lab scan-evidence \
   --evidence /external-owner-only/sanitized-live-lab.evidence
 ```
 
-The scanner rejects tenant/object/device/subscription/request IDs, UPNs,
-email addresses, IP addresses, tokens, key material and unknown fields.
+Assembly rejects missing, duplicated, failed, approval-pending or
+contract-mismatched Core results and inserts every unavailable Extended case
+as `not_executed`. The compiler recognizes only the canonical sanitized
+evidence file at
+`contract-candidates/identity-live-lab-evidence.json`; it binds that file's
+digest into provenance, SBOM metadata and the signing request. The signing
+request can become eligible only when all closed Core cases passed. The
+scanner rejects tenant/object/device/subscription/request IDs, UPNs, email
+addresses, IP addresses, tokens, key material, changed scenario semantics and
+unknown fields.
 
 ## Activation sequence
 

@@ -43,9 +43,14 @@ inactive. Before the first reviewed cutover:
 1. execute and review the mandatory Core Identity Lab scenarios for all five
    operations using isolated session, account, group, license and negative
    operator profiles;
-2. apply any resulting correction and regenerate every candidate artifact;
-3. review the final manifest and artifact digests;
-4. sign only that final post-lab manifest digest.
+2. assemble and privacy-scan the final Core results, then place only the
+   sanitized canonical output at
+   `contract-candidates/identity-live-lab-evidence.json`;
+3. apply any resulting correction and regenerate every candidate artifact;
+4. confirm the compiler binds the evidence digest into provenance, SBOM
+   metadata and a `signing_eligible: true` signing request;
+5. review the final manifest, evidence and artifact digests;
+6. sign only that final post-lab manifest digest.
 
 Any candidate correction, including one derived from live-lab evidence,
 invalidates the earlier digest and signing request. Signing a pre-lab digest is

@@ -28,8 +28,11 @@ artifacts:
 - `entra.group.user_membership.remove`
 - `entra.user.direct_license.set`
 
-They do not appear in `--list-tools`, are not registered by the MCP server and
-cannot execute Graph. Their public review surface is the
+They do not appear in `--list-tools`, are not registered in the current
+production surface and cannot execute Graph. Dormant server wiring requires
+an explicit process gate, a current production-signed active manifest, signed
+Governance v3 and the external T2 broker; the unsigned candidate cannot
+satisfy that chain. Their public review surface is the
 [candidate matrix](IDENTITY_CANDIDATE_MATRIX.md). PR #5 may merge while they
 remain inactive. `preview` activation requires reviewed Core live-lab
 execution of all five operations with isolated operators, regeneration after

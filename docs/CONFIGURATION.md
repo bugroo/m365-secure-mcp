@@ -162,6 +162,26 @@ burns it after all TOCTOU checks but before PATCH. A stale, changed, replayed or
 cross-deployment artifact fails closed. Approval is never a model-controlled
 parameter.
 
+Future schema-2.0 Identity operations use the Operator Foundation approval
+boundary, not the legacy T1 override broker above. The source wiring is
+dormant until a current production-signed active Identity manifest exists.
+These settings therefore fail closed today with the unsigned candidate:
+
+| Variable | Default | Meaning |
+|---|---:|---|
+| `M365_IDENTITY_OPERATIONS_ENABLED` | `false` | Explicit process-start gate; never activates a candidate |
+| `M365_OPERATOR_APPROVAL_DIR` | unset | Owner-only request/approval exchange for T2/T3 plans |
+| `M365_OPERATOR_APPROVAL_TRUST_PATH` | unset | Owner-only closed approval-authority registry, exactly bound by Governance v3 |
+| `M365_OPERATOR_REPLAY_DB_PATH` | platform path | Tenant/profile-bound single-use approval ledger |
+| `M365_OPERATOR_LIFECYCLE_DB_PATH` | platform path | Tenant/profile-bound durable execution/observation state |
+
+The Identity gate requires a write process, signed Governance v3, an active
+production-signed schema-2.0 contract manifest and both approval settings.
+No fallback to `M365_WRITE_ACTIONS` or standing policy exists. The external
+`m365-operator-approval` command has only `inspect-key`, `sign` and `verify`;
+it accepts an explicit encrypted Ed25519 PKCS#8 path, prompts for the
+passphrase, cannot generate an authority and never calls Graph.
+
 ## Surface selection
 
 | Variable | Default | Meaning |
@@ -238,7 +258,7 @@ separate UUID allowlists and remain read-only in the MCP.
 | Variable | Default | Meaning |
 |---|---|---|
 | `M365_WRITE_ENABLED` | `false` | Independent write-profile gate |
-| `M365_WRITE_ACTIONS` | blank | Exact action allowlist |
+| `M365_WRITE_ACTIONS` | blank | Exact legacy/T1 action allowlist; it never activates schema-2.0 Identity contracts |
 | `M365_WRITE_RATE_LIMIT_PER_MINUTE` | `10` | Per-tool local rate limit |
 | `M365_IDEMPOTENCY_PENDING_SECONDS` | `86400` | Age at which an orphaned pending reservation is classified as uncertain; neither state auto-retries |
 | `M365_IDEMPOTENCY_DB_PATH` | platform path | Optional ledger override |
@@ -247,13 +267,16 @@ separate UUID allowlists and remain read-only in the MCP.
 | `M365_RECOVERY_CAPSULE_PATH` | platform path | Encrypted tenant-local compensation capsule |
 | `M365_RECOVERY_CAPSULE_TTL_SECONDS` | `604800` | Recovery-capsule retention metadata |
 
-The same paths accept Governance schema `1.0` or `2.0`. Version `2.0` adds
+The same paths accept Governance schema `1.0`, `2.0` or `3.0`. Version `2.0` adds
 signed Posture Control Library configuration without changing the existing
 contract/tool authorization surface; version `1.0` is not migrated
 automatically. A v2 policy must also pin the installed canonical M1 freshness
 compatibility digest; the CLI does not infer or migrate it. See
 [Signed tenant Governance](GOVERNANCE.md) and the
 [fabricated v2 template](../examples/governance-policy-v2.template.json).
+Version `3.0` adds exact schema-2.0 operation, Effect Model, approval-authority
+and resource-fence bindings. It does not activate an unsigned candidate and
+never falls back to v1/v2 after a v3 validation failure.
 
 Known write actions:
 

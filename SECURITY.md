@@ -152,7 +152,10 @@ authority.
   release keys are never reused.
 - Schema-2.0 Identity contracts remain inactive candidates. Unsigned
   manifests, test signatures, retired keys and compromised keys cannot
-  activate a runtime catalog. No candidate is exposed as an MCP tool.
+  activate a runtime catalog. No candidate is exposed as an MCP tool. Dormant
+  wiring additionally requires an explicit process-start gate, signed
+  Governance v3 and an external approval registry that exactly matches the
+  policy before a future active manifest can expose any tool.
 - Pagination links are validated against the Graph v1.0 egress allowlist and
   wrapped in a process-local HMAC cursor bound to the originating tool.
 - Tool outputs are capped below common MCP client warning thresholds.
@@ -284,8 +287,10 @@ authority.
 
 ### Writes
 
-- Write profile refuses startup unless `M365_WRITE_ENABLED=true` and at least
-  one action is explicitly allowlisted.
+- Write profile refuses startup unless `M365_WRITE_ENABLED=true` and either at
+  least one frozen legacy/T1 action is explicitly allowlisted or the separate
+  Identity operation gate is requested. That gate still refuses startup
+  without a verified active manifest.
 - The compiled authorization matrix is `automatic_read` for T0,
   `standing_policy` for bounded T1, `explicit_plan` for T2, dual control or
   break glass for T3, and `prohibited` for T4. Tenant policy may tighten but
@@ -302,6 +307,11 @@ authority.
   directory. Runtime consumes a verified approval once in a deployment-bound
   SQLite replay ledger after TOCTOU validation and before the Graph write.
   Expired, tampered, replayed or cross-plan artifacts fail closed.
+- Future T2/T3 Identity effects use a closed approval-authority registry
+  exactly bound by Governance rather than the T1 override key. Runtime writes
+  an immutable owner-only request, never signs it, accepts only exact
+  authority-named approval files and persists both replay consumption and
+  execution lifecycle under one tenant/profile deployment namespace.
 - The non-write preview path completes preflight and impact calculation, calls
   no write endpoint and explicitly denies that it is a provider simulation.
 - `entra.user.operational_profile.update` accepts only `department`,

@@ -61,10 +61,15 @@ requirements without authenticating or writing to Graph.
 - M6 — Separate activation PR and active `preview` contractual exposure.
 
 M1 and M2 are complete. The provider implementations, Operator Foundation,
-Governance v3 bindings, recorded playback, deterministic evaluations,
-candidate compiler, trust lifecycle and fail-closed lab boundary are present.
-M3 is blocked by the absence of the consolidated external lab input bundle,
-not by a code or architectural defect.
+Governance v3 bindings, external approval CLI/broker, dormant exact-tool
+registration, recorded playback, deterministic evaluations, candidate
+compiler, trust lifecycle and fail-closed lab boundary are present. The
+reviewed runner covers every Core effect and negative case, supports
+approval-pause/resume, durable observation and a closed post-acceptance
+uncertainty fault. Its assembler accepts only complete final Core results and
+content-binds sanitized evidence into provenance, SBOM metadata and the
+signing request. M3 is blocked by the absence of the consolidated external lab
+input bundle, not by a code or architectural defect.
 
 ## Acceptance
 
@@ -75,6 +80,8 @@ not by a code or architectural defect.
   are represented;
 - Extended gaps remain `not_executed` and prevent `stable`, not `preview`;
 - public evidence rejects raw identifiers, UPNs, IPs, request IDs and secrets;
+- changed scenario semantics, missing Core results and mismatched contract
+  digests cannot make a signing request eligible;
 - no production candidate is signed or activated before reviewed live tests;
 - active historical manifests and Graph surfaces remain unchanged;
 - local and remote validation pass.
