@@ -9,19 +9,27 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import re
+from collections.abc import Sequence
 from enum import StrEnum
 from importlib.resources import files
 from typing import Any, Literal
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .contract_trust import (
-    CONTRACT_SIGNING_KEY_ID,
-    CONTRACT_SIGNING_PUBLIC_KEY_B64,
+    CONTRACT_SIGNING_AUTHORITIES,
+    ContractSigningAuthority,
+    SigningAuthorityClass,
+    SigningKeyState,
 )
 
 
@@ -418,6 +426,15 @@ class ContractManifestV2(StrictModel):
             raise ValueError("contract manifest contains duplicate tool names")
         return self
 
+    def contract(self, contract_id: str) -> ContractSpecV2:
+        for contract in self.contracts:
+            if contract.id == contract_id:
+                return contract
+        raise KeyError(f"unknown compiled contract: {contract_id}")
+
+
+ContractManifestDocument = ContractManifest | ContractManifestV2
+
 
 class ManifestSignature(StrictModel):
     schema_version: Literal["1.0"]
@@ -493,6 +510,140 @@ def effect_model_digest() -> str:
     return sha256_digest(effect_model_document())
 
 
+def parse_contract_manifest(document: object) -> ContractManifestDocument:
+    """Parse one closed manifest generation without version fallback."""
+
+    if not isinstance(document, dict):
+        raise ValueError("contract manifest must be a JSON object")
+    version = document.get("schema_version")
+    if version == "1.0":
+        return ContractManifest.model_validate(document)
+    if version == "2.0":
+        return ContractManifestV2.model_validate(document)
+    raise ValueError("contract manifest schema version is unsupported")
+
+
+def validate_contract_signing_authorities(
+    authorities: Sequence[ContractSigningAuthority],
+    *,
+    allow_test_authorities: bool = False,
+) -> ContractSigningAuthority:
+    """Validate one closed contract trust registry and return its sole current key."""
+
+    if not authorities:
+        raise RuntimeError("contract signing trust registry is empty")
+    key_ids = [authority.key_id for authority in authorities]
+    if len(key_ids) != len(set(key_ids)):
+        raise RuntimeError("contract signing key IDs must be immutable and unique")
+    classes = {authority.authority_class for authority in authorities}
+    if len(classes) != 1:
+        raise RuntimeError("production and test contract authorities cannot be mixed")
+    if SigningAuthorityClass.TEST in classes and not allow_test_authorities:
+        raise RuntimeError("test contract authority is not valid for production")
+    current = [
+        authority
+        for authority in authorities
+        if authority.state is SigningKeyState.CURRENT
+    ]
+    if len(current) != 1:
+        raise RuntimeError(
+            "contract signing trust registry requires exactly one current key"
+        )
+    return current[0]
+
+
+def _contract_signing_authority(
+    key_id: str,
+    authorities: Sequence[ContractSigningAuthority],
+) -> ContractSigningAuthority:
+    matches = [authority for authority in authorities if authority.key_id == key_id]
+    if len(matches) != 1:
+        raise RuntimeError("global contract manifest signer is not trusted")
+    return matches[0]
+
+
+def sign_contract_manifest(
+    manifest: ContractManifestDocument,
+    signer: Ed25519PrivateKey,
+    *,
+    key_id: str,
+    authorities: Sequence[ContractSigningAuthority] | None = None,
+    allow_test_authorities: bool = False,
+) -> ManifestSignature:
+    """Sign canonical manifest bytes with the exact reviewed current authority."""
+
+    selected = CONTRACT_SIGNING_AUTHORITIES if authorities is None else authorities
+    current = validate_contract_signing_authorities(
+        selected,
+        allow_test_authorities=allow_test_authorities,
+    )
+    authority = _contract_signing_authority(key_id, selected)
+    if authority is not current or authority.state is not SigningKeyState.CURRENT:
+        raise RuntimeError("retired or compromised contract keys cannot sign manifests")
+    signer_public_key = signer.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    expected_public_key = base64.b64decode(
+        authority.public_key_b64,
+        validate=True,
+    )
+    if not hmac.compare_digest(signer_public_key, expected_public_key):
+        raise RuntimeError("external signer does not match the contract trust anchor")
+    return ManifestSignature(
+        schema_version="1.0",
+        algorithm="ed25519",
+        key_id=authority.key_id,
+        manifest_digest=sha256_digest(manifest),
+        signature=base64.b64encode(
+            signer.sign(canonical_json(manifest))
+        ).decode("ascii"),
+    )
+
+
+def verify_contract_manifest_signature(
+    manifest: ContractManifestDocument,
+    signature: ManifestSignature,
+    *,
+    authorities: Sequence[ContractSigningAuthority] | None = None,
+    historical: bool = False,
+    allow_test_authorities: bool = False,
+) -> ContractSigningAuthority:
+    """Verify a current signature or an exact retired historical digest."""
+
+    selected = CONTRACT_SIGNING_AUTHORITIES if authorities is None else authorities
+    current = validate_contract_signing_authorities(
+        selected,
+        allow_test_authorities=allow_test_authorities,
+    )
+    authority = _contract_signing_authority(signature.key_id, selected)
+    digest = sha256_digest(manifest)
+    if signature.manifest_digest != digest:
+        raise RuntimeError("global contract manifest digest mismatch")
+    if authority.state is SigningKeyState.COMPROMISED:
+        raise RuntimeError("contract manifest signer is compromised")
+    if historical:
+        if (
+            authority.state is not SigningKeyState.RETIRED
+            or digest not in authority.historical_manifest_digests
+        ):
+            raise RuntimeError(
+                "contract manifest is not pinned to a retired historical signer"
+            )
+    elif authority is not current or authority.state is not SigningKeyState.CURRENT:
+        raise RuntimeError("global contract manifest signer is not current")
+    try:
+        public_key = base64.b64decode(authority.public_key_b64, validate=True)
+        signature_bytes = base64.b64decode(signature.signature, validate=True)
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            signature_bytes,
+            canonical_json(manifest),
+        )
+    except (ValueError, InvalidSignature) as exc:
+        raise RuntimeError("global contract manifest signature is invalid") from exc
+    return authority
+
+
 def _data_bytes(name: str) -> bytes:
     return files("m365_secure_mcp.contract_data").joinpath(name).read_bytes()
 
@@ -505,26 +656,18 @@ def load_global_manifest() -> ContractManifest:
         raw_signature = json.loads(_data_bytes("global-manifest.sig.json"))
         manifest = ContractManifest.model_validate(raw_manifest)
         signature = ManifestSignature.model_validate(raw_signature)
-        public_key_bytes = base64.b64decode(
-            CONTRACT_SIGNING_PUBLIC_KEY_B64,
-            validate=True,
-        )
-        signature_bytes = base64.b64decode(signature.signature, validate=True)
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         raise RuntimeError("global contract manifest is malformed") from exc
 
-    digest = sha256_digest(manifest)
-    if signature.key_id != CONTRACT_SIGNING_KEY_ID:
-        raise RuntimeError("global contract manifest signer is not trusted")
-    if signature.manifest_digest != digest:
-        raise RuntimeError("global contract manifest digest mismatch")
-    try:
-        Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
-            signature_bytes,
-            canonical_json(manifest),
-        )
-    except (ValueError, InvalidSignature) as exc:
-        raise RuntimeError("global contract manifest signature is invalid") from exc
+    authority = _contract_signing_authority(
+        signature.key_id,
+        CONTRACT_SIGNING_AUTHORITIES,
+    )
+    verify_contract_manifest_signature(
+        manifest,
+        signature,
+        historical=authority.state is SigningKeyState.RETIRED,
+    )
     return manifest
 
 
