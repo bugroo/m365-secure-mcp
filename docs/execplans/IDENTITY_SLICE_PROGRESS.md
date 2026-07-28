@@ -21,11 +21,11 @@ This is the durable resume point for
 - [x] Contract signing CLI and runbook.
 - [x] Identity candidate manifest and generated candidate artifacts.
 - [x] Governance and runtime/provider integration.
-- [ ] Recorded/live-lab/evaluation fixtures.
+- [x] Recorded/live-lab/evaluation fixtures.
 - [ ] Roadmap, signing request and full validation.
 - [ ] Push, PR and remote CI.
 
 ## Resume action
 
-Add sanitized recorded playback, disabled live-lab harness, and deterministic
-agent-facing evaluations for all five candidate operations.
+Update the north star, roadmap, tool catalog, signing request guidance and
+community-adoption gates, then run the complete validation program.

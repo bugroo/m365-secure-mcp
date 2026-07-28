@@ -27,3 +27,8 @@ suite for exact-plan approval, dual control, replay, expiry, digest drift,
 accepted-versus-verified async semantics, uncertainty, prompt injection and
 public-output privacy. Each scenario references its executable pytest case.
 It contains no model score, tenant data or customer policy.
+
+`identity-slice-candidate.json` covers closed operation selection, ambiguity,
+protected targets, external approval, prompt injection, accepted-versus-
+verified semantics and uncertain-write handling for the five unsigned Identity
+candidate contracts. It does not activate a tool or claim live-tenant results.
