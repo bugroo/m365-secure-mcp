@@ -1,8 +1,8 @@
 {
   "activation_state": "candidate",
-  "candidate_provenance_digest": "sha256:9c297e5a005b661fb9de8a72def1068c15d69a05557ae47aac6c7e2dd387c47a",
+  "candidate_provenance_digest": "sha256:5cc16377bdbc72a3a705802b2e27e2154f51efedd0c6136b2e85d8d3f7ec024b",
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
-  "manifest_digest": "sha256:23fe919fbd65566a1b61d5fadd058cd151e6ab8a95011bb1900bdfa8476fd847",
+  "manifest_digest": "sha256:1e7d065531d8d638960e15f9908e81f4fb73a0c40ba61d1cc377b3ab786f6d56",
   "release_attestation_status": "external-required",
   "release_sbom_digest": "sha256:08c441baa9706b9887f14afad34abd14e6b7decde6805cd7969d028ce72195c5",
   "schema_version": "1.0"

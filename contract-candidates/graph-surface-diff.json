@@ -18,7 +18,7 @@
     "POST /users/{user_id}/assignLicense",
     "POST /users/{user_id}/revokeSignInSessions"
   ],
-  "candidate_manifest_digest": "sha256:23fe919fbd65566a1b61d5fadd058cd151e6ab8a95011bb1900bdfa8476fd847",
+  "candidate_manifest_digest": "sha256:1e7d065531d8d638960e15f9908e81f4fb73a0c40ba61d1cc377b3ab786f6d56",
   "candidate_only_delegated_scopes": [
     "GroupMember.ReadWrite.All",
     "LicenseAssignment.Read.All",

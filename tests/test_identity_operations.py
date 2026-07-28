@@ -129,7 +129,12 @@ class FakeIdentityBackend:
         else:
             direct.discard(SKU)
         self.user = self.user.model_copy(
-            update={"direct_sku_ids": tuple(sorted(direct, key=str))}
+            update={
+                "direct_sku_ids": tuple(sorted(direct, key=str)),
+                "direct_disabled_service_plan_ids": (
+                    {SKU: disabled_service_plan_ids} if assigned else {}
+                ),
+            }
         )
         self.calls.append("license")
 
@@ -391,9 +396,43 @@ async def test_inherited_license_is_never_removed() -> None:
             PlanParameter(name="sku_id", value=str(SKU)),
         ),
     )
-    with pytest.raises(SecurityError, match="license preconditions"):
-        await provider.preflight(plan)
+    bound = await _bound_plan(provider, plan)
+    result = await provider.execute(bound)
+    assert result.kind is ProviderExecutionKind.VERIFIED
     assert backend.calls == []
+
+
+@pytest.mark.asyncio
+async def test_changed_service_plan_set_is_not_treated_as_satisfied() -> None:
+    backend = FakeIdentityBackend()
+    backend.user = backend.user.model_copy(
+        update={
+            "direct_sku_ids": (SKU,),
+            "direct_disabled_service_plan_ids": {SKU: (PLAN_B,)},
+        }
+    )
+    provider = IdentityOperationProvider(
+        backend=backend,
+        resources=_resources(),
+        operation_id="entra.user.direct_license.set",
+    )
+    plan = await _bound_plan(
+        provider,
+        _plan(
+            "entra.user.direct_license.set",
+            (
+                PlanParameter(
+                    name="disabled_service_plan_ids",
+                    value=(str(PLAN_A),),
+                ),
+                PlanParameter(name="license_assigned", value=True),
+                PlanParameter(name="sku_id", value=str(SKU)),
+            ),
+        ),
+    )
+    result = await provider.execute(plan)
+    assert result.kind is ProviderExecutionKind.VERIFIED
+    assert backend.calls == ["license"]
 
 
 def test_candidate_catalog_is_absent_until_productive_signature() -> None:

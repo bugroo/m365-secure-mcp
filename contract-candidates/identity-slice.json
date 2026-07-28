@@ -78,6 +78,11 @@
         },
         {
           "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
           "endpoint": "/roleManagement/directory/roleEligibilityScheduleInstances",
           "method": "GET"
         },
@@ -179,6 +184,11 @@
         {
           "api_version": "v1.0",
           "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
           "method": "GET"
         },
         {
@@ -293,6 +303,11 @@
         },
         {
           "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
           "endpoint": "/roleManagement/directory/roleEligibilityScheduleInstances",
           "method": "GET"
         },
@@ -401,6 +416,11 @@
         {
           "api_version": "v1.0",
           "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
           "method": "GET"
         },
         {
@@ -527,6 +547,11 @@
         {
           "api_version": "v1.0",
           "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
           "method": "GET"
         },
         {

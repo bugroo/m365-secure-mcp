@@ -44,7 +44,7 @@ and signing request will be complete before an external signing ceremony.
 
 ## Validation evidence
 
-- 429 tests collected: 428 passed and one live-lab test skipped by default.
+- 430 tests collected: 429 passed and one live-lab test skipped by default.
 - compiler/check: 27 deterministic artifacts verified.
 - Ruff and strict mypy: clean.
 - dependency audit: no known third-party vulnerabilities; the local package is
@@ -125,6 +125,9 @@ authority unchanged.
   execution.
 - Microsoft session revocation can take several minutes; acceptance is
   intentionally distinct from verification.
+- Direct-license desired state includes the exact disabled service-plan set.
+  Group-inherited assignment never satisfies a direct-assignment request and
+  never becomes a removal target when no direct assignment exists.
 
 ## Remaining external boundary
 

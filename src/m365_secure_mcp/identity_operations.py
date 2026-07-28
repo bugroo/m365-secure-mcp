@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 from collections.abc import Mapping
-from typing import Protocol
+from typing import Protocol, cast
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -46,6 +46,9 @@ class UserProtectionEvidence(FrozenModel):
     evidence_complete: bool
     direct_sku_ids: tuple[UUID, ...] = ()
     inherited_sku_ids: tuple[UUID, ...] = ()
+    direct_disabled_service_plan_ids: dict[UUID, tuple[UUID, ...]] = Field(
+        default_factory=dict
+    )
 
 
 class GroupProtectionEvidence(FrozenModel):
@@ -153,6 +156,29 @@ class MicrosoftGraphIdentityBackend:
             raise SecurityError("Graph returned invalid user protection evidence")
         direct: set[UUID] = set()
         inherited: set[UUID] = set()
+        disabled_by_sku: dict[UUID, tuple[UUID, ...]] = {}
+        assigned_licenses = data.get("assignedLicenses")
+        if not isinstance(assigned_licenses, list):
+            raise SecurityError("Graph returned incomplete assigned-license evidence")
+        for assigned in assigned_licenses:
+            if not isinstance(assigned, dict):
+                raise SecurityError("Graph returned invalid assigned-license evidence")
+            try:
+                assigned_sku = UUID(str(assigned["skuId"]))
+                disabled = tuple(
+                    sorted(
+                        (
+                            UUID(str(item))
+                            for item in assigned.get("disabledPlans", [])
+                        ),
+                        key=str,
+                    )
+                )
+            except (KeyError, TypeError, ValueError) as exc:
+                raise SecurityError(
+                    "Graph returned invalid assigned-license plan evidence"
+                ) from exc
+            disabled_by_sku[assigned_sku] = disabled
         states = data.get("licenseAssignmentStates")
         if states is not None and not isinstance(states, list):
             raise SecurityError("Graph returned invalid license assignment evidence")
@@ -205,6 +231,10 @@ class MicrosoftGraphIdentityBackend:
             evidence_complete=True,
             direct_sku_ids=tuple(sorted(direct, key=str)),
             inherited_sku_ids=tuple(sorted(inherited, key=str)),
+            direct_disabled_service_plan_ids={
+                sku: disabled_by_sku.get(sku, ())
+                for sku in sorted(direct, key=str)
+            },
         )
 
     async def read_group(self, group_id: UUID) -> GroupProtectionEvidence:
@@ -446,7 +476,6 @@ class IdentityOperationProvider(OperationProvider):
                 or planned - set(sku.service_plan_ids)
                 or (desired and sku_id not in user.direct_sku_ids and sku.available_units < 1)
                 or (desired and not user.usage_location)
-                or (not desired and sku_id in user.inherited_sku_ids)
             ):
                 raise SecurityError("license preconditions failed closed")
             snapshot["sku"] = sku.model_dump(mode="json")
@@ -514,7 +543,21 @@ class IdentityOperationProvider(OperationProvider):
                     UUID(item)
                     for item in before["user"]["direct_sku_ids"]  # type: ignore[index]
                 }
-                if (sku_id in direct) == desired:
+                existing_disabled = {
+                    UUID(key): tuple(UUID(item) for item in value)
+                    for key, value in before["user"][  # type: ignore[index]
+                        "direct_disabled_service_plan_ids"
+                    ].items()
+                }
+                desired_disabled = tuple(UUID(item) for item in raw)
+                if (
+                    (not desired and sku_id not in direct)
+                    or (
+                        desired
+                        and sku_id in direct
+                        and existing_disabled.get(sku_id, ()) == desired_disabled
+                    )
+                ):
                     return ProviderExecutionResult(
                         kind=ProviderExecutionKind.VERIFIED,
                         evidence_reference=f"evidence:{evidence}",
@@ -523,7 +566,7 @@ class IdentityOperationProvider(OperationProvider):
                     user_id,
                     sku_id,
                     assigned=desired,
-                    disabled_service_plan_ids=tuple(UUID(item) for item in raw),
+                    disabled_service_plan_ids=desired_disabled,
                 )
             else:
                 raise SecurityError("Identity executor ID is not closed")
@@ -544,11 +587,31 @@ class IdentityOperationProvider(OperationProvider):
             )
         else:
             sku_id = _uuid_parameter(parameters, "sku_id")
+            user_after = cast(dict[str, object], after["user"])
             direct = {
                 UUID(item)
-                for item in after["user"]["direct_sku_ids"]  # type: ignore[index]
+                for item in cast(list[str], user_after["direct_sku_ids"])
             }
-            verified = (sku_id in direct) == parameters["license_assigned"]
+            disabled_after = {
+                UUID(key): tuple(UUID(item) for item in value)
+                for key, value in cast(
+                    dict[str, list[str]],
+                    user_after["direct_disabled_service_plan_ids"],
+                ).items()
+            }
+            desired = parameters["license_assigned"]
+            planned_disabled = tuple(
+                UUID(item)
+                for item in cast(list[str], parameters["disabled_service_plan_ids"])
+            )
+            verified = (
+                sku_id not in direct
+                if desired is False
+                else (
+                    sku_id in direct
+                    and disabled_after.get(sku_id, ()) == planned_disabled
+                )
+            )
         return ProviderExecutionResult(
             kind=(
                 ProviderExecutionKind.VERIFIED

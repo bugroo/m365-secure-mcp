@@ -58,7 +58,7 @@ def test_candidate_manifest_is_complete_deterministic_and_not_registered() -> No
     candidate = load_identity_candidate(ROOT)
     assert [item.id for item in candidate.contracts] == EXPECTED_IDS
     assert sha256_digest(candidate) == (
-        "sha256:23fe919fbd65566a1b61d5fadd058cd151e6ab8a95011bb1900bdfa8476fd847"
+        "sha256:1e7d065531d8d638960e15f9908e81f4fb73a0c40ba61d1cc377b3ab786f6d56"
     )
     assert all(
         item.lifecycle_state is ContractLifecycleState.CANDIDATE
