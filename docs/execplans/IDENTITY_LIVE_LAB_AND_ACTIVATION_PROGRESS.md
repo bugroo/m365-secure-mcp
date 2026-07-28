@@ -89,6 +89,18 @@ made signing-eligible by synthetic or recorded evidence, and a production
 contract authority cannot be improvised. No internal implementation change can
 safely replace those facts.
 
+## Pushed implementation checkpoint
+
+The program branch `feat/identity-activation-program` contains:
+
+- `5678f68` — dormant signed-manifest runtime, exact tools, external approval
+  boundary, durable execution, closed live runner and evidence signing gate;
+- `c106c73` — reproducible lab, signing and external-boundary documentation.
+
+The branch is intentionally not a pull request yet: the program requires one
+final activation PR, and opening a preparatory PR would create a second review
+boundary before the mandatory live evidence and external signature exist.
+
 ## Validation checkpoint
 
 - 479 tests collected: 478 passed and the explicit live-lab network boundary
