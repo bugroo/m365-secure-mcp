@@ -1,6 +1,6 @@
 # ExecPlan: Contract Authority Lifecycle and Identity Slice
 
-Status: in progress
+Status: implementation complete; awaiting external signing ceremony
 
 Branch: `feat/secure-operations-identity-slice`
 
@@ -41,6 +41,17 @@ and signing request will be complete before an external signing ceremony.
 - M5 — Recorded playback, live-lab harness and deterministic evaluations.
 - M6 — Product documentation, roadmap and candidate signing request.
 - M7 — Full validation, push, PR and remote CI.
+
+## Validation evidence
+
+- 429 tests collected: 428 passed and one live-lab test skipped by default.
+- compiler/check: 27 deterministic artifacts verified.
+- Ruff and strict mypy: clean.
+- dependency audit: no known third-party vulnerabilities; the local package is
+  intentionally not available on PyPI.
+- wheel and sdist: no private-key material; candidate source/recordings are in
+  the source distribution and remain absent from runtime package data.
+- active contract, playbook and control manifests/signatures are unchanged.
 
 ## Acceptance
 
@@ -114,3 +125,11 @@ authority unchanged.
   execution.
 - Microsoft session revocation can take several minutes; acceptance is
   intentionally distinct from verification.
+
+## Remaining external boundary
+
+Generate and custody one encrypted Ed25519 signer outside the repository,
+inspect its public fingerprint, and perform the atomic direct-cutover ceremony
+against the exact candidate digest in `contract-candidates/signing-request.json`.
+No code, tests, Graph operation design or policy decision remains behind that
+boundary.
