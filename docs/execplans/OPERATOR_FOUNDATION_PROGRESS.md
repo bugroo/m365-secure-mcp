@@ -29,12 +29,12 @@ This log is the durable resume point for
 - [x] Signed synthetic effectful playbook foundation.
 - [x] Evaluation fixtures, canonical metadata, and community documentation.
 - [x] Full local validation and artifact-boundary checks.
-- [ ] Push, PR, and remote CI.
+- [x] Branch pushed; PR #4 opened; remote Python 3.13 CI green.
 
 ## Resume action
 
-Publish the already validated branch, open one PR, and wait for green remote
-CI. Do not start the Identity Slice.
+Review PR #4. Do not merge it as part of this program and do not start the
+Identity Slice until Operator Foundation is approved and merged separately.
 
 ## Security hardening discovered during M5
 
