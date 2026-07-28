@@ -1,15 +1,14 @@
 """Fail-closed boundary and privacy models for Identity Slice live-lab runs.
 
-This module never registers an MCP tool and never signs or executes a plan.
-It validates an externally stored, dedicated-lab inventory before a separate
-reviewed runner may authenticate or call Microsoft Graph.
+This module never registers an MCP tool or signs a plan. It validates an
+externally stored, dedicated-lab inventory before importing the separate
+reviewed runner for an explicitly selected closed Core case.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
-import hashlib
+import asyncio
 import json
 import os
 import re
@@ -21,7 +20,6 @@ from pathlib import Path
 from typing import Annotated, Literal, TypedDict
 from uuid import UUID
 
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .contract_compiler import load_identity_candidate
@@ -33,7 +31,8 @@ from .governance import (
     load_verified_governance_policy,
     resolve_operation_governance,
 )
-from .security import PrivateStateError, SecurityError, read_private_file
+from .operator_authority import load_approval_trust_registry
+from .security import PrivateStateError, SecurityError
 
 LAB_ENABLE_ENV = "M365_IDENTITY_LIVE_LAB"
 LAB_PROFILE_ENV = "M365_LAB_PROFILE"
@@ -53,9 +52,12 @@ REQUIRED_EXTERNAL_ENV = (
     "M365_CLIENT_ID",
     "M365_GOVERNANCE_POLICY_PATH",
     "M365_GOVERNANCE_PUBLIC_KEY_PATH",
+    "M365_IDENTITY_OPERATIONS_ENABLED",
     "M365_KEYRING_SERVICE",
+    "M365_PROFILE",
     "M365_TENANT_ID",
     "M365_TOKEN_CACHE_MODE",
+    "M365_WRITE_ENABLED",
 )
 FORBIDDEN_AUTH_ENV = frozenset(
     {
@@ -166,6 +168,176 @@ EXTENDED_REQUIRED_SCENARIOS = (
     "extended.user.pim_eligible_rejected",
     "extended.user.synchronized_rejected",
 )
+
+# Closed evidence semantics. A public result cannot redefine which contract or
+# outcome a reviewed scenario proves.
+LIVE_LAB_SCENARIO_CONTRACTS = {
+    "account.disable": ("core", "entra.user.account_state.set", "user", "EXECUTED_VERIFIED"),
+    "account.enable": ("core", "entra.user.account_state.set", "user", "EXECUTED_VERIFIED"),
+    "account.noop": ("core", "entra.user.account_state.set", "user", "EXECUTED_VERIFIED"),
+    "account.toctou_rejected": (
+        "core",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "allowlist.cross_tenant_rejected": (
+        "core",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "allowlist.outside_resource_rejected": (
+        "core",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "license.assign_direct": (
+        "core",
+        "entra.user.direct_license.set",
+        "license",
+        "EXECUTED_VERIFIED",
+    ),
+    "license.capacity_rejected": (
+        "core",
+        "entra.user.direct_license.set",
+        "license",
+        "BLOCKED_PRECONDITION",
+    ),
+    "license.noop": (
+        "core",
+        "entra.user.direct_license.set",
+        "license",
+        "EXECUTED_VERIFIED",
+    ),
+    "license.remove_direct": (
+        "core",
+        "entra.user.direct_license.set",
+        "license",
+        "EXECUTED_VERIFIED",
+    ),
+    "license.service_plan_rejected": (
+        "core",
+        "entra.user.direct_license.set",
+        "license",
+        "BLOCKED_PRECONDITION",
+    ),
+    "license.usage_location_rejected": (
+        "core",
+        "entra.user.direct_license.set",
+        "license",
+        "BLOCKED_PRECONDITION",
+    ),
+    "membership.add": (
+        "core",
+        "entra.group.user_membership.add",
+        "relationship",
+        "EXECUTED_VERIFIED",
+    ),
+    "membership.add_noop": (
+        "core",
+        "entra.group.user_membership.add",
+        "relationship",
+        "EXECUTED_VERIFIED",
+    ),
+    "membership.remove": (
+        "core",
+        "entra.group.user_membership.remove",
+        "relationship",
+        "EXECUTED_VERIFIED",
+    ),
+    "membership.remove_noop": (
+        "core",
+        "entra.group.user_membership.remove",
+        "relationship",
+        "EXECUTED_VERIFIED",
+    ),
+    "operator.effect_role_missing": (
+        "core",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "operator.evidence_role_missing": (
+        "core",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "operator.profile_isolation": (
+        "core",
+        "entra.group.user_membership.add",
+        "relationship",
+        "BLOCKED_PRECONDITION",
+    ),
+    "protected_object.rejected": (
+        "core",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "session.accepted_not_verified": (
+        "core",
+        "entra.user.sessions.revoke",
+        "session",
+        "EXECUTED_ACCEPTED",
+    ),
+    "session.uncertain_no_retry": (
+        "core",
+        "entra.user.sessions.revoke",
+        "session",
+        "EXECUTED_UNCERTAIN",
+    ),
+    "extended.group.dynamic_rejected": (
+        "extended",
+        "entra.group.user_membership.add",
+        "group",
+        "BLOCKED_PRECONDITION",
+    ),
+    "extended.group.role_assignable_rejected": (
+        "extended",
+        "entra.group.user_membership.add",
+        "group",
+        "BLOCKED_PRECONDITION",
+    ),
+    "extended.license.inherited_not_removed": (
+        "extended",
+        "entra.user.direct_license.set",
+        "license",
+        "EXECUTED_VERIFIED",
+    ),
+    "extended.membership.concurrent_change": (
+        "extended",
+        "entra.group.user_membership.add",
+        "relationship",
+        "BLOCKED_PRECONDITION",
+    ),
+    "extended.membership.replication_observed": (
+        "extended",
+        "entra.group.user_membership.add",
+        "relationship",
+        "EXECUTED_VERIFIED",
+    ),
+    "extended.user.pim_active_rejected": (
+        "extended",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "extended.user.pim_eligible_rejected": (
+        "extended",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+    "extended.user.synchronized_rejected": (
+        "extended",
+        "entra.user.account_state.set",
+        "user",
+        "BLOCKED_PRECONDITION",
+    ),
+}
 
 _UUID_PATTERN = re.compile(
     r"\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
@@ -526,15 +698,40 @@ class PublicLiveLabCase(FrozenModel):
 
     @model_validator(mode="after")
     def known_scenario(self) -> PublicLiveLabCase:
-        expected = (
-            CORE_REQUIRED_SCENARIOS
-            if self.lab_level is LiveLabLevel.CORE
-            else EXTENDED_REQUIRED_SCENARIOS
-        )
-        if self.scenario not in expected:
+        expected = LIVE_LAB_SCENARIO_CONTRACTS.get(self.scenario)
+        if expected is None:
             raise ValueError("live-lab evidence contains an unknown scenario")
+        level, operation_id, resource_type, expected_status = expected
+        if (
+            self.lab_level.value != level
+            or self.operation_id != operation_id
+            or self.resource_type != resource_type
+            or self.expected_status != expected_status
+        ):
+            raise ValueError(
+                "live-lab evidence changes closed scenario semantics"
+            )
         if self.execution_state == "not_executed" and self.observed_status != "NOT_EXECUTED":
             raise ValueError("not-executed evidence requires NOT_EXECUTED status")
+        if (
+            self.execution_state == "passed"
+            and self.observed_status != self.expected_status
+        ):
+            raise ValueError("passed evidence does not match the expected status")
+        if (
+            self.execution_state == "failed"
+            and self.observed_status == self.expected_status
+        ):
+            raise ValueError("failed evidence unexpectedly matches the expected status")
+        expected_classification = {
+            "EXECUTED_ACCEPTED": "accepted",
+            "EXECUTED_VERIFIED": "verified",
+            "EXECUTED_UNCERTAIN": "uncertain",
+            "BLOCKED_PRECONDITION": "blocked",
+            "NOT_EXECUTED": "blocked",
+        }.get(self.observed_status)
+        if expected_classification != self.classification:
+            raise ValueError("live-lab evidence classification is inconsistent")
         return self
 
 
@@ -673,11 +870,19 @@ def _validate_external_authority(
             GovernanceProfileName.SELECTED_WRITE
         ].enabled_contracts:
             raise SecurityError("negative live-lab operator cannot enable writes")
-        if environ.get("M365_APPROVAL_PUBLIC_KEY_PATH"):
+        if (
+            environ.get("M365_OPERATOR_APPROVAL_DIR")
+            or environ.get("M365_OPERATOR_APPROVAL_TRUST_PATH")
+        ):
             raise SecurityError("negative live-lab operator cannot load approval authority")
         return
     if not isinstance(policy, GovernancePolicyV3):
         raise SecurityError("effect live-lab operator requires signed Governance v3")
+    if not (
+        environ.get("M365_OPERATOR_APPROVAL_DIR")
+        and environ.get("M365_OPERATOR_APPROVAL_TRUST_PATH")
+    ):
+        raise SecurityError("identity live lab approval broker is incomplete")
     if (
         policy.contract_manifest_digest != candidate_digest
         or policy.operations.contract_manifest_digest != candidate_digest
@@ -722,19 +927,27 @@ def _validate_external_authority(
         ) from exc
 
     try:
-        encoded = read_private_file(
-            Path(environ["M365_APPROVAL_PUBLIC_KEY_PATH"]),
-            max_bytes=4_096,
-            label="live-lab approval public key",
-        ).strip()
-        raw = base64.b64decode(encoded, validate=True)
-        Ed25519PublicKey.from_public_bytes(raw)
+        registry = load_approval_trust_registry(
+            Path(environ["M365_OPERATOR_APPROVAL_TRUST_PATH"])
+        )
     except (KeyError, PrivateStateError, TypeError, ValueError) as exc:
         raise SecurityError("identity live lab approval authority is invalid") from exc
-    fingerprint = f"sha256:{hashlib.sha256(raw).hexdigest()}"
+    governed_authority_ids = {
+        authority_id
+        for operation in policy.operations.operations
+        for authority_id in operation.approval_authority_ids
+    }
+    matching = [
+        authority
+        for authority in registry.authorities
+        if authority.authority_id in governed_authority_ids
+    ]
     if (
-        fingerprint != operator.approval_public_key_sha256
-        or fingerprint not in {
+        len(matching) != 1
+        or matching[0].public_key_sha256
+        != operator.approval_public_key_sha256
+        or matching[0].public_key_sha256
+        not in {
             item.public_key_sha256
             for item in policy.operations.approval_authorities
         }
@@ -788,6 +1001,13 @@ def validate_live_lab_gate(
         raise SecurityError("identity live lab requires the live-lab profile")
     if environ.get(LAB_WRITE_ACK_ENV) != LAB_WRITE_ACK:
         raise SecurityError("identity live lab write acknowledgement is missing")
+    if (
+        environ.get("M365_PROFILE") != "write"
+        or environ.get("M365_WRITE_ENABLED", "").lower() != "true"
+        or environ.get("M365_IDENTITY_OPERATIONS_ENABLED", "").lower()
+        != "true"
+    ):
+        raise SecurityError("identity live lab requires the isolated write process")
     if any(environ.get(name) for name in FORBIDDEN_AUTH_ENV):
         raise SecurityError("identity live lab forbids confidential or ROPC credentials")
     try:
@@ -1006,6 +1226,74 @@ def _safe_json(value: BaseModel | dict[str, object]) -> str:
     return json.dumps(payload, sort_keys=True, indent=2)
 
 
+def assemble_public_live_lab_evidence(
+    result_paths: Sequence[Path],
+    *,
+    root: Path,
+) -> PublicLiveLabEvidence:
+    """Extract only final sanitized cases from owner-controlled runner output."""
+
+    from .identity_live_runner import CoreCaseInvocation
+
+    candidate = load_identity_candidate(root)
+    candidate_digest = sha256_digest(candidate)
+    cases: list[PublicLiveLabCase] = []
+    for path in result_paths:
+        try:
+            if path.is_symlink() or path.stat().st_size > MAX_INVENTORY_BYTES:
+                raise SecurityError("Core case result file is unsafe")
+            result = CoreCaseInvocation.model_validate_json(path.read_bytes())
+        except (OSError, ValueError) as exc:
+            raise SecurityError("Core case result is invalid") from exc
+        if result.evidence is None:
+            raise SecurityError("Core case has not reached a reviewable result")
+        if (
+            result.evidence.lab_level is not LiveLabLevel.CORE
+            or result.evidence.execution_state != "passed"
+            or result.evidence.contract_digest
+            != sha256_digest(candidate.contract(result.evidence.operation_id))
+        ):
+            raise SecurityError("Core case did not pass its closed expectation")
+        cases.append(result.evidence)
+    core_scenarios = [item.scenario for item in cases]
+    if set(core_scenarios) != set(CORE_REQUIRED_SCENARIOS) or len(
+        core_scenarios
+    ) != len(set(core_scenarios)):
+        raise SecurityError("Core case result coverage is incomplete or duplicated")
+    for scenario in EXTENDED_REQUIRED_SCENARIOS:
+        level, operation_id, resource_type, expected_status = (
+            LIVE_LAB_SCENARIO_CONTRACTS[scenario]
+        )
+        cases.append(
+            PublicLiveLabCase.model_validate(
+                {
+                    "lab_level": level,
+                    "scenario": scenario,
+                    "resource_type": resource_type,
+                    "operation_id": operation_id,
+                    "expected_status": expected_status,
+                    "observed_status": "NOT_EXECUTED",
+                    "approximate_duration": "under_1s",
+                    "classification": "blocked",
+                    "error_code": None,
+                    "contract_digest": sha256_digest(
+                        candidate.contract(operation_id)
+                    ),
+                    "execution_state": "not_executed",
+                }
+            )
+        )
+    return scan_public_live_lab_evidence(
+        PublicLiveLabEvidence(
+            schema_version="2.0",
+            evidence_kind="sanitized-identity-live-lab",
+            contains_customer_data=False,
+            candidate_manifest_digest=candidate_digest,
+            cases=tuple(sorted(cases, key=lambda item: item.scenario)),
+        ).model_dump(mode="json")
+    )
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="m365-identity-live-lab")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1015,6 +1303,12 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser("gate")
     evidence = subparsers.add_parser("scan-evidence")
     evidence.add_argument("--evidence", type=Path, required=True)
+    run_case = subparsers.add_parser("run-core-case")
+    run_case.add_argument("--scenario", choices=CORE_REQUIRED_SCENARIOS, required=True)
+    run_case.add_argument("--idempotency-key", type=UUID, required=True)
+    assemble = subparsers.add_parser("assemble-evidence")
+    assemble.add_argument("--result", action="append", type=Path, required=True)
+    assemble.add_argument("--output", type=Path, required=True)
     return parser
 
 
@@ -1045,6 +1339,48 @@ def main(argv: Sequence[str] | None = None) -> int:
         elif args.command == "scan-evidence":
             payload = json.loads(args.evidence.read_text())
             print(_safe_json(scan_public_live_lab_evidence(payload)))
+        elif args.command == "run-core-case":
+            raw_path = os.environ.get(LAB_INVENTORY_ENV)
+            if not raw_path:
+                raise SecurityError(
+                    "identity live lab inventory path is not configured"
+                )
+            from .identity_live_runner import run_core_case
+
+            result = asyncio.run(
+                run_core_case(
+                    root=root,
+                    inventory=load_live_lab_inventory(Path(raw_path)),
+                    environ=dict(os.environ),
+                    scenario=args.scenario,
+                    idempotency_key=args.idempotency_key,
+                )
+            )
+            print(_safe_json(result))
+        elif args.command == "assemble-evidence":
+            evidence = assemble_public_live_lab_evidence(
+                args.result,
+                root=root,
+            )
+            try:
+                with args.output.open("x") as handle:
+                    handle.write(_safe_json(evidence) + "\n")
+            except FileExistsError as exc:
+                raise SecurityError(
+                    "public evidence output already exists"
+                ) from exc
+            print(
+                _safe_json(
+                    {
+                        "status": "assembled",
+                        "candidate_manifest_digest": (
+                            evidence.candidate_manifest_digest
+                        ),
+                        "core_case_count": len(CORE_REQUIRED_SCENARIOS),
+                        "extended_state": "not_executed",
+                    }
+                )
+            )
         else:  # pragma: no cover - argparse owns the closed command set
             raise SecurityError("unsupported live-lab command")
     except (OSError, json.JSONDecodeError, SecurityError):

@@ -106,3 +106,63 @@ class RecoveryCapsuleStore:
         finally:
             os.close(descriptor)
         return f"capsule:{operation_id}"
+
+    def store_effectful_record(
+        self,
+        *,
+        operation_id: UUID,
+        contract_id: str,
+        tenant_id: str,
+        record: dict[str, Any],
+    ) -> str:
+        """Encrypt one Operator Foundation receipt/change record.
+
+        The payload is deliberately generic only inside this tenant-local
+        encrypted boundary. It is never accepted from an MCP tool argument and
+        never used as authorization.
+        """
+
+        created = datetime.now(UTC)
+        expires = created + timedelta(
+            seconds=self.settings.recovery_capsule_ttl_seconds
+        )
+        plaintext = json.dumps(
+            {
+                "operation_id": str(operation_id),
+                "contract_id": contract_id,
+                "tenant_id": tenant_id,
+                "record": record,
+                "created_at": created.isoformat(),
+                "expires_at": expires.isoformat(),
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode("utf-8")
+        ciphertext = self._cipher().encrypt(plaintext).decode("ascii")
+        descriptor = open_private_file(
+            self.path,
+            os.O_APPEND | os.O_WRONLY,
+        )
+        try:
+            os.write(
+                descriptor,
+                (
+                    json.dumps(
+                        {
+                            "operation_id": str(operation_id),
+                            "contract_id": contract_id,
+                            "created_at": created.isoformat(),
+                            "expires_at": expires.isoformat(),
+                            "record_type": "effectful-operation",
+                            "ciphertext": ciphertext,
+                        },
+                        separators=(",", ":"),
+                    )
+                    + "\n"
+                ).encode(),
+            )
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        return f"capsule:{operation_id}"

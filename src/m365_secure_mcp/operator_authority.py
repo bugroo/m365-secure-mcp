@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
 import sqlite3
 from datetime import datetime
@@ -37,10 +38,11 @@ from .governance import (
     GovernanceProfileName,
     ResourceFenceType,
 )
-from .security import SecurityError, open_private_file
+from .security import PrivateStateError, SecurityError, open_private_file, read_private_file
 
 MAX_PLAN_LIFETIME_SECONDS = 3_600
 MAX_APPROVAL_LIFETIME_SECONDS = 600
+MAX_OPERATOR_APPROVAL_DOCUMENT_BYTES = 256_000
 
 
 class StrictFrozenModel(BaseModel):
@@ -81,8 +83,10 @@ class PlanParameter(StrictFrozenModel):
         if isinstance(value, str) and (not value or len(value) > 512):
             raise ValueError("plan parameter string is empty or too long")
         if isinstance(value, tuple):
-            if not value or len(value) > 100 or value != tuple(sorted(set(value))):
-                raise ValueError("plan parameter lists must be non-empty, unique and sorted")
+            if len(value) > 100 or value != tuple(sorted(set(value))):
+                raise ValueError(
+                    "plan parameter lists must be bounded, unique and sorted"
+                )
             if any(not item or len(item) > 512 for item in value):
                 raise ValueError("plan parameter list contains an invalid string")
         return value
@@ -282,6 +286,25 @@ class SignedOperatorApproval(StrictFrozenModel):
     signature: OperatorApprovalSignature
 
 
+class OperatorApprovalRequest(StrictFrozenModel):
+    """Private exact-plan request exchanged only with an external approver."""
+
+    schema_version: Literal["2.0"] = "2.0"
+    plan: OperatorPlan
+    plan_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    requested_at: datetime
+
+    @model_validator(mode="after")
+    def exact_plan_and_time(self) -> OperatorApprovalRequest:
+        if self.plan_digest != self.plan.digest:
+            raise ValueError("operator approval request digest does not match its plan")
+        if self.requested_at.tzinfo is None or self.requested_at.utcoffset() is None:
+            raise ValueError("operator approval request time must be timezone-aware")
+        if not self.plan.created_at <= self.requested_at < self.plan.expires_at:
+            raise ValueError("operator approval request time is outside the plan")
+        return self
+
+
 class ApprovalAuthorityState(StrEnum):
     ACTIVE = "active"
     RETIRED = "retired"
@@ -375,6 +398,132 @@ class ApprovalTrustRegistry(StrictFrozenModel):
             if authority.authority_id == authority_id:
                 return authority
         raise SecurityError("approval references an unknown authority")
+
+
+def load_approval_trust_registry(path: Path) -> ApprovalTrustRegistry:
+    """Load one closed owner-only external trust registry without fallback."""
+
+    try:
+        return ApprovalTrustRegistry.model_validate_json(
+            read_private_file(
+                path.expanduser(),
+                max_bytes=MAX_OPERATOR_APPROVAL_DOCUMENT_BYTES,
+                label="operator approval trust registry",
+            )
+        )
+    except ValueError as exc:
+        raise PrivateStateError("operator approval trust registry is malformed") from exc
+
+
+class ExternalOperatorApprovalBroker:
+    """Owner-only file exchange for T2/T3 plans and signed approvals.
+
+    The MCP runtime can emit an immutable request and read approvals. It cannot
+    sign, modify trust, select another plan, or expose the private request in
+    public tool output.
+    """
+
+    def __init__(self, *, directory: Path, trust_registry_path: Path) -> None:
+        self.directory = directory.expanduser()
+        self.trust_registry_path = trust_registry_path.expanduser()
+        self.trust_registry = load_approval_trust_registry(
+            self.trust_registry_path
+        )
+
+    def _request_path(self, plan_id: UUID) -> Path:
+        return self.directory / f"{plan_id}.request.json"
+
+    def _approval_path(self, plan_id: UUID, authority_id: str) -> Path:
+        if not authority_id or any(
+            character not in "abcdefghijklmnopqrstuvwxyz0123456789_.-"
+            for character in authority_id
+        ):
+            raise SecurityError("approval authority ID is unsafe")
+        return self.directory / f"{plan_id}.{authority_id}.approval.json"
+
+    @staticmethod
+    def _write_new(path: Path, payload: bytes) -> None:
+        descriptor = open_private_file(path, os.O_WRONLY | os.O_EXCL)
+        try:
+            os.write(descriptor, payload)
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+
+    def load_request(self, plan_id: UUID) -> OperatorApprovalRequest | None:
+        path = self._request_path(plan_id)
+        if not path.exists():
+            return None
+        try:
+            return OperatorApprovalRequest.model_validate_json(
+                read_private_file(
+                    path,
+                    max_bytes=MAX_OPERATOR_APPROVAL_DOCUMENT_BYTES,
+                    label="operator approval request",
+                )
+            )
+        except ValueError as exc:
+            raise PrivateStateError("operator approval request is malformed") from exc
+
+    def prepare(
+        self,
+        plan: OperatorPlan,
+        *,
+        requested_at: datetime,
+    ) -> OperatorApprovalRequest:
+        request = OperatorApprovalRequest(
+            plan=plan,
+            plan_digest=plan.digest,
+            requested_at=requested_at,
+        )
+        existing = self.load_request(plan.plan_id)
+        if existing is not None:
+            if existing != request:
+                raise SecurityError(
+                    "existing operator approval request differs from the exact plan"
+                )
+            return existing
+        payload = (
+            json.dumps(
+                request.model_dump(mode="json"),
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n"
+        ).encode("utf-8")
+        self._write_new(self._request_path(plan.plan_id), payload)
+        return request
+
+    def approvals(
+        self,
+        plan: OperatorPlan,
+        *,
+        authority_ids: tuple[str, ...],
+    ) -> tuple[SignedOperatorApproval, ...]:
+        """Load only the exact Governance-selected approval file names."""
+
+        approvals: list[SignedOperatorApproval] = []
+        for authority_id in authority_ids:
+            path = self._approval_path(plan.plan_id, authority_id)
+            if not path.exists():
+                continue
+            try:
+                approval = SignedOperatorApproval.model_validate_json(
+                    read_private_file(
+                        path,
+                        max_bytes=MAX_OPERATOR_APPROVAL_DOCUMENT_BYTES,
+                        label="signed operator approval",
+                    )
+                )
+            except ValueError as exc:
+                raise PrivateStateError("signed operator approval is malformed") from exc
+            if approval.grant.authority_id != authority_id:
+                raise SecurityError(
+                    "signed operator approval uses another authority"
+                )
+            approvals.append(approval)
+        return tuple(approvals)
 
 
 def sign_operator_approval(

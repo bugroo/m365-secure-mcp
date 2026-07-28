@@ -52,6 +52,43 @@ class BasicInput(StrictInput):
     response_format: ResponseFormat = ResponseFormat.MARKDOWN
 
 
+class IdentitySessionRevokeInput(StrictInput):
+    user_id: UUID
+    idempotency_key: UUID
+
+
+class IdentityAccountStateInput(StrictInput):
+    user_id: UUID
+    account_enabled: bool
+    idempotency_key: UUID
+
+
+class IdentityMembershipInput(StrictInput):
+    user_id: UUID
+    group_id: UUID
+    idempotency_key: UUID
+
+
+class IdentityDirectLicenseInput(StrictInput):
+    user_id: UUID
+    sku_id: UUID
+    license_assigned: bool
+    disabled_service_plan_ids: tuple[UUID, ...] = Field(max_length=100)
+    idempotency_key: UUID
+
+    @field_validator("disabled_service_plan_ids")
+    @classmethod
+    def plans_are_unique_sorted(
+        cls,
+        value: tuple[UUID, ...],
+    ) -> tuple[UUID, ...]:
+        if value != tuple(sorted(set(value), key=str)):
+            raise ValueError(
+                "disabled service-plan IDs must be unique and sorted"
+            )
+        return value
+
+
 class CatalogReadInput(PageInput):
     """Bounded identifiers used by declarative, fixed-path Graph read tools."""
 

@@ -308,6 +308,7 @@ class Settings(BaseSettings):
     write_actions: str = ""
     privileged_modules_enabled: bool = False
     privileged_writes_enabled: bool = False
+    identity_operations_enabled: bool = False
     enabled_tools: str = ""
     disabled_tools: str = ""
 
@@ -334,6 +335,10 @@ class Settings(BaseSettings):
     governance_public_key_path: Path | None = None
     approval_broker_dir: Path | None = None
     approval_public_key_path: Path | None = None
+    operator_approval_dir: Path | None = None
+    operator_approval_trust_path: Path | None = None
+    operator_replay_db_path: Path | None = None
+    operator_lifecycle_db_path: Path | None = None
     assurance_snapshot_path: Path | None = None
     assurance_max_pages_per_domain: int = Field(default=100, ge=1, le=500)
     assurance_max_records_per_domain: int = Field(
@@ -630,8 +635,11 @@ class Settings(BaseSettings):
         if self.profile is Profile.WRITE:
             if not self.write_enabled:
                 raise ValueError("write profile requires M365_WRITE_ENABLED=true")
-            if not actions:
-                raise ValueError("write profile requires an explicit M365_WRITE_ACTIONS allowlist")
+            if not actions and not self.identity_operations_enabled:
+                raise ValueError(
+                    "write profile requires M365_WRITE_ACTIONS or explicit "
+                    "M365_IDENTITY_OPERATIONS_ENABLED=true"
+                )
         privileged_actions = actions & PRIVILEGED_WRITE_ACTIONS
         if privileged_actions and not self.privileged_writes_enabled:
             raise ValueError(
@@ -788,6 +796,28 @@ class Settings(BaseSettings):
             )
         if self.approval_broker_dir is not None and self.profile is not Profile.WRITE:
             raise ValueError("external approval broker is valid only in a write process")
+        if (self.operator_approval_dir is None) != (
+            self.operator_approval_trust_path is None
+        ):
+            raise ValueError(
+                "effectful approval requires both M365_OPERATOR_APPROVAL_DIR "
+                "and M365_OPERATOR_APPROVAL_TRUST_PATH"
+            )
+        if (
+            self.operator_approval_dir is not None
+            and self.profile is not Profile.WRITE
+        ):
+            raise ValueError(
+                "effectful approval broker is valid only in a write process"
+            )
+        if self.identity_operations_enabled and self.profile is not Profile.WRITE:
+            raise ValueError(
+                "Identity operations can be enabled only in a write process"
+            )
+        if self.identity_operations_enabled and not self.operator_approval_configured:
+            raise ValueError(
+                "Identity operations require the effectful approval broker"
+            )
         return self
 
     @property
@@ -1063,6 +1093,36 @@ class Settings(BaseSettings):
         )
 
     @property
+    def effective_operator_replay_db_path(self) -> Path:
+        if self.operator_replay_db_path is not None:
+            return self.operator_replay_db_path.expanduser()
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "m365-secure-mcp"
+            / (
+                f"operator-replay-{self.deployment_kind}-{self.profile.value}-"
+                f"{self.deployment_namespace}.sqlite3"
+            )
+        )
+
+    @property
+    def effective_operator_lifecycle_db_path(self) -> Path:
+        if self.operator_lifecycle_db_path is not None:
+            return self.operator_lifecycle_db_path.expanduser()
+        return (
+            Path.home()
+            / "Library"
+            / "Application Support"
+            / "m365-secure-mcp"
+            / (
+                f"operator-lifecycle-{self.deployment_kind}-{self.profile.value}-"
+                f"{self.deployment_namespace}.sqlite3"
+            )
+        )
+
+    @property
     def effective_recovery_capsule_path(self) -> Path:
         if self.recovery_capsule_path is not None:
             return self.recovery_capsule_path.expanduser()
@@ -1097,6 +1157,13 @@ class Settings(BaseSettings):
         return bool(
             self.approval_broker_dir is not None
             and self.approval_public_key_path is not None
+        )
+
+    @property
+    def operator_approval_configured(self) -> bool:
+        return bool(
+            self.operator_approval_dir is not None
+            and self.operator_approval_trust_path is not None
         )
 
     def public_summary(self) -> dict[str, object]:
@@ -1146,6 +1213,7 @@ class Settings(BaseSettings):
             ),
             "privileged_modules_enabled": self.privileged_modules_enabled,
             "privileged_writes_enabled": self.privileged_writes_enabled,
+            "identity_operations_enabled": self.identity_operations_enabled,
             "explicit_tool_allowlist": sorted(self.tool_allowlist),
             "explicit_tool_denylist": sorted(self.tool_denylist),
             "write_enabled": self.write_enabled,
@@ -1156,6 +1224,9 @@ class Settings(BaseSettings):
             ),
             "external_approval_broker_configured": (
                 self.external_approval_configured
+            ),
+            "effectful_operator_approval_configured": (
+                self.operator_approval_configured
             ),
             "assurance_snapshot_local_encryption": (
                 "ephemeral"
@@ -1240,6 +1311,7 @@ class Settings(BaseSettings):
             ),
             "privileged_modules_enabled": self.privileged_modules_enabled,
             "privileged_writes_enabled": self.privileged_writes_enabled,
+            "identity_operations_enabled": self.identity_operations_enabled,
             "explicit_tool_allowlist_count": len(self.tool_allowlist),
             "explicit_tool_denylist_count": len(self.tool_denylist),
             "write_enabled": self.write_enabled,
@@ -1250,6 +1322,9 @@ class Settings(BaseSettings):
             ),
             "external_approval_broker_configured": (
                 self.external_approval_configured
+            ),
+            "effectful_operator_approval_configured": (
+                self.operator_approval_configured
             ),
             "assurance_snapshot_local_encryption": (
                 "ephemeral"
@@ -1331,6 +1406,7 @@ class Settings(BaseSettings):
             "write_actions": sorted(self.enabled_write_actions),
             "privileged_modules_enabled": self.privileged_modules_enabled,
             "privileged_writes_enabled": self.privileged_writes_enabled,
+            "identity_operations_enabled": self.identity_operations_enabled,
             "external_approval_broker_configured": (
                 self.external_approval_configured
             ),
@@ -1368,6 +1444,22 @@ class Settings(BaseSettings):
                 str(self.approval_public_key_path.expanduser())
                 if self.approval_public_key_path is not None
                 else None
+            ),
+            "operator_approval_dir": (
+                str(self.operator_approval_dir.expanduser())
+                if self.operator_approval_dir is not None
+                else None
+            ),
+            "operator_approval_trust_path": (
+                str(self.operator_approval_trust_path.expanduser())
+                if self.operator_approval_trust_path is not None
+                else None
+            ),
+            "operator_replay_db_path": str(
+                self.effective_operator_replay_db_path
+            ),
+            "operator_lifecycle_db_path": str(
+                self.effective_operator_lifecycle_db_path
             ),
             "assurance_snapshot_path": str(
                 self.effective_assurance_snapshot_path

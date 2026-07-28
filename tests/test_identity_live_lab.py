@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import base64
 import hashlib
 import json
 import re
@@ -30,9 +29,11 @@ from m365_secure_mcp.identity_live_lab import (
     LAB_TENANT_ENV,
     LAB_WRITE_ACK,
     LAB_WRITE_ACK_ENV,
+    LIVE_LAB_SCENARIO_CONTRACTS,
     IdentityLiveLabInventory,
     LiveLabOperatorProfileName,
     LiveLabTokenContext,
+    assemble_public_live_lab_evidence,
     evaluate_live_lab_evidence,
     load_gate_from_environment,
     load_live_lab_inventory,
@@ -42,6 +43,15 @@ from m365_secure_mcp.identity_live_lab import (
     validate_live_lab_gate,
     validate_live_lab_token_context,
 )
+from m365_secure_mcp.identity_live_runner import (
+    CoreCaseInvocation,
+    _negative_scenario,
+    _parameters,
+    _scenario,
+    _target,
+)
+from m365_secure_mcp.operations import OperationStatus
+from m365_secure_mcp.operator_authority import ApprovalTrustRegistry
 from m365_secure_mcp.security import SecurityError
 
 from .operator_helpers import authority_record, synthetic_governance
@@ -221,12 +231,16 @@ def _environment(path: Path, *, profile: str = "account-operator") -> dict[str, 
         LAB_WRITE_ACK_ENV: LAB_WRITE_ACK,
         "M365_CLIENT_ID": str(payload["client_id"]),
         "M365_TENANT_ID": str(payload["tenant_id"]),
+        "M365_PROFILE": "write",
+        "M365_WRITE_ENABLED": "true",
+        "M365_IDENTITY_OPERATIONS_ENABLED": "true",
         "M365_ALLOWED_USER_OBJECT_IDS": str(profile_document["subject_id"]),
         "M365_TOKEN_CACHE_MODE": "keyring",
         "M365_KEYRING_SERVICE": str(profile_document["keyring_service"]),
         "M365_GOVERNANCE_POLICY_PATH": "/external/governance.json",
         "M365_GOVERNANCE_PUBLIC_KEY_PATH": "/external/governance.pub",
-        "M365_APPROVAL_PUBLIC_KEY_PATH": "/external/approval.pub",
+        "M365_OPERATOR_APPROVAL_DIR": "/external/approvals",
+        "M365_OPERATOR_APPROVAL_TRUST_PATH": "/external/approval-trust.json",
     }
 
 
@@ -307,13 +321,21 @@ def _write_effect_profile_authority(
     governance_key_path = private_root / "governance.pub"
     governance_key_path.write_text(public_key_text(governance_signer))
     governance_key_path.chmod(0o600)
-    approval_key_path = private_root / "approval.pub"
-    approval_key_path.write_text(base64.b64encode(approval_raw).decode("ascii"))
+    approval_key_path = private_root / "approval-trust.json"
+    approval_key_path.write_text(
+        json.dumps(
+            ApprovalTrustRegistry(authorities=(authority,)).model_dump(
+                mode="json"
+            ),
+            sort_keys=True,
+        )
+    )
     approval_key_path.chmod(0o600)
     return payload, {
         "M365_GOVERNANCE_POLICY_PATH": str(policy_path),
         "M365_GOVERNANCE_PUBLIC_KEY_PATH": str(governance_key_path),
-        "M365_APPROVAL_PUBLIC_KEY_PATH": str(approval_key_path),
+        "M365_OPERATOR_APPROVAL_DIR": str(private_root / "approvals"),
+        "M365_OPERATOR_APPROVAL_TRUST_PATH": str(approval_key_path),
     }
 
 
@@ -507,12 +529,23 @@ def test_gate_verifies_profile_specific_governance_and_approval(
     result = load_gate_from_environment(root=ROOT, environ=environment)
     assert result.operator_profile is LiveLabOperatorProfileName.GROUP
 
-    unrelated = Ed25519PrivateKey.generate().public_key().public_bytes(
-        encoding=serialization.Encoding.Raw,
-        format=serialization.PublicFormat.Raw,
+    unrelated_signer = Ed25519PrivateKey.generate()
+    unrelated_authority = authority_record(
+        "group-operator-approver",
+        "group-operator-person",
+        "group-operator-approval-key",
+        "group-operator-operations",
+        unrelated_signer,
     )
-    approval_path = Path(environment["M365_APPROVAL_PUBLIC_KEY_PATH"])
-    approval_path.write_text(base64.b64encode(unrelated).decode("ascii"))
+    approval_path = Path(environment["M365_OPERATOR_APPROVAL_TRUST_PATH"])
+    approval_path.write_text(
+        json.dumps(
+            ApprovalTrustRegistry(authorities=(unrelated_authority,)).model_dump(
+                mode="json"
+            ),
+            sort_keys=True,
+        )
+    )
     approval_path.chmod(0o600)
     with pytest.raises(SecurityError, match="not governed"):
         load_gate_from_environment(root=ROOT, environ=environment)
@@ -596,18 +629,36 @@ def _public_evidence(
         ("extended", EXTENDED_REQUIRED_SCENARIOS, extended_state),
     ):
         for scenario in scenarios:
+            (
+                expected_level,
+                operation_id,
+                resource_type,
+                expected_status,
+            ) = LIVE_LAB_SCENARIO_CONTRACTS[scenario]
+            assert expected_level == level
             cases.append(
                 {
                     "lab_level": level,
                     "scenario": scenario,
-                    "resource_type": "user",
-                    "operation_id": "entra.user.account_state.set",
-                    "expected_status": "EXECUTED_VERIFIED",
+                    "resource_type": resource_type,
+                    "operation_id": operation_id,
+                    "expected_status": expected_status,
                     "observed_status": (
-                        "NOT_EXECUTED" if state == "not_executed" else "EXECUTED_VERIFIED"
+                        "NOT_EXECUTED"
+                        if state == "not_executed"
+                        else expected_status
                     ),
                     "approximate_duration": "1_to_5s",
-                    "classification": "verified" if state == "passed" else "blocked",
+                    "classification": (
+                        {
+                            "EXECUTED_ACCEPTED": "accepted",
+                            "EXECUTED_VERIFIED": "verified",
+                            "EXECUTED_UNCERTAIN": "uncertain",
+                            "BLOCKED_PRECONDITION": "blocked",
+                        }[expected_status]
+                        if state == "passed"
+                        else "blocked"
+                    ),
                     "error_code": None,
                     "contract_digest": _digest("6"),
                     "execution_state": state,
@@ -639,11 +690,52 @@ def test_core_is_required_for_preview_and_extended_for_stable() -> None:
     assert evaluate_live_lab_evidence(complete).stable_promotion_eligible is True
 
 
+def test_assembler_requires_all_final_core_results_and_binds_contracts(
+    tmp_path: Path,
+) -> None:
+    candidate = load_identity_candidate(ROOT)
+    result_paths = []
+    for index, case in enumerate(_public_evidence()["cases"]):  # type: ignore[index]
+        if case["lab_level"] != "core":  # type: ignore[index]
+            continue
+        case["contract_digest"] = sha256_digest(  # type: ignore[index]
+            candidate.contract(str(case["operation_id"]))  # type: ignore[index]
+        )
+        invocation = CoreCaseInvocation(
+            status=OperationStatus(str(case["observed_status"])),  # type: ignore[index]
+            operator_action="operator.retain_sanitized_evidence",
+            evidence=case,  # type: ignore[arg-type]
+        )
+        path = tmp_path / f"case-{index}.json"
+        path.write_text(invocation.model_dump_json())
+        result_paths.append(path)
+    evidence = assemble_public_live_lab_evidence(result_paths, root=ROOT)
+    eligibility = evaluate_live_lab_evidence(evidence)
+    assert eligibility.preview_signing_eligible is True
+    assert eligibility.stable_promotion_eligible is False
+    with pytest.raises(SecurityError, match="coverage"):
+        assemble_public_live_lab_evidence(result_paths[:-1], root=ROOT)
+
+
 def test_public_evidence_requires_complete_core_and_extended_coverage() -> None:
     payload = _public_evidence()
     payload["cases"] = payload["cases"][:-1]  # type: ignore[index]
     with pytest.raises(SecurityError, match="schema"):
         scan_public_live_lab_evidence(payload)
+
+
+def test_public_evidence_cannot_redefine_scenario_or_claim_false_pass() -> None:
+    changed_operation = _public_evidence()
+    changed_operation["cases"][0]["operation_id"] = (  # type: ignore[index]
+        "entra.user.sessions.revoke"
+    )
+    with pytest.raises(SecurityError, match="schema"):
+        scan_public_live_lab_evidence(changed_operation)
+
+    false_pass = _public_evidence()
+    false_pass["cases"][0]["observed_status"] = "BLOCKED_PRECONDITION"  # type: ignore[index]
+    with pytest.raises(SecurityError, match="schema"):
+        scan_public_live_lab_evidence(false_pass)
 
 
 @pytest.mark.parametrize(
@@ -691,8 +783,36 @@ def test_committed_inventory_template_contains_placeholders_only() -> None:
         payload["candidate_manifest_digest"]
         == sha256_digest(load_identity_candidate(ROOT))
     )
-    with pytest.raises(ValidationError):
-        IdentityLiveLabInventory.model_validate(payload)
+
+
+def test_core_runner_has_closed_inputs_and_never_exposes_graph_controls() -> None:
+    inventory = IdentityLiveLabInventory.model_validate(_inventory_payload())
+    executable = set(CORE_REQUIRED_SCENARIOS) - {
+        "allowlist.cross_tenant_rejected",
+        "operator.effect_role_missing",
+        "operator.evidence_role_missing",
+        "operator.profile_isolation",
+    }
+    for scenario in sorted(executable):
+        spec = _scenario(inventory, scenario)
+        target = _target(inventory, spec)
+        parameters = _parameters(inventory, spec, target)
+        assert parameters["user_id"] == str(target)
+        assert not {
+            "api_version",
+            "body",
+            "headers",
+            "method",
+            "operation_id",
+            "query",
+            "scope",
+            "tenant_id",
+            "url",
+        } & set(parameters)
+    for scenario in sorted(set(CORE_REQUIRED_SCENARIOS) - executable):
+        with pytest.raises(SecurityError, match="gate/fault harness"):
+            _scenario(inventory, scenario)
+        assert _negative_scenario(scenario) is not None
 
 
 def re_uuid_search(value: str) -> bool:

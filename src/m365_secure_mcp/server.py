@@ -14,14 +14,17 @@ from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from mcp.server.fastmcp import FastMCP
 from mcp.types import ToolAnnotations
+from pydantic import BaseModel
 
 from .assurance import AssuranceSnapshotStore
 from .auth import TokenProvider
 from .catalog import register_catalog_tools
-from .change_safe import ExternalApprovalBroker
+from .change_safe import ChangeSafeOperator, ExternalApprovalBroker
 from .config import Module, Profile, Settings
 from .contract_manifest import (
     ContractManifest,
+    ContractManifestV2,
+    load_active_identity_manifest,
     load_global_manifest,
     sha256_digest,
 )
@@ -56,11 +59,14 @@ from .entra_workload_readiness import (
 from .entra_workload_readiness import EntraWorkloadIdentityReadinessService
 from .formatting import addresses, render_collection, render_record
 from .governance import (
+    GovernancePolicyV3,
     VerifiedGovernancePolicy,
     load_verified_governance_policy,
     validate_policy_against_manifest,
+    validate_policy_against_operation_manifest,
 )
 from .graph import GraphClient, classify_agent_error
+from .identity_runtime import IdentityContractRuntime, build_identity_runtime
 from .models import (
     AddUserToGroupInput,
     AppendOneNotePageTextInput,
@@ -75,6 +81,10 @@ from .models import (
     CreateTodoTaskInput,
     FileMetadataInput,
     FileSearchInput,
+    IdentityAccountStateInput,
+    IdentityDirectLicenseInput,
+    IdentityMembershipInput,
+    IdentitySessionRevokeInput,
     MailMessageInput,
     MailSearchInput,
     ManagedDeviceActionInput,
@@ -117,6 +127,12 @@ from .ooxml import (
     replace_ooxml_text,
 )
 from .operations import OperationRecord
+from .operator_authority import (
+    ApprovalReplayStore,
+    ExternalOperatorApprovalBroker,
+)
+from .operator_lifecycle import DurableOperationStore
+from .operator_metadata import OperationMaturity, project_operation_metadata
 from .playbook_manifest import (
     PlaybookManifest,
     load_global_playbook_manifest,
@@ -223,6 +239,7 @@ class Services:
     recovery: RecoveryCapsuleStore | None = None
     assurance_snapshots: AssuranceSnapshotStore | None = None
     approval_broker: ExternalApprovalBroker | None = None
+    identity_runtime: IdentityContractRuntime | None = None
 
     @property
     def write_attempt_count(self) -> int:
@@ -256,6 +273,7 @@ class ToolRunner:
         operation: Callable[[], Awaitable[str]],
         *,
         write: bool = False,
+        effectful: bool = False,
         operation_id: UUID | None = None,
         operation_record: Callable[[], OperationRecord | None] | None = None,
     ) -> ToolResponse:
@@ -277,6 +295,8 @@ class ToolRunner:
                 audit_recorded=False,
             )
         try:
+            if write and effectful:
+                raise ValueError("write execution modes are mutually exclusive")
             if write:
                 await self.services.write_limiter.acquire(tool)
                 idempotency_key = parameters.get("idempotency_key")
@@ -331,6 +351,9 @@ class ToolRunner:
                 result = execution.result
                 receipt = execution.receipt
                 operation_id = receipt.operation_id
+            elif effectful:
+                await self.services.write_limiter.acquire(tool)
+                result = await operation()
             else:
                 result = await operation()
             audit_recorded = True
@@ -3907,12 +3930,248 @@ def _register_write_tools(mcp: FastMCP, services: Services, runner: ToolRunner) 
         )
 
 
+def _identity_tool_projection(
+    manifest: ContractManifestV2,
+    operation_id: str,
+) -> tuple[ToolAnnotations, dict[str, Any]]:
+    contract = manifest.contract(operation_id)
+    projected = project_operation_metadata(
+        contract,
+        maturity=OperationMaturity.PREVIEW,
+    )
+    annotations = ToolAnnotations(**projected.annotations.model_dump())
+    metadata = {
+        "m365_secure_mcp": projected.model_dump(
+            mode="json",
+            exclude={"annotations"},
+        )
+    }
+    return annotations, metadata
+
+
+def _register_identity_contract_tools(
+    mcp: FastMCP,
+    services: Services,
+    runner: ToolRunner,
+    manifest: ContractManifestV2,
+    enabled_operation_ids: frozenset[str],
+) -> None:
+    """Register five exact tools only from a verified active signed manifest."""
+
+    runtime = services.identity_runtime
+    if runtime is None:
+        raise RuntimeError("active Identity manifest lacks Operator Foundation")
+
+    async def invoke(
+        tool_name: str,
+        operation_id: str,
+        params: BaseModel,
+        *,
+        user_id: UUID,
+        parameters: dict[str, str | bool | tuple[str, ...]],
+        idempotency_key: UUID,
+    ) -> ToolResponse:
+        async def operation() -> str:
+            principal = await services.graph.ensure_principal()
+            try:
+                operator_id = UUID(principal.object_id)
+            except ValueError as exc:
+                raise SecurityError(
+                    "signed-in operator object ID is not a canonical UUID"
+                ) from exc
+            result = await runtime.invoke(
+                operation_id=operation_id,
+                intended_operator_id=operator_id,
+                target_user_id=user_id,
+                parameters=parameters,
+                idempotency_key=idempotency_key,
+            )
+            return json.dumps(
+                result.model_dump(mode="json", exclude_none=True),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+
+        return await runner.call(
+            tool_name,
+            params.model_dump(mode="json"),
+            operation,
+            effectful=True,
+        )
+
+    sessions_annotations, sessions_meta = _identity_tool_projection(
+        manifest,
+        "entra.user.sessions.revoke",
+    )
+
+    @mcp.tool(
+        name="m365_entra_user_sessions_revoke",
+        annotations=sessions_annotations,
+        meta=sessions_meta,
+    )
+    async def revoke_sessions(
+        params: IdentitySessionRevokeInput,
+    ) -> ToolResponse:
+        """Plan and execute exact signed session revocation for one safe user."""
+
+        return await invoke(
+            "m365_entra_user_sessions_revoke",
+            "entra.user.sessions.revoke",
+            params,
+            user_id=params.user_id,
+            parameters={"user_id": str(params.user_id)},
+            idempotency_key=params.idempotency_key,
+        )
+
+    account_annotations, account_meta = _identity_tool_projection(
+        manifest,
+        "entra.user.account_state.set",
+    )
+
+    @mcp.tool(
+        name="m365_entra_user_account_state_set",
+        annotations=account_annotations,
+        meta=account_meta,
+    )
+    async def set_account_state(
+        params: IdentityAccountStateInput,
+    ) -> ToolResponse:
+        """Set the exact enabled state of one governed non-protected user."""
+
+        return await invoke(
+            "m365_entra_user_account_state_set",
+            "entra.user.account_state.set",
+            params,
+            user_id=params.user_id,
+            parameters={
+                "account_enabled": params.account_enabled,
+                "user_id": str(params.user_id),
+            },
+            idempotency_key=params.idempotency_key,
+        )
+
+    add_annotations, add_meta = _identity_tool_projection(
+        manifest,
+        "entra.group.user_membership.add",
+    )
+
+    @mcp.tool(
+        name="m365_entra_group_user_membership_add",
+        annotations=add_annotations,
+        meta=add_meta,
+    )
+    async def add_membership(
+        params: IdentityMembershipInput,
+    ) -> ToolResponse:
+        """Add one exact governed user-to-group relationship."""
+
+        return await invoke(
+            "m365_entra_group_user_membership_add",
+            "entra.group.user_membership.add",
+            params,
+            user_id=params.user_id,
+            parameters={
+                "group_id": str(params.group_id),
+                "user_id": str(params.user_id),
+            },
+            idempotency_key=params.idempotency_key,
+        )
+
+    remove_annotations, remove_meta = _identity_tool_projection(
+        manifest,
+        "entra.group.user_membership.remove",
+    )
+
+    @mcp.tool(
+        name="m365_entra_group_user_membership_remove",
+        annotations=remove_annotations,
+        meta=remove_meta,
+    )
+    async def remove_membership(
+        params: IdentityMembershipInput,
+    ) -> ToolResponse:
+        """Remove only one exact relationship through the signed /$ref contract."""
+
+        return await invoke(
+            "m365_entra_group_user_membership_remove",
+            "entra.group.user_membership.remove",
+            params,
+            user_id=params.user_id,
+            parameters={
+                "group_id": str(params.group_id),
+                "user_id": str(params.user_id),
+            },
+            idempotency_key=params.idempotency_key,
+        )
+
+    license_annotations, license_meta = _identity_tool_projection(
+        manifest,
+        "entra.user.direct_license.set",
+    )
+
+    @mcp.tool(
+        name="m365_entra_user_direct_license_set",
+        annotations=license_annotations,
+        meta=license_meta,
+    )
+    async def set_direct_license(
+        params: IdentityDirectLicenseInput,
+    ) -> ToolResponse:
+        """Set one exact direct SKU/service-plan desired state."""
+
+        return await invoke(
+            "m365_entra_user_direct_license_set",
+            "entra.user.direct_license.set",
+            params,
+            user_id=params.user_id,
+            parameters={
+                "disabled_service_plan_ids": tuple(
+                    str(item) for item in params.disabled_service_plan_ids
+                ),
+                "license_assigned": params.license_assigned,
+                "sku_id": str(params.sku_id),
+                "user_id": str(params.user_id),
+            },
+            idempotency_key=params.idempotency_key,
+        )
+
+    tool_by_operation = {
+        "entra.user.sessions.revoke": "m365_entra_user_sessions_revoke",
+        "entra.user.account_state.set": "m365_entra_user_account_state_set",
+        "entra.group.user_membership.add": (
+            "m365_entra_group_user_membership_add"
+        ),
+        "entra.group.user_membership.remove": (
+            "m365_entra_group_user_membership_remove"
+        ),
+        "entra.user.direct_license.set": "m365_entra_user_direct_license_set",
+    }
+    if not enabled_operation_ids <= set(tool_by_operation):
+        raise SecurityError(
+            "signed Governance enables an unknown Identity operation"
+        )
+    for operation_id, tool_name in tool_by_operation.items():
+        if operation_id not in enabled_operation_ids:
+            mcp.remove_tool(tool_name)
+
+
 def create_server(settings: Settings) -> FastMCP:
     """Build one MCP server with only the tools allowed by the selected profile."""
 
     manifest = load_global_manifest()
+    identity_manifest = load_active_identity_manifest()
     playbook_manifest = load_global_playbook_manifest(manifest)
     governance: VerifiedGovernancePolicy | None = None
+    identity_requested = (
+        settings.profile is Profile.WRITE
+        and settings.identity_operations_enabled
+    )
+    if identity_requested and identity_manifest is None:
+        raise ValueError(
+            "Identity operations were requested but no verified active manifest exists"
+        )
+    identity_enabled = identity_requested and identity_manifest is not None
     assurance_enabled = (
         settings.profile is Profile.READ
         and Module.ASSURANCE in settings.enabled_modules
@@ -3921,6 +4180,7 @@ def create_server(settings: Settings) -> FastMCP:
         ENTRA_OPERATIONAL_PROFILE_CONTRACT_ID
         in settings.enabled_write_actions
         or assurance_enabled
+        or identity_enabled
     )
     if (
         settings.governance_policy_path is not None
@@ -3930,15 +4190,23 @@ def create_server(settings: Settings) -> FastMCP:
             settings.governance_policy_path,
             settings.governance_public_key_path,
         )
-        if governance.policy.contract_manifest_digest != sha256_digest(manifest):
-            raise ValueError(
-                "governance policy is bound to a different contract manifest"
+        if identity_enabled:
+            if identity_manifest is None:
+                raise RuntimeError("active Identity manifest disappeared")
+            validate_policy_against_operation_manifest(
+                governance.policy,
+                identity_manifest,
             )
-        validate_policy_against_manifest(
-            governance.policy,
-            manifest,
-            playbook_manifest,
-        )
+        else:
+            if governance.policy.contract_manifest_digest != sha256_digest(manifest):
+                raise ValueError(
+                    "governance policy is bound to a different contract manifest"
+                )
+            validate_policy_against_manifest(
+                governance.policy,
+                manifest,
+                playbook_manifest,
+            )
     elif governance_required:
         if (
             settings.governance_policy_path is None
@@ -3948,8 +4216,58 @@ def create_server(settings: Settings) -> FastMCP:
                 "compiled Governance operations require a signed governance "
                 "policy and trusted public key"
             )
+    enabled_identity_operations: frozenset[str] = frozenset()
+    if identity_enabled:
+        if not settings.write_enabled:
+            raise ValueError("active Identity contracts require write mode")
+        if not settings.operator_approval_configured:
+            raise ValueError(
+                "active Identity contracts require the external effectful "
+                "approval broker and trust registry"
+            )
+        if governance is None or not isinstance(
+            governance.policy,
+            GovernancePolicyV3,
+        ):
+            raise ValueError("active Identity contracts require Governance v3")
+        legacy_conflicts = {
+            "entra.user.account_state.set": "users.set_account_enabled",
+            "entra.group.user_membership.add": "groups.add_user_member",
+        }
+        enabled_identity_operations = frozenset(
+            governance.policy.profiles[
+                governance.policy.active_profile
+            ].enabled_contracts
+        )
+        conflicts = {
+            legacy
+            for operation, legacy in legacy_conflicts.items()
+            if operation in enabled_identity_operations
+            and legacy in settings.enabled_write_actions
+        }
+        if conflicts:
+            raise ValueError(
+                "legacy and compiled Identity effects cannot be enabled together"
+            )
     policy = SecurityPolicy(settings)
-    tokens = TokenProvider(settings)
+    identity_contracts = (
+        tuple(
+            contract
+            for contract in identity_manifest.contracts
+            if contract.id in enabled_identity_operations
+        )
+        if identity_enabled and identity_manifest is not None
+        else ()
+    )
+    identity_scopes = {
+        scope
+        for contract in identity_contracts
+        for scope in contract.permissions.delegated_scopes
+    }
+    tokens = TokenProvider(
+        settings,
+        scopes=tuple(sorted(set(settings.scopes) | identity_scopes)),
+    )
     graph = GraphClient(settings, tokens, policy)
     powerbi: PowerBIClient | None = None
     if settings.powerbi_scopes:
@@ -3975,6 +4293,39 @@ def create_server(settings: Settings) -> FastMCP:
             public_key_path=settings.approval_public_key_path,
             deployment_namespace=settings.deployment_namespace,
         )
+    recovery = RecoveryCapsuleStore(settings)
+    identity_runtime: IdentityContractRuntime | None = None
+    if identity_enabled:
+        if (
+            identity_manifest is None
+            or governance is None
+            or settings.operator_approval_dir is None
+            or settings.operator_approval_trust_path is None
+        ):
+            raise RuntimeError("active Identity Operator Foundation is incomplete")
+        operator_broker = ExternalOperatorApprovalBroker(
+            directory=settings.operator_approval_dir,
+            trust_registry_path=settings.operator_approval_trust_path,
+        )
+        identity_runtime = build_identity_runtime(
+            manifest=identity_manifest,
+            governance=governance,
+            graph=graph,
+            operator=ChangeSafeOperator(
+                tenant_id=settings.tenant_id,
+                deployment_namespace=settings.deployment_namespace,
+            ),
+            approval_broker=operator_broker,
+            replay_store=ApprovalReplayStore(
+                settings.effective_operator_replay_db_path,
+                settings.deployment_namespace,
+            ),
+            lifecycle_store=DurableOperationStore(
+                settings.effective_operator_lifecycle_db_path,
+                settings.deployment_namespace,
+            ),
+            recovery=recovery,
+        )
     services = Services(
         settings=settings,
         policy=policy,
@@ -3991,7 +4342,7 @@ def create_server(settings: Settings) -> FastMCP:
         ),
         write_limiter=WriteRateLimiter(settings.write_rate_limit_per_minute),
         governance=governance,
-        recovery=RecoveryCapsuleStore(settings),
+        recovery=recovery,
         assurance_snapshots=(
             AssuranceSnapshotStore(settings)
             if assurance_enabled
@@ -3999,6 +4350,7 @@ def create_server(settings: Settings) -> FastMCP:
         ),
         powerbi=powerbi,
         approval_broker=approval_broker,
+        identity_runtime=identity_runtime,
     )
     runner = ToolRunner(services)
 
@@ -4054,6 +4406,16 @@ def create_server(settings: Settings) -> FastMCP:
         for tool_name, action in WRITE_TOOL_ACTIONS.items():
             if action not in settings.enabled_write_actions:
                 mcp.remove_tool(tool_name)
+        if identity_enabled:
+            if identity_manifest is None:
+                raise RuntimeError("active Identity manifest disappeared")
+            _register_identity_contract_tools(
+                mcp,
+                services,
+                runner,
+                identity_manifest,
+                enabled_identity_operations,
+            )
 
     registered = {
         tool.name

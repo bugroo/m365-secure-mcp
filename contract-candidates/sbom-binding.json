@@ -1,8 +1,9 @@
 {
   "activation_state": "candidate",
-  "candidate_provenance_digest": "sha256:b27d5a394b9b60242f157b508368cd6cac9ac5420efe42c16252739eb15707a4",
+  "candidate_provenance_digest": "sha256:fe41fe8f755608a1d1ad8c2f5609bcb884c2bbb08134ac31a82851705ff23302",
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
-  "manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
+  "live_lab_evidence_digest": null,
+  "manifest_digest": "sha256:788bb37c79af5363056d7e8ef661087098c64fb1073b05dfa0cdb177a7e16e65",
   "release_attestation_status": "external-required",
   "release_sbom_digest": "sha256:08c441baa9706b9887f14afad34abd14e6b7decde6805cd7969d028ce72195c5",
   "schema_version": "1.0",

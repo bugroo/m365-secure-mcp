@@ -21,12 +21,17 @@
       "input_schema": {
         "additionalProperties": false,
         "properties": {
+          "idempotency_key": {
+            "format": "uuid",
+            "type": "string"
+          },
           "user_id": {
             "format": "uuid",
             "type": "string"
           }
         },
         "required": [
+          "idempotency_key",
           "user_id"
         ],
         "type": "object"
@@ -46,8 +51,17 @@
         "https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0"
       ],
       "output_fields": [
+        "approval_request_reference",
+        "change_record_reference",
+        "contract_digest",
+        "contract_id",
+        "evidence_reference",
         "operation_reference",
+        "operator_action",
+        "observation_reference",
+        "plan_digest",
         "receipt_reference",
+        "safe_to_retry",
         "status",
         "verification"
       ],
@@ -158,6 +172,10 @@
           "account_enabled": {
             "type": "boolean"
           },
+          "idempotency_key": {
+            "format": "uuid",
+            "type": "string"
+          },
           "user_id": {
             "format": "uuid",
             "type": "string"
@@ -165,6 +183,7 @@
         },
         "required": [
           "account_enabled",
+          "idempotency_key",
           "user_id"
         ],
         "type": "object"
@@ -184,8 +203,17 @@
         "https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0"
       ],
       "output_fields": [
+        "approval_request_reference",
+        "change_record_reference",
+        "contract_digest",
+        "contract_id",
+        "evidence_reference",
         "operation_reference",
+        "operator_action",
+        "observation_reference",
+        "plan_digest",
         "receipt_reference",
+        "safe_to_retry",
         "status",
         "verification"
       ],
@@ -300,6 +328,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "idempotency_key": {
+            "format": "uuid",
+            "type": "string"
+          },
           "user_id": {
             "format": "uuid",
             "type": "string"
@@ -307,6 +339,7 @@
         },
         "required": [
           "group_id",
+          "idempotency_key",
           "user_id"
         ],
         "type": "object"
@@ -324,8 +357,17 @@
         "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0"
       ],
       "output_fields": [
+        "approval_request_reference",
+        "change_record_reference",
+        "contract_digest",
+        "contract_id",
+        "evidence_reference",
         "operation_reference",
+        "operator_action",
+        "observation_reference",
+        "plan_digest",
         "receipt_reference",
+        "safe_to_retry",
         "status",
         "verification"
       ],
@@ -455,6 +497,10 @@
             "format": "uuid",
             "type": "string"
           },
+          "idempotency_key": {
+            "format": "uuid",
+            "type": "string"
+          },
           "user_id": {
             "format": "uuid",
             "type": "string"
@@ -462,6 +508,7 @@
         },
         "required": [
           "group_id",
+          "idempotency_key",
           "user_id"
         ],
         "type": "object"
@@ -479,8 +526,17 @@
         "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0"
       ],
       "output_fields": [
+        "approval_request_reference",
+        "change_record_reference",
+        "contract_digest",
+        "contract_id",
+        "evidence_reference",
         "operation_reference",
+        "operator_action",
+        "observation_reference",
+        "plan_digest",
         "receipt_reference",
+        "safe_to_retry",
         "status",
         "verification"
       ],
@@ -618,6 +674,10 @@
           "license_assigned": {
             "type": "boolean"
           },
+          "idempotency_key": {
+            "format": "uuid",
+            "type": "string"
+          },
           "sku_id": {
             "format": "uuid",
             "type": "string"
@@ -629,6 +689,7 @@
         },
         "required": [
           "disabled_service_plan_ids",
+          "idempotency_key",
           "license_assigned",
           "sku_id",
           "user_id"
@@ -651,8 +712,17 @@
         "https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0"
       ],
       "output_fields": [
+        "approval_request_reference",
+        "change_record_reference",
+        "contract_digest",
+        "contract_id",
+        "evidence_reference",
         "operation_reference",
+        "operator_action",
+        "observation_reference",
+        "plan_digest",
         "receipt_reference",
+        "safe_to_retry",
         "status",
         "verification"
       ],

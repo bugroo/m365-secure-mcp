@@ -257,6 +257,42 @@ def compile_identity_candidate_outputs(
             for scope in item.permissions.delegated_scopes
         }
     )
+    live_evidence_path = (
+        root / "contract-candidates/identity-live-lab-evidence.json"
+    )
+    live_evidence_digest: str | None = None
+    preview_signing_eligible = False
+    stable_promotion_eligible = False
+    if live_evidence_path.exists():
+        # Delayed import avoids making the lab schema a compiler bootstrap
+        # dependency while still applying its closed privacy and coverage gate.
+        from .identity_live_lab import (
+            evaluate_live_lab_evidence,
+            scan_public_live_lab_evidence,
+        )
+
+        live_evidence = scan_public_live_lab_evidence(
+            json.loads(live_evidence_path.read_text())
+        )
+        if live_evidence.candidate_manifest_digest != candidate_digest:
+            raise ValueError(
+                "Identity live-lab evidence is bound to another candidate"
+            )
+        expected_contract_digests = {
+            item.id: sha256_digest(item) for item in manifest.contracts
+        }
+        if any(
+            case.contract_digest
+            != expected_contract_digests.get(case.operation_id)
+            for case in live_evidence.cases
+        ):
+            raise ValueError(
+                "Identity live-lab evidence is bound to another contract"
+            )
+        eligibility = evaluate_live_lab_evidence(live_evidence)
+        live_evidence_digest = sha256_digest(live_evidence)
+        preview_signing_eligible = eligibility.preview_signing_eligible
+        stable_promotion_eligible = eligibility.stable_promotion_eligible
     registry = {
         "schema_version": "1.0",
         "activation_state": "candidate",
@@ -335,8 +371,14 @@ def compile_identity_candidate_outputs(
         "effect_model_digest": model_digest,
         "signature_present": False,
         "runtime_tool_generation": False,
-        "live_lab_review_status": "required-before-signing",
-        "signing_eligible": False,
+        "live_lab_review_status": (
+            "reviewed-core-complete"
+            if preview_signing_eligible
+            else "required-before-signing"
+        ),
+        "live_lab_evidence_digest": live_evidence_digest,
+        "signing_eligible": preview_signing_eligible,
+        "stable_promotion_eligible": stable_promotion_eligible,
         "active_manifest_digest": active_digest,
         "registry_digest": sha256_digest(registry),
         "surface_diff_digest": sha256_digest(surface_diff),
@@ -347,6 +389,7 @@ def compile_identity_candidate_outputs(
         "manifest_digest": candidate_digest,
         "effect_model_digest": model_digest,
         "candidate_provenance_digest": sha256_digest(candidate_provenance),
+        "live_lab_evidence_digest": live_evidence_digest,
         "release_sbom_digest": (
             "sha256:"
             + hashlib.sha256(
@@ -354,12 +397,16 @@ def compile_identity_candidate_outputs(
             ).hexdigest()
         ),
         "release_attestation_status": "external-required",
-        "signing_eligible": False,
+        "signing_eligible": preview_signing_eligible,
     }
     signing_request = {
         "schema_version": "1.0",
-        "status": "awaiting_reviewed_core_identity_lab",
-        "signing_eligible": False,
+        "status": (
+            "ready_for_external_signing"
+            if preview_signing_eligible
+            else "awaiting_reviewed_core_identity_lab"
+        ),
+        "signing_eligible": preview_signing_eligible,
         "manifest_digest": candidate_digest,
         "effect_model_digest": model_digest,
         "intended_key_id": "m365-contracts-2026-07",
@@ -369,6 +416,7 @@ def compile_identity_candidate_outputs(
             "graph_surface_diff": sha256_digest(surface_diff),
             "provenance": sha256_digest(candidate_provenance),
             "sbom_binding": sha256_digest(sbom_binding),
+            "live_lab_evidence": live_evidence_digest,
         },
         "tests_required": [
             "compiler-check",

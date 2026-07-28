@@ -3,7 +3,7 @@
   "contracts": {
     "entra.group.user_membership.add": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:45af91ed55f6da9bf98dba412ba934df33c45bdd6c9fbc6d5e47119758eb55cd",
+      "contract_digest": "sha256:11836837184dca62881542a4339853d5dd961f60efcf88e70de88ea111ea15a7",
       "delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "RoleManagement.Read.Directory",
@@ -60,7 +60,7 @@
     },
     "entra.group.user_membership.remove": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:3a55f20e152625603096d16c820118ccef83ada2b567fdca69003399d7b3c783",
+      "contract_digest": "sha256:e001c02dde1e129f0f60484c6dca22dfcdbc0a83f9315987c6146c875070e071",
       "delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "RoleManagement.Read.Directory",
@@ -117,7 +117,7 @@
     },
     "entra.user.account_state.set": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:3a6b2394b94f9fa5bf2b4b99c75b91ad958bf10659bcc2cf2cd4892fa60377fd",
+      "contract_digest": "sha256:93ab91189671bdedb50d3f3481aed4c850dee1acd0c50b35d086b21278ca1ba7",
       "delegated_scopes": [
         "RoleManagement.Read.Directory",
         "User.EnableDisableAccount.All",
@@ -166,7 +166,7 @@
     },
     "entra.user.direct_license.set": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:c60c499f415e7735b4150b143da7db02519bc67df3b153098556b38a50fc643e",
+      "contract_digest": "sha256:13ee1b3a3ff4d86d3f816cf00e659f11cbc19b0a2ed6cd0e7ef16fd0615f1cd5",
       "delegated_scopes": [
         "LicenseAssignment.Read.All",
         "LicenseAssignment.ReadWrite.All",
@@ -217,7 +217,7 @@
     },
     "entra.user.sessions.revoke": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:1a98b706754e797659f856b316f64eb545789bba9400f82dd7f6826ee0e5f3c4",
+      "contract_digest": "sha256:5c65802a1a9c8eff1e436837f32dfa22b4d248be85ee61605522849f9b54acf6",
       "delegated_scopes": [
         "RoleManagement.Read.Directory",
         "User.Read.All",
@@ -262,7 +262,7 @@
     }
   },
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
-  "manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
+  "manifest_digest": "sha256:788bb37c79af5363056d7e8ef661087098c64fb1073b05dfa0cdb177a7e16e65",
   "manifest_schema_version": "2.0",
   "schema_version": "1.0"
 }

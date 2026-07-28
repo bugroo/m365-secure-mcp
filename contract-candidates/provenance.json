@@ -6,13 +6,15 @@
   "compiler_version": "1.6",
   "distribution_status": "not-a-release",
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "live_lab_evidence_digest": null,
   "live_lab_review_status": "required-before-signing",
-  "manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
-  "registry_digest": "sha256:e9456beeaef0c4da6d577eb53f4f65efbfc02144f21c1797326e4b842d11650a",
+  "manifest_digest": "sha256:788bb37c79af5363056d7e8ef661087098c64fb1073b05dfa0cdb177a7e16e65",
+  "registry_digest": "sha256:fdb1badcaed9211e20191cf10485e18e1308f61863c536d2c40a4e5e2c88f9b1",
   "release_attestation_status": "external-required",
   "runtime_tool_generation": false,
   "schema_version": "1.0",
   "signature_present": false,
   "signing_eligible": false,
-  "surface_diff_digest": "sha256:07dc7a08236fce2f19e22e9c9dd282cacc56a16a22d30558906938554a93d634"
+  "stable_promotion_eligible": false,
+  "surface_diff_digest": "sha256:446173fc3076be21bda1e56e10f08a5676bacfbc1d8a26d3cfafde47be04a4d7"
 }

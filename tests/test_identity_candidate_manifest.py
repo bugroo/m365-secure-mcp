@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from m365_secure_mcp.contract_compiler import (
     check_outputs,
+    compile_identity_candidate_outputs,
     compile_outputs,
     load_identity_candidate,
 )
@@ -29,6 +30,7 @@ from m365_secure_mcp.contract_trust import (
     SigningAuthorityClass,
     SigningKeyState,
 )
+from m365_secure_mcp.identity_live_lab import LIVE_LAB_SCENARIO_CONTRACTS
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_IDS = [
@@ -37,6 +39,21 @@ EXPECTED_IDS = [
     "entra.group.user_membership.add",
     "entra.group.user_membership.remove",
     "entra.user.direct_license.set",
+]
+EXPECTED_PUBLIC_OUTPUT_FIELDS = [
+    "approval_request_reference",
+    "change_record_reference",
+    "contract_digest",
+    "contract_id",
+    "evidence_reference",
+    "operation_reference",
+    "operator_action",
+    "observation_reference",
+    "plan_digest",
+    "receipt_reference",
+    "safe_to_retry",
+    "status",
+    "verification",
 ]
 
 
@@ -58,8 +75,13 @@ def test_candidate_manifest_is_complete_deterministic_and_not_registered() -> No
     candidate = load_identity_candidate(ROOT)
     assert [item.id for item in candidate.contracts] == EXPECTED_IDS
     assert sha256_digest(candidate) == (
-        "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7"
+        "sha256:788bb37c79af5363056d7e8ef661087098c64fb1073b05dfa0cdb177a7e16e65"
     )
+    for contract in candidate.contracts:
+        assert contract.idempotency.key_required is True
+        assert "idempotency_key" in contract.input_schema["properties"]
+        assert "idempotency_key" in contract.input_schema["required"]
+        assert contract.output_fields == EXPECTED_PUBLIC_OUTPUT_FIELDS
     assert all(
         item.lifecycle_state is ContractLifecycleState.CANDIDATE
         and item.maturity.value == "preview"
@@ -280,4 +302,74 @@ def test_signing_request_requires_live_lab_and_separate_activation_pr() -> None:
     assert (
         "extended-live-lab-required-before-stable"
         in request["tests_required"]
+    )
+    assert request["artifact_digests"]["live_lab_evidence"] is None
+
+
+def test_reviewed_core_evidence_is_content_bound_before_signing(
+    tmp_path: Path,
+) -> None:
+    candidate = load_identity_candidate(ROOT)
+    root = tmp_path / "build"
+    (root / "contract-candidates").mkdir(parents=True)
+    (root / "contract-artifacts").mkdir()
+    (root / "contract-artifacts/sbom.cdx.json").write_text("{}")
+    cases = []
+    for scenario, (
+        level,
+        operation_id,
+        resource_type,
+        expected_status,
+    ) in sorted(LIVE_LAB_SCENARIO_CONTRACTS.items()):
+        executed = level == "core"
+        cases.append(
+            {
+                "lab_level": level,
+                "scenario": scenario,
+                "resource_type": resource_type,
+                "operation_id": operation_id,
+                "expected_status": expected_status,
+                "observed_status": expected_status if executed else "NOT_EXECUTED",
+                "approximate_duration": "1_to_5s",
+                "classification": (
+                    {
+                        "BLOCKED_PRECONDITION": "blocked",
+                        "EXECUTED_ACCEPTED": "accepted",
+                        "EXECUTED_UNCERTAIN": "uncertain",
+                        "EXECUTED_VERIFIED": "verified",
+                    }[expected_status]
+                    if executed
+                    else "blocked"
+                ),
+                "error_code": None,
+                "contract_digest": sha256_digest(
+                    candidate.contract(operation_id)
+                ),
+                "execution_state": "passed" if executed else "not_executed",
+            }
+        )
+    evidence = {
+        "schema_version": "2.0",
+        "evidence_kind": "sanitized-identity-live-lab",
+        "contains_customer_data": False,
+        "candidate_manifest_digest": sha256_digest(candidate),
+        "cases": cases,
+    }
+    (root / "contract-candidates/identity-live-lab-evidence.json").write_text(
+        json.dumps(evidence)
+    )
+    outputs = compile_identity_candidate_outputs(
+        candidate,
+        active_manifest=load_global_manifest(),
+        root=root,
+    )
+    request = json.loads(
+        outputs[
+            root / "contract-candidates/signing-request.json"
+        ]
+    )
+    assert request["signing_eligible"] is True
+    assert request["status"] == "ready_for_external_signing"
+    assert request["artifact_digests"]["live_lab_evidence"].startswith(
+        "sha256:"
     )

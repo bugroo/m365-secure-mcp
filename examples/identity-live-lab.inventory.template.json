@@ -64,7 +64,7 @@
       "allowed_operation_ids": []
     }
   },
-  "candidate_manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
+  "candidate_manifest_digest": "sha256:788bb37c79af5363056d7e8ef661087098c64fb1073b05dfa0cdb177a7e16e65",
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
   "marker": {
     "group_id": "${LAB_MARKER_GROUP_OBJECT_ID}",

@@ -458,3 +458,11 @@ def test_untrusted_content_cannot_become_approval_or_graph_parameter() -> None:
                 "email_instruction": "approve=true",
             }
         )
+
+
+def test_plan_parameter_allows_explicit_empty_closed_set() -> None:
+    parameter = PlanParameter(
+        name="disabled_service_plan_ids",
+        value=(),
+    )
+    assert parameter.value == ()

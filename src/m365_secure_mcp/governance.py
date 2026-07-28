@@ -31,6 +31,7 @@ from .contract_manifest import (
     AuthorizationMode,
     ContractEffect,
     ContractManifest,
+    ContractManifestV2,
     ContractSpec,
     ContractSpecV2,
     ProtectedObjectPolicyId,
@@ -1779,6 +1780,49 @@ def resolve_operation_governance(
         approval_authorities=authorities,
         required_signer_groups=tuple(binding.required_signer_groups),
     )
+
+
+def validate_policy_against_operation_manifest(
+    policy: GovernancePolicyDocument,
+    manifest: ContractManifestV2,
+) -> None:
+    """Validate Governance v3 against one exact signed schema-v2 manifest."""
+
+    if not isinstance(policy, GovernancePolicyV3):
+        raise GovernancePolicyError(
+            "active effectful contracts require Governance v3",
+            reason_code="OPERATIONS_REQUIRE_GOVERNANCE_V3",
+        )
+    manifest_digest = sha256_digest(manifest)
+    if policy.contract_manifest_digest != manifest_digest:
+        raise GovernancePolicyError(
+            "Governance v3 is bound to another contract manifest",
+            reason_code="CONTRACT_MANIFEST_CHANGED",
+        )
+    contracts = {contract.id: contract for contract in manifest.contracts}
+    enabled = {
+        contract_id
+        for profile in policy.profiles.values()
+        for contract_id in profile.enabled_contracts
+    }
+    if enabled - set(contracts):
+        raise GovernancePolicyError(
+            "Governance v3 references an unknown active contract",
+            reason_code="UNKNOWN_CONTRACT",
+        )
+    if {
+        operation.operation_id for operation in policy.operations.operations
+    } != enabled:
+        raise GovernancePolicyError(
+            "Governance v3 operation bindings must exactly cover enabled contracts",
+            reason_code="DENIED_OUT_OF_CONTRACT",
+        )
+    for contract_id in sorted(enabled):
+        resolve_operation_governance(
+            policy,
+            contracts[contract_id],
+            contract_manifest_digest=manifest_digest,
+        )
 
 
 def parse_governance_policy(document: object) -> GovernancePolicyDocument:

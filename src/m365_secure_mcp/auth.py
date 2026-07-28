@@ -174,6 +174,27 @@ class TokenProvider:
             )
         )
 
+    async def get_directory_role_template_claims(self) -> frozenset[str]:
+        """Return only canonical directory-role template IDs from ``wids``.
+
+        The token and identity claims remain private. Live-lab and runtime
+        preflight may compare this closed set with reviewed role metadata; MCP
+        tools never receive it.
+        """
+
+        token = await self.get_access_token()
+        claims = self._claims(token)
+        raw = claims.get("wids", [])
+        if raw is None:
+            return frozenset()
+        if not isinstance(raw, list) or not all(
+            isinstance(item, str) for item in raw
+        ):
+            raise AuthenticationError(
+                "Microsoft token directory-role claims are malformed"
+            )
+        return frozenset(item.lower() for item in raw)
+
     def _acquire_token(self, force_refresh: bool) -> dict[str, Any]:
         app = self._get_app()
         account = self._select_account()
