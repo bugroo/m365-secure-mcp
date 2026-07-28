@@ -46,6 +46,7 @@ def _future_contract(
             "description": (
                 "Future test-only exact relationship removal contract."
             ),
+            "module": "synthetic",
             "graph": {
                 "method": method,
                 "endpoint": endpoint,

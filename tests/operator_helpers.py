@@ -242,6 +242,14 @@ def synthetic_governance(
                         else AsyncRequirement.SYNCHRONOUS_ONLY
                     ),
                     verification=contract.verification,
+                    resource_fence_id=contract.resource_fence_id,
+                    protected_object_policy_id=(
+                        contract.protected_object_policy_id
+                    ),
+                    verification_contract_id=(
+                        contract.verification_contract_id
+                    ),
+                    async_behavior=contract.async_behavior,
                     approval_authority_ids=[
                         item.authority_id for item in authority_bindings
                     ],

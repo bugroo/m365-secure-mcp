@@ -1,7 +1,7 @@
 {
   "build_kind": "local-unattested",
   "builder": "m365_secure_mcp.contract_compiler",
-  "compiler_version": "1.5",
+  "compiler_version": "1.6",
   "contract_digests_digest": "sha256:b2faa4013e84a8563129a4cd92eaf96688c3f7a6f703491f3bb674c72534efff",
   "contract_effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
   "contract_effect_model_schema_version": "1.0",

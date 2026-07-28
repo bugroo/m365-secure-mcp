@@ -9,19 +9,27 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import hmac
 import json
 import re
+from collections.abc import Sequence
 from enum import StrEnum
 from importlib.resources import files
 from typing import Any, Literal
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+    Ed25519PrivateKey,
+    Ed25519PublicKey,
+)
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .contract_trust import (
-    CONTRACT_SIGNING_KEY_ID,
-    CONTRACT_SIGNING_PUBLIC_KEY_B64,
+    CONTRACT_SIGNING_AUTHORITIES,
+    ContractSigningAuthority,
+    SigningAuthorityClass,
+    SigningKeyState,
 )
 
 
@@ -73,6 +81,61 @@ class CompensationClass(StrEnum):
     CONDITIONAL_RESTORE = "conditional_restore"
     EXPLICIT_PLAYBOOK = "explicit_playbook"
     NOT_COMPENSATABLE = "not_compensatable"
+
+
+class ContractLifecycleState(StrEnum):
+    DRAFT = "draft"
+    CANDIDATE = "candidate"
+    ACTIVE = "active"
+    RETIRED = "retired"
+
+
+class ContractMaturity(StrEnum):
+    EXPERIMENTAL = "experimental"
+    PREVIEW = "preview"
+    STABLE = "stable"
+    DEPRECATED = "deprecated"
+
+
+class AsyncBehavior(StrEnum):
+    SYNCHRONOUS = "synchronous"
+    PROVIDER_EVENTUAL = "provider_eventual"
+
+
+class ContractPrivacyClass(StrEnum):
+    OPAQUE_PUBLIC_PRIVATE_RECEIPT = "opaque_public_private_receipt"
+
+
+class IdentityExecutorId(StrEnum):
+    SYNTHETIC_STATE_TRANSITION_V1 = "synthetic.state_transition.v1"
+    USER_SESSIONS_REVOKE_V1 = "identity.user_sessions_revoke.v1"
+    USER_ACCOUNT_STATE_SET_V1 = "identity.user_account_state_set.v1"
+    GROUP_USER_MEMBERSHIP_ADD_V1 = "identity.group_user_membership_add.v1"
+    GROUP_USER_MEMBERSHIP_REMOVE_V1 = "identity.group_user_membership_remove.v1"
+    USER_DIRECT_LICENSE_SET_V1 = "identity.user_direct_license_set.v1"
+
+
+class ProtectedObjectPolicyId(StrEnum):
+    SYNTHETIC_EXCLUDE_PROTECTED_V1 = "synthetic.exclude_protected.v1"
+    NON_PRIVILEGED_MEMBER_USER_V1 = "identity.non_privileged_member_user.v1"
+    NON_PRIVILEGED_MEMBER_USER_STATIC_GROUP_V1 = (
+        "identity.non_privileged_member_user_static_group.v1"
+    )
+
+
+class ResourceFenceId(StrEnum):
+    SYNTHETIC_TENANT_USER_V1 = "synthetic.tenant_user.v1"
+    ALLOWLISTED_USER_V1 = "identity.allowlisted_user.v1"
+    ALLOWLISTED_USER_AND_GROUP_V1 = "identity.allowlisted_user_and_group.v1"
+    ALLOWLISTED_USER_AND_SKU_V1 = "identity.allowlisted_user_and_sku.v1"
+
+
+class VerificationContractId(StrEnum):
+    SYNTHETIC_READBACK_V1 = "synthetic.readback.v1"
+    SESSION_REVOCATION_ACCEPTANCE_V1 = "identity.session_revocation_acceptance.v1"
+    USER_ACCOUNT_STATE_READBACK_V1 = "identity.user_account_state_readback.v1"
+    GROUP_MEMBERSHIP_READBACK_V1 = "identity.group_membership_readback.v1"
+    DIRECT_LICENSE_READBACK_V1 = "identity.direct_license_readback.v1"
 
 
 class ContractEffect(StrEnum):
@@ -191,6 +254,20 @@ class EffectGraphCall(StrictModel):
         )
 
 
+class PreflightGraphCallV2(StrictModel):
+    method: Literal["GET"]
+    endpoint: str = Field(min_length=2, max_length=300)
+    api_version: Literal["v1.0"]
+
+    @field_validator("endpoint")
+    @classmethod
+    def fixed_graph_path(cls, value: str) -> str:
+        return _validate_fixed_graph_path(
+            value,
+            allowed_placeholders=_V2_PLACEHOLDERS,
+        )
+
+
 class ContractPermissions(StrictModel):
     delegated_scopes: list[str] = Field(min_length=1)
     operator_roles: list[str] = Field(default_factory=list)
@@ -211,6 +288,50 @@ class ContractPermissions(StrictModel):
     def unique_operator_roles(cls, value: list[str]) -> list[str]:
         if value != sorted(set(value)):
             raise ValueError("operator roles must be unique and sorted")
+        return value
+
+
+class ContractPermissionsV2(ContractPermissions):
+    """Categorized schema-2.0 permission and operational-role metadata."""
+
+    effect_delegated_scopes: list[str] = Field(default_factory=list)
+    preflight_delegated_scopes: list[str] = Field(default_factory=list)
+    readback_delegated_scopes: list[str] = Field(default_factory=list)
+    protected_object_evidence_delegated_scopes: list[str] = Field(
+        default_factory=list
+    )
+    microsoft_supported_roles: list[str] = Field(default_factory=list)
+    project_required_role: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=120,
+    )
+    project_role_rationale: str | None = Field(
+        default=None,
+        min_length=20,
+        max_length=500,
+    )
+
+    @field_validator(
+        "effect_delegated_scopes",
+        "preflight_delegated_scopes",
+        "readback_delegated_scopes",
+        "protected_object_evidence_delegated_scopes",
+    )
+    @classmethod
+    def unique_categorized_scopes(cls, value: list[str]) -> list[str]:
+        if value != sorted(set(value)):
+            raise ValueError("categorized delegated scopes must be unique and sorted")
+        forbidden = {"Directory.ReadWrite.All", "Directory.AccessAsUser.All"}
+        if forbidden & set(value):
+            raise ValueError("contract requests a prohibited directory scope")
+        return value
+
+    @field_validator("microsoft_supported_roles")
+    @classmethod
+    def unique_supported_roles(cls, value: list[str]) -> list[str]:
+        if value != sorted(set(value)):
+            raise ValueError("Microsoft-supported roles must be unique and sorted")
         return value
 
 
@@ -307,10 +428,12 @@ class ContractSpecV2(StrictModel):
     description: str = Field(min_length=20, max_length=500)
     module: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
     graph: EffectGraphCall
-    preflight_graph_calls: list[GraphCall] = Field(default_factory=list)
+    preflight_graph_calls: list[GraphCall | PreflightGraphCallV2] = Field(
+        default_factory=list
+    )
     input_schema: dict[str, Any]
     output_fields: list[str] = Field(min_length=1)
-    permissions: ContractPermissions
+    permissions: ContractPermissionsV2
     risk_tier: RiskTier
     authorization_mode: AuthorizationMode
     resource_fences: list[str] = Field(min_length=1)
@@ -321,12 +444,49 @@ class ContractSpecV2(StrictModel):
     verification: VerificationMode
     compensation: CompensationClass
     effect: ContractEffect
+    lifecycle_state: ContractLifecycleState = ContractLifecycleState.CANDIDATE
+    executor_id: IdentityExecutorId = IdentityExecutorId.SYNTHETIC_STATE_TRANSITION_V1
+    resource_fence_id: ResourceFenceId = ResourceFenceId.SYNTHETIC_TENANT_USER_V1
+    protected_object_policy_id: ProtectedObjectPolicyId = (
+        ProtectedObjectPolicyId.SYNTHETIC_EXCLUDE_PROTECTED_V1
+    )
+    verification_contract_id: VerificationContractId = (
+        VerificationContractId.SYNTHETIC_READBACK_V1
+    )
+    async_behavior: AsyncBehavior = AsyncBehavior.SYNCHRONOUS
+    ambiguity_handling: Literal["never_retry_automatically"] = (
+        "never_retry_automatically"
+    )
+    privacy_class: ContractPrivacyClass = (
+        ContractPrivacyClass.OPAQUE_PUBLIC_PRIVATE_RECEIPT
+    )
+    maturity: ContractMaturity = ContractMaturity.EXPERIMENTAL
+    license_prerequisites: list[str] = Field(default_factory=list)
+    official_references: list[str] = Field(default_factory=list)
+    verified_on: str | None = Field(
+        default=None,
+        pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+    )
+
+    @field_validator("permissions", mode="before")
+    @classmethod
+    def accept_legacy_synthetic_permissions(
+        cls,
+        value: Any,
+    ) -> Any:
+        """Preserve schema-2.0 synthetic fixtures without changing schema 1.0."""
+        if isinstance(value, ContractPermissions) and not isinstance(
+            value,
+            ContractPermissionsV2,
+        ):
+            return value.model_dump(mode="json")
+        return value
 
     @model_validator(mode="after")
     def validate_explicit_effect(self) -> ContractSpecV2:
         _validate_common_contract_semantics(
             input_schema=self.input_schema,
-            preflight_graph_calls=self.preflight_graph_calls,
+            preflight_graph_calls=[],
             graph_method=self.graph.method,
             risk_tier=self.risk_tier,
             authorization_mode=self.authorization_mode,
@@ -376,6 +536,77 @@ class ContractSpecV2(StrictModel):
                 )
         elif self.graph.method == "DELETE":
             raise ValueError("DELETE is reserved for relationship_remove")
+        if self.lifecycle_state is ContractLifecycleState.ACTIVE:
+            raise ValueError(
+                "schema-2.0 candidate source cannot declare itself active"
+            )
+        if self.maturity is ContractMaturity.STABLE:
+            raise ValueError("candidate contracts cannot be stable before live review")
+        if self.risk_tier not in {RiskTier.T2, RiskTier.T3}:
+            raise ValueError("Identity candidate writes must be T2 or T3")
+        if self.authorization_mode not in {
+            AuthorizationMode.EXPLICIT_PLAN,
+            AuthorizationMode.DUAL_CONTROL,
+        }:
+            raise ValueError("Identity candidate writes require explicit authorization")
+        if self.official_references != sorted(set(self.official_references)):
+            raise ValueError("official references must be unique and sorted")
+        if self.license_prerequisites != sorted(set(self.license_prerequisites)):
+            raise ValueError("license prerequisites must be unique and sorted")
+        synthetic_ids = {
+            IdentityExecutorId.SYNTHETIC_STATE_TRANSITION_V1,
+        }
+        if self.module == "synthetic":
+            if self.executor_id not in synthetic_ids:
+                raise ValueError("synthetic contracts require a synthetic executor")
+        elif (
+            self.executor_id in synthetic_ids
+            or not self.license_prerequisites
+            or not self.official_references
+            or self.verified_on is None
+        ):
+            raise ValueError(
+                "reviewed workload contracts require explicit executor and references"
+            )
+        if self.module != "synthetic":
+            permissions = self.permissions
+            categorized_scopes = sorted(
+                {
+                    *permissions.effect_delegated_scopes,
+                    *permissions.preflight_delegated_scopes,
+                    *permissions.readback_delegated_scopes,
+                    *permissions.protected_object_evidence_delegated_scopes,
+                }
+            )
+            if not permissions.effect_delegated_scopes:
+                raise ValueError(
+                    "reviewed workload contracts require effect permissions"
+                )
+            if categorized_scopes != permissions.delegated_scopes:
+                raise ValueError(
+                    "categorized permission closure must equal delegated scopes"
+                )
+            if (
+                not permissions.microsoft_supported_roles
+                or permissions.project_required_role is None
+                or permissions.project_role_rationale is None
+            ):
+                raise ValueError(
+                    "reviewed workload contracts require supported and project roles"
+                )
+            if (
+                permissions.project_required_role
+                not in permissions.microsoft_supported_roles
+            ):
+                raise ValueError(
+                    "project-required role must be Microsoft-supported"
+                )
+            if permissions.operator_roles != [
+                permissions.project_required_role
+            ]:
+                raise ValueError(
+                    "legacy operator-role closure must equal project-required role"
+                )
         return self
 
 
@@ -417,6 +648,15 @@ class ContractManifestV2(StrictModel):
         if len(tools) != len(set(tools)):
             raise ValueError("contract manifest contains duplicate tool names")
         return self
+
+    def contract(self, contract_id: str) -> ContractSpecV2:
+        for contract in self.contracts:
+            if contract.id == contract_id:
+                return contract
+        raise KeyError(f"unknown compiled contract: {contract_id}")
+
+
+ContractManifestDocument = ContractManifest | ContractManifestV2
 
 
 class ManifestSignature(StrictModel):
@@ -493,6 +733,172 @@ def effect_model_digest() -> str:
     return sha256_digest(effect_model_document())
 
 
+def parse_contract_manifest(document: object) -> ContractManifestDocument:
+    """Parse one closed manifest generation without version fallback."""
+
+    if not isinstance(document, dict):
+        raise ValueError("contract manifest must be a JSON object")
+    version = document.get("schema_version")
+    if version == "1.0":
+        return ContractManifest.model_validate(document)
+    if version == "2.0":
+        return ContractManifestV2.model_validate(document)
+    raise ValueError("contract manifest schema version is unsupported")
+
+
+def validate_contract_signing_authorities(
+    authorities: Sequence[ContractSigningAuthority],
+    *,
+    allow_test_authorities: bool = False,
+) -> ContractSigningAuthority:
+    """Validate one closed contract trust registry and return its sole current key."""
+
+    if not authorities:
+        raise RuntimeError("contract signing trust registry is empty")
+    key_ids = [authority.key_id for authority in authorities]
+    if len(key_ids) != len(set(key_ids)):
+        raise RuntimeError("contract signing key IDs must be immutable and unique")
+    classes = {authority.authority_class for authority in authorities}
+    if len(classes) != 1:
+        raise RuntimeError("production and test contract authorities cannot be mixed")
+    if SigningAuthorityClass.TEST in classes and not allow_test_authorities:
+        raise RuntimeError("test contract authority is not valid for production")
+    current = [
+        authority
+        for authority in authorities
+        if authority.state is SigningKeyState.CURRENT
+    ]
+    if len(current) != 1:
+        raise RuntimeError(
+            "contract signing trust registry requires exactly one current key"
+        )
+    return current[0]
+
+
+def _contract_signing_authority(
+    key_id: str,
+    authorities: Sequence[ContractSigningAuthority],
+) -> ContractSigningAuthority:
+    matches = [authority for authority in authorities if authority.key_id == key_id]
+    if len(matches) != 1:
+        raise RuntimeError("global contract manifest signer is not trusted")
+    return matches[0]
+
+
+def sign_contract_manifest(
+    manifest: ContractManifestDocument,
+    signer: Ed25519PrivateKey,
+    *,
+    key_id: str,
+    authorities: Sequence[ContractSigningAuthority] | None = None,
+    allow_test_authorities: bool = False,
+) -> ManifestSignature:
+    """Sign canonical manifest bytes with the exact reviewed current authority."""
+
+    selected = CONTRACT_SIGNING_AUTHORITIES if authorities is None else authorities
+    current = validate_contract_signing_authorities(
+        selected,
+        allow_test_authorities=allow_test_authorities,
+    )
+    authority = _contract_signing_authority(key_id, selected)
+    if authority is not current or authority.state is not SigningKeyState.CURRENT:
+        raise RuntimeError("retired or compromised contract keys cannot sign manifests")
+    signer_public_key = signer.public_key().public_bytes(
+        encoding=serialization.Encoding.Raw,
+        format=serialization.PublicFormat.Raw,
+    )
+    expected_public_key = base64.b64decode(
+        authority.public_key_b64,
+        validate=True,
+    )
+    if not hmac.compare_digest(signer_public_key, expected_public_key):
+        raise RuntimeError("external signer does not match the contract trust anchor")
+    return ManifestSignature(
+        schema_version="1.0",
+        algorithm="ed25519",
+        key_id=authority.key_id,
+        manifest_digest=sha256_digest(manifest),
+        signature=base64.b64encode(
+            signer.sign(canonical_json(manifest))
+        ).decode("ascii"),
+    )
+
+
+def verify_contract_manifest_signature(
+    manifest: ContractManifestDocument,
+    signature: ManifestSignature,
+    *,
+    authorities: Sequence[ContractSigningAuthority] | None = None,
+    historical: bool = False,
+    allow_test_authorities: bool = False,
+) -> ContractSigningAuthority:
+    """Verify a current signature or an exact retired historical digest."""
+
+    selected = CONTRACT_SIGNING_AUTHORITIES if authorities is None else authorities
+    current = validate_contract_signing_authorities(
+        selected,
+        allow_test_authorities=allow_test_authorities,
+    )
+    authority = _contract_signing_authority(signature.key_id, selected)
+    digest = sha256_digest(manifest)
+    if signature.manifest_digest != digest:
+        raise RuntimeError("global contract manifest digest mismatch")
+    if authority.state is SigningKeyState.COMPROMISED:
+        raise RuntimeError("contract manifest signer is compromised")
+    if historical:
+        if (
+            authority.state is not SigningKeyState.RETIRED
+            or digest not in authority.historical_manifest_digests
+        ):
+            raise RuntimeError(
+                "contract manifest is not pinned to a retired historical signer"
+            )
+    elif authority is not current or authority.state is not SigningKeyState.CURRENT:
+        raise RuntimeError("global contract manifest signer is not current")
+    try:
+        public_key = base64.b64decode(authority.public_key_b64, validate=True)
+        signature_bytes = base64.b64decode(signature.signature, validate=True)
+        Ed25519PublicKey.from_public_bytes(public_key).verify(
+            signature_bytes,
+            canonical_json(manifest),
+        )
+    except (ValueError, InvalidSignature) as exc:
+        raise RuntimeError("global contract manifest signature is invalid") from exc
+    return authority
+
+
+def authorize_candidate_activation(
+    manifest: ContractManifestV2,
+    signature: ManifestSignature | None,
+    *,
+    authorities: Sequence[ContractSigningAuthority] | None = None,
+    allow_test_authorities: bool = False,
+) -> ContractSigningAuthority:
+    """Fail closed unless a candidate has a current production signature.
+
+    This primitive does not register tools. The external cutover must add the
+    signed artifact and call this gate from a separately reviewed runtime
+    registration change.
+    """
+
+    if signature is None:
+        raise RuntimeError("unsigned contract candidate cannot be activated")
+    authority = verify_contract_manifest_signature(
+        manifest,
+        signature,
+        authorities=authorities,
+        allow_test_authorities=allow_test_authorities,
+    )
+    if authority.authority_class is not SigningAuthorityClass.PRODUCTION:
+        raise RuntimeError("test contract authority cannot activate candidates")
+    if any(
+        contract.lifecycle_state is not ContractLifecycleState.CANDIDATE
+        for contract in manifest.contracts
+    ):
+        raise RuntimeError("only reviewed contract candidates may be activated")
+    return authority
+
+
 def _data_bytes(name: str) -> bytes:
     return files("m365_secure_mcp.contract_data").joinpath(name).read_bytes()
 
@@ -505,26 +911,37 @@ def load_global_manifest() -> ContractManifest:
         raw_signature = json.loads(_data_bytes("global-manifest.sig.json"))
         manifest = ContractManifest.model_validate(raw_manifest)
         signature = ManifestSignature.model_validate(raw_signature)
-        public_key_bytes = base64.b64decode(
-            CONTRACT_SIGNING_PUBLIC_KEY_B64,
-            validate=True,
-        )
-        signature_bytes = base64.b64decode(signature.signature, validate=True)
     except (ValueError, TypeError, json.JSONDecodeError) as exc:
         raise RuntimeError("global contract manifest is malformed") from exc
 
-    digest = sha256_digest(manifest)
-    if signature.key_id != CONTRACT_SIGNING_KEY_ID:
-        raise RuntimeError("global contract manifest signer is not trusted")
-    if signature.manifest_digest != digest:
-        raise RuntimeError("global contract manifest digest mismatch")
+    authority = _contract_signing_authority(
+        signature.key_id,
+        CONTRACT_SIGNING_AUTHORITIES,
+    )
+    verify_contract_manifest_signature(
+        manifest,
+        signature,
+        historical=authority.state is SigningKeyState.RETIRED,
+    )
+    return manifest
+
+
+def load_active_identity_manifest() -> ContractManifestV2 | None:
+    """Load the optional signed Identity manifest; absence means no tool surface."""
+
     try:
-        Ed25519PublicKey.from_public_bytes(public_key_bytes).verify(
-            signature_bytes,
-            canonical_json(manifest),
-        )
-    except (ValueError, InvalidSignature) as exc:
-        raise RuntimeError("global contract manifest signature is invalid") from exc
+        raw_manifest = json.loads(_data_bytes("global-identity-manifest.json"))
+        raw_signature = json.loads(_data_bytes("global-identity-manifest.sig.json"))
+    except FileNotFoundError:
+        return None
+    except (ValueError, TypeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("active Identity contract manifest is malformed") from exc
+    try:
+        manifest = ContractManifestV2.model_validate(raw_manifest)
+        signature = ManifestSignature.model_validate(raw_signature)
+    except ValueError as exc:
+        raise RuntimeError("active Identity contract manifest is malformed") from exc
+    authorize_candidate_activation(manifest, signature)
     return manifest
 
 

@@ -97,3 +97,20 @@ its contribution to each pillar, preserve the public/private boundary, list
 non-goals and prohibitions, and define deterministic validation and rollback.
 Implementation evidence belongs in a persistent progress log.
 
+The canonical program sequence is:
+
+1. Contract Signing Lifecycle and Identity Slice.
+2. Operational Playbooks v1.
+3. Evaluation and Release Readiness.
+4. Community Adoption Program.
+5. Endpoint/Intune.
+6. Defender.
+7. Conditional Access.
+8. Reduced Posture Runtime.
+9. Progressive Legacy Catalog Migration.
+
+Recorded and live-lab harnesses begin with each operation; the evaluation
+program consolidates and publishes comparable results. The first three
+workflows use explicit manual handoffs for capabilities not yet implemented.
+Community adoption occurs before indefinite catalog expansion. Tool count is
+never a success criterion.

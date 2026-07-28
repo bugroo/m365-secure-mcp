@@ -13,10 +13,13 @@ the blast radius of:
 - confused-deputy behavior between an MCP client and Microsoft identity;
 - accidental or repeated writes.
 
-The security objective supports three equal capabilities: observe/diagnose,
-operate/automate and assure/provide evidence. The server is neither a generic
-Graph proxy nor an autonomous administrator, but it is intentionally capable
-of bounded administrative effects under signed authority.
+The security objective preserves five permanent pillars: observe/diagnose,
+operate/automate, assure/provide evidence, experience/evaluation, and
+community/verifiable distribution. The first three are core operational
+functions; the latter two ensure they remain usable and demonstrable. The
+server is neither a generic Graph proxy nor an autonomous administrator, but
+it is intentionally capable of bounded administrative effects under signed
+authority.
 
 ## Trust boundaries
 
@@ -141,6 +144,15 @@ of bounded administrative effects under signed authority.
 - The control trust ring has exactly one current key. Retired public keys are
   retained only for closed historical manifest digests; compromised keys are
   never accepted. Production and ephemeral test authorities cannot be mixed.
+- Contract manifests use an independent closed trust registry and offline CLI.
+  The legacy `profile-debt-2026-07` public key remains current until a direct
+  cutover atomically retires it for its one pinned historical digest and adds
+  the externally inspected `m365-contracts-*` public authority, signature and
+  generated active artifacts. Contract, control, playbook, approval and
+  release keys are never reused.
+- Schema-2.0 Identity contracts remain inactive candidates. Unsigned
+  manifests, test signatures, retired keys and compromised keys cannot
+  activate a runtime catalog. No candidate is exposed as an MCP tool.
 - Pagination links are validated against the Graph v1.0 egress allowlist and
   wrapped in a process-local HMAC cursor bound to the originating tool.
 - Tool outputs are capped below common MCP client warning thresholds.

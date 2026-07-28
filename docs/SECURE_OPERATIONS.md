@@ -6,7 +6,7 @@
 that observes, diagnoses, plans, executes, verifies and documents bounded
 administrative operations through fixed Microsoft Graph contracts**.
 
-Three product pillars have equal weight:
+Five product pillars have permanent and equal roadmap weight:
 
 1. **Observe and diagnose** — bounded inventory, preflight and operational
    evidence.
@@ -14,6 +14,14 @@ Three product pillars have equal weight:
    verified effects and resumable workflows.
 3. **Assure and provide evidence** — deterministic findings, receipts, change
    records and drift evidence.
+4. **Experience and evaluation** — reliable exposure, diagnostics and
+   reproducible agent-facing evaluation.
+5. **Community and verifiable distribution** — reviewable contributions,
+   installation and attestable public artifacts.
+
+The first three are core operational functions. The last two keep those
+functions usable, measurable and adoptable and cannot be displaced by catalog
+growth.
 
 The project is neither a generic Microsoft Graph proxy, an autonomous tenant
 administrator, a primarily read-only product, nor a compliance summarizer.
@@ -117,7 +125,7 @@ The generated effect-model artifact has its own canonical digest and is bound
 into compiler output, local provenance and the CycloneDX SBOM. It is not a
 substitute for a future signed v2 contract manifest.
 
-## First Identity Slice — planned, not implemented
+## First Identity Slice — implemented as inactive candidates
 
 | Planned operation | Tier / authorization | Endpoint class | Fences and protected exclusions | Verification and compensation | Public privacy boundary |
 |---|---|---|---|---|---|
@@ -127,9 +135,15 @@ substitute for a future signed v2 contract manifest.
 | `entra.group.user_membership.remove` | T2 / `explicit_plan` | exact relationship removal ending `/$ref` | same immutable fences and exclusions as add | absence readback; inverse add requires a separate plan | status and opaque references only |
 | `entra.user.direct_license.set` | T2 / `explicit_plan` | fixed desired-state license action | exact user and allowlisted SKU; direct assignment only; exclude inherited/group assignment | bounded post-read/observation; inverse desired state requires a separate plan | outcome, changed SKU reference and counts; no user identity or license content |
 
-No contract for these names exists yet. Permissions, operator roles and exact
-Graph calls become active only through a separately reviewed, signed manifest
-change and manual administrator consent.
+All five schema-2.0 contracts now compile as `candidate`/`preview`, with fixed
+Graph v1.0 calls, Governance v3 bindings, closed providers, protected-object
+checks, recorded playback and deterministic evaluations. They are not active
+MCP tools and cannot execute Graph. The candidate PR may merge inactive.
+Reviewed live-lab execution of all five operations must occur before an
+independent production contract authority signs the final post-lab manifest
+digest. Any correction invalidates the earlier digest. A separate small
+activation PR performs the atomic cutover; no candidate registers as a tool
+before that PR. Administrator consent remains manual.
 
 ## Operational playbook direction
 
@@ -145,10 +159,14 @@ The first effectful playbooks will be:
    remove selected relationships and direct licenses, preserve workload data,
    record manual ownership-transfer tasks and verify.
 
-No effectful playbook may run until T2 exact plans, real dual control,
-asynchronous result handling and resumable checkpoints exist. An ambiguous
-write pauses the complete DAG. A signed playbook may define only an explicitly
-reviewed safe continuation; it can never reinterpret ambiguity as success.
+Operator Foundation already supplies T2 exact plans, real dual control,
+asynchronous result handling and resumable checkpoints. Operational Playbooks
+v1 therefore begins after Identity Slice. Capabilities not yet implemented
+remain explicit manual handoffs. Intune and Defender later enrich the same
+workflows without displacing Evaluation and Release Readiness or Community
+Adoption. An ambiguous write pauses the complete DAG. A signed playbook may
+define only an explicitly reviewed safe continuation; it can never reinterpret
+ambiguity as success.
 
 Email, tickets, documents, incidents, Graph content and findings are untrusted
 data. They may contribute evidence but cannot authorize a write. Posture may
@@ -158,21 +176,25 @@ operation executable.
 
 ## Canonical milestone order
 
-1. **Secure Operations 0 — Contract Effect Model.**
-2. **Secure Operations 1 — Operator Foundation:** implemented with inactive
-   synthetic fixtures: T2 explicit plans, real dual control, asynchronous
-   handles, resumable execution and signed effectful playbooks. It activates
-   no production Graph operation. See
-   [Operator Foundation](OPERATOR_FOUNDATION.md).
-3. **Secure Operations 2 — Identity Slice:** the five planned operations above.
-4. **Secure Operations 3 — Endpoint/Intune Slice.**
-5. **Secure Operations 4 — Defender Slice.**
-6. **Secure Operations 5 — Operational Playbooks:** compromised account,
-   bounded onboarding and preserve-data offboarding.
-7. **Reduced Posture runtime:** evidence → deterministic finding →
+1. **Contract Signing Lifecycle and Identity Slice:** lifecycle and candidate
+   implementation complete; external authority custody/signing is the
+   activation boundary.
+2. **Operational Playbooks v1:** compromised-account containment, bounded
+   onboarding and preserve-data offboarding, using manual handoffs for
+   capabilities not yet implemented.
+3. **Evaluation and Release Readiness:** consolidated recorded tests, lab
+   execution, public Evaluation Suite, client compatibility and reproducible
+   scorecard.
+4. **Community Adoption Program:** validated quickstart, safe demo,
+   contributor experience, first verifiable release, future `server.json`,
+   MCP Registry submission and OpenSSF assessment.
+5. **Endpoint/Intune.**
+6. **Defender.**
+7. **Conditional Access.**
+8. **Reduced Posture Runtime:** evidence → deterministic finding →
    non-authorizing proposal → governed contract → approval → execution and
    verification.
-8. **Progressive legacy catalog migration.**
+9. **Progressive Legacy Catalog Migration.**
 
 ## Permanent prohibitions
 

@@ -1,0 +1,708 @@
+{
+  "contracts": [
+    {
+      "ambiguity_handling": "never_retry_automatically",
+      "async_behavior": "provider_eventual",
+      "authorization_mode": "explicit_plan",
+      "compensation": "not_compensatable",
+      "description": "Revoke refresh tokens and browser session cookies for one exact allowlisted, non-protected member user.",
+      "effect": "invoke_action",
+      "executor_id": "identity.user_sessions_revoke.v1",
+      "graph": {
+        "api_version": "v1.0",
+        "endpoint": "/users/{user_id}/revokeSignInSessions",
+        "method": "POST"
+      },
+      "id": "entra.user.sessions.revoke",
+      "idempotency": {
+        "key_required": true,
+        "retry": "never_after_uncertain"
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "user_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "license_prerequisites": [
+        "Microsoft Entra workload license required by the tenant for the protected-object evidence used by policy"
+      ],
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "module": "entra_identity",
+      "official_references": [
+        "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/permissions-reference",
+        "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access",
+        "https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0"
+      ],
+      "output_fields": [
+        "operation_reference",
+        "receipt_reference",
+        "status",
+        "verification"
+      ],
+      "permissions": {
+        "admin_consent_required": true,
+        "delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All",
+          "User.RevokeSessions.All"
+        ],
+        "effect_delegated_scopes": [
+          "User.RevokeSessions.All"
+        ],
+        "microsoft_supported_roles": [
+          "Helpdesk Administrator"
+        ],
+        "operator_roles": [
+          "Helpdesk Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "User.Read.All"
+        ],
+        "project_required_role": "Helpdesk Administrator",
+        "project_role_rationale": "The project requires Helpdesk Administrator because its Microsoft-supported refresh-token revocation task matches this bounded non-protected-user operation.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": []
+      },
+      "plan_ttl_seconds": 900,
+      "postconditions": [
+        "provider_acceptance_recorded",
+        "session_invalidation_delay_disclosed"
+      ],
+      "preconditions": [
+        "complete_protected_object_evidence",
+        "exact_member_user_target",
+        "target_allowlisted",
+        "target_not_guest_or_synchronized",
+        "target_not_privileged_or_protected"
+      ],
+      "preflight_graph_calls": [
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleEligibilityScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/users/{user_id}",
+          "method": "GET"
+        }
+      ],
+      "privacy_class": "opaque_public_private_receipt",
+      "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "resource_fence_id": "identity.allowlisted_user.v1",
+      "resource_fences": [
+        "single_runtime_tenant_and_profile",
+        "signed_governance_user_allowlist",
+        "tenant_id",
+        "user_id"
+      ],
+      "risk_tier": "T2",
+      "tool_name": "m365_entra_user_sessions_revoke",
+      "verification": "provider_acknowledged",
+      "verification_contract_id": "identity.session_revocation_acceptance.v1",
+      "verified_on": "2026-07-28"
+    },
+    {
+      "ambiguity_handling": "never_retry_automatically",
+      "async_behavior": "synchronous",
+      "authorization_mode": "explicit_plan",
+      "compensation": "conditional_restore",
+      "description": "Set accountEnabled to one exact desired state for an allowlisted cloud-managed, non-protected member user.",
+      "effect": "state_transition",
+      "executor_id": "identity.user_account_state_set.v1",
+      "graph": {
+        "api_version": "v1.0",
+        "endpoint": "/users/{user_id}",
+        "method": "PATCH"
+      },
+      "id": "entra.user.account_state.set",
+      "idempotency": {
+        "key_required": true,
+        "retry": "never_after_uncertain"
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "account_enabled": {
+            "type": "boolean"
+          },
+          "user_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "account_enabled",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "license_prerequisites": [
+        "Microsoft Entra workload license required by the tenant for the protected-object evidence used by policy"
+      ],
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "module": "entra_identity",
+      "official_references": [
+        "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/privileged-roles-permissions",
+        "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access",
+        "https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0"
+      ],
+      "output_fields": [
+        "operation_reference",
+        "receipt_reference",
+        "status",
+        "verification"
+      ],
+      "permissions": {
+        "admin_consent_required": true,
+        "delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.EnableDisableAccount.All",
+          "User.Read.All"
+        ],
+        "effect_delegated_scopes": [
+          "User.EnableDisableAccount.All",
+          "User.Read.All"
+        ],
+        "microsoft_supported_roles": [
+          "Authentication Administrator",
+          "User Administrator"
+        ],
+        "operator_roles": [
+          "User Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "User.Read.All"
+        ],
+        "project_required_role": "User Administrator",
+        "project_role_rationale": "The project selects User Administrator for non-administrator member accounts and rejects every protected or privileged target before the effect.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "User.Read.All"
+        ]
+      },
+      "plan_ttl_seconds": 900,
+      "postconditions": [
+        "account_enabled_equals_planned_value"
+      ],
+      "preconditions": [
+        "complete_protected_object_evidence",
+        "current_state_digest_bound_to_plan",
+        "exact_cloud_managed_member_user_target",
+        "target_allowlisted",
+        "target_not_privileged_or_protected"
+      ],
+      "preflight_graph_calls": [
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleEligibilityScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/users/{user_id}",
+          "method": "GET"
+        }
+      ],
+      "privacy_class": "opaque_public_private_receipt",
+      "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "resource_fence_id": "identity.allowlisted_user.v1",
+      "resource_fences": [
+        "single_runtime_tenant_and_profile",
+        "signed_governance_user_allowlist",
+        "tenant_id",
+        "user_id"
+      ],
+      "risk_tier": "T2",
+      "tool_name": "m365_entra_user_account_state_set",
+      "verification": "strong_readback",
+      "verification_contract_id": "identity.user_account_state_readback.v1",
+      "verified_on": "2026-07-28"
+    },
+    {
+      "ambiguity_handling": "never_retry_automatically",
+      "async_behavior": "synchronous",
+      "authorization_mode": "explicit_plan",
+      "compensation": "conditional_restore",
+      "description": "Add one exact allowlisted member user to one exact allowlisted static, non-protected group.",
+      "effect": "relationship_add",
+      "executor_id": "identity.group_user_membership_add.v1",
+      "graph": {
+        "api_version": "v1.0",
+        "endpoint": "/groups/{group_id}/members/$ref",
+        "method": "POST"
+      },
+      "id": "entra.group.user_membership.add",
+      "idempotency": {
+        "key_required": true,
+        "retry": "never_after_uncertain"
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "license_prerequisites": [
+        "No additional workload license beyond the target group feature"
+      ],
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "module": "entra_identity",
+      "official_references": [
+        "https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0"
+      ],
+      "output_fields": [
+        "operation_reference",
+        "receipt_reference",
+        "status",
+        "verification"
+      ],
+      "permissions": {
+        "admin_consent_required": true,
+        "delegated_scopes": [
+          "GroupMember.ReadWrite.All",
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "effect_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
+        ],
+        "microsoft_supported_roles": [
+          "Directory Writers",
+          "Exchange Administrator (Microsoft 365 groups only)",
+          "Group owners",
+          "Groups Administrator",
+          "Identity Governance Administrator",
+          "Intune Administrator (security groups only)",
+          "SharePoint Administrator (Microsoft 365 groups only)",
+          "Teams Administrator (Microsoft 365 groups only)",
+          "User Administrator",
+          "Yammer Administrator (Microsoft 365 groups only)"
+        ],
+        "operator_roles": [
+          "Groups Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "GroupMember.ReadWrite.All",
+          "User.Read.All"
+        ],
+        "project_required_role": "Groups Administrator",
+        "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
+        ]
+      },
+      "plan_ttl_seconds": 900,
+      "postconditions": [
+        "exact_user_membership_observed"
+      ],
+      "preconditions": [
+        "complete_protected_object_evidence",
+        "group_allowlisted_static_and_classified",
+        "group_not_dynamic_role_assignable_or_protected",
+        "target_allowlisted_member_user",
+        "target_not_privileged_or_protected"
+      ],
+      "preflight_graph_calls": [
+        {
+          "api_version": "v1.0",
+          "endpoint": "/groups/{group_id}",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleEligibilityScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/users/{user_id}",
+          "method": "GET"
+        }
+      ],
+      "privacy_class": "opaque_public_private_receipt",
+      "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
+      "resource_fence_id": "identity.allowlisted_user_and_group.v1",
+      "resource_fences": [
+        "group_id",
+        "signed_governance_group_allowlist",
+        "signed_governance_user_allowlist",
+        "single_runtime_tenant_and_profile",
+        "tenant_id",
+        "user_id"
+      ],
+      "risk_tier": "T2",
+      "tool_name": "m365_entra_group_user_membership_add",
+      "verification": "strong_readback",
+      "verification_contract_id": "identity.group_membership_readback.v1",
+      "verified_on": "2026-07-28"
+    },
+    {
+      "ambiguity_handling": "never_retry_automatically",
+      "async_behavior": "synchronous",
+      "authorization_mode": "explicit_plan",
+      "compensation": "conditional_restore",
+      "description": "Remove one exact user membership relationship from one exact allowlisted static, non-protected group.",
+      "effect": "relationship_remove",
+      "executor_id": "identity.group_user_membership_remove.v1",
+      "graph": {
+        "api_version": "v1.0",
+        "endpoint": "/groups/{group_id}/members/{user_id}/$ref",
+        "method": "DELETE"
+      },
+      "id": "entra.group.user_membership.remove",
+      "idempotency": {
+        "key_required": true,
+        "retry": "never_after_uncertain"
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "group_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "group_id",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "license_prerequisites": [
+        "No additional workload license beyond the target group feature"
+      ],
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "module": "entra_identity",
+      "official_references": [
+        "https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0"
+      ],
+      "output_fields": [
+        "operation_reference",
+        "receipt_reference",
+        "status",
+        "verification"
+      ],
+      "permissions": {
+        "admin_consent_required": true,
+        "delegated_scopes": [
+          "GroupMember.ReadWrite.All",
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "effect_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
+        ],
+        "microsoft_supported_roles": [
+          "Directory Writers",
+          "Exchange Administrator (Microsoft 365 groups only)",
+          "Group owners",
+          "Groups Administrator",
+          "Identity Governance Administrator",
+          "Intune Administrator (security groups only)",
+          "SharePoint Administrator (Microsoft 365 groups only)",
+          "Teams Administrator (Microsoft 365 groups only)",
+          "User Administrator",
+          "Yammer Administrator (Microsoft 365 groups only)"
+        ],
+        "operator_roles": [
+          "Groups Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "GroupMember.ReadWrite.All",
+          "User.Read.All"
+        ],
+        "project_required_role": "Groups Administrator",
+        "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
+        ]
+      },
+      "plan_ttl_seconds": 900,
+      "postconditions": [
+        "exact_user_membership_absence_observed"
+      ],
+      "preconditions": [
+        "complete_protected_object_evidence",
+        "group_allowlisted_static_and_classified",
+        "group_not_dynamic_role_assignable_or_protected",
+        "target_allowlisted_member_user",
+        "target_not_privileged_or_protected"
+      ],
+      "preflight_graph_calls": [
+        {
+          "api_version": "v1.0",
+          "endpoint": "/groups/{group_id}",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleEligibilityScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/users/{user_id}",
+          "method": "GET"
+        }
+      ],
+      "privacy_class": "opaque_public_private_receipt",
+      "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
+      "resource_fence_id": "identity.allowlisted_user_and_group.v1",
+      "resource_fences": [
+        "group_id",
+        "signed_governance_group_allowlist",
+        "signed_governance_user_allowlist",
+        "single_runtime_tenant_and_profile",
+        "tenant_id",
+        "user_id"
+      ],
+      "risk_tier": "T2",
+      "tool_name": "m365_entra_group_user_membership_remove",
+      "verification": "strong_readback",
+      "verification_contract_id": "identity.group_membership_readback.v1",
+      "verified_on": "2026-07-28"
+    },
+    {
+      "ambiguity_handling": "never_retry_automatically",
+      "async_behavior": "synchronous",
+      "authorization_mode": "explicit_plan",
+      "compensation": "conditional_restore",
+      "description": "Set the exact desired direct-license assignment for one allowlisted SKU and fixed service-plan set on one allowlisted user.",
+      "effect": "state_transition",
+      "executor_id": "identity.user_direct_license_set.v1",
+      "graph": {
+        "api_version": "v1.0",
+        "endpoint": "/users/{user_id}/assignLicense",
+        "method": "POST"
+      },
+      "id": "entra.user.direct_license.set",
+      "idempotency": {
+        "key_required": true,
+        "retry": "never_after_uncertain"
+      },
+      "input_schema": {
+        "additionalProperties": false,
+        "properties": {
+          "disabled_service_plan_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 100,
+            "type": "array",
+            "uniqueItems": true
+          },
+          "license_assigned": {
+            "type": "boolean"
+          },
+          "sku_id": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "user_id": {
+            "format": "uuid",
+            "type": "string"
+          }
+        },
+        "required": [
+          "disabled_service_plan_ids",
+          "license_assigned",
+          "sku_id",
+          "user_id"
+        ],
+        "type": "object"
+      },
+      "license_prerequisites": [
+        "Available unit for assignment when desired state is assigned",
+        "Target user has a valid usageLocation",
+        "Tenant subscription contains the exact allowlisted SKU"
+      ],
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "module": "entra_identity",
+      "official_references": [
+        "https://learn.microsoft.com/en-us/graph/api/subscribedsku-list?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0"
+      ],
+      "output_fields": [
+        "operation_reference",
+        "receipt_reference",
+        "status",
+        "verification"
+      ],
+      "permissions": {
+        "admin_consent_required": true,
+        "delegated_scopes": [
+          "LicenseAssignment.Read.All",
+          "LicenseAssignment.ReadWrite.All",
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "effect_delegated_scopes": [
+          "LicenseAssignment.ReadWrite.All"
+        ],
+        "microsoft_supported_roles": [
+          "Directory Writers",
+          "License Administrator",
+          "User Administrator"
+        ],
+        "operator_roles": [
+          "License Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "LicenseAssignment.Read.All",
+          "User.Read.All"
+        ],
+        "project_required_role": "License Administrator",
+        "project_role_rationale": "The project requires the Microsoft-supported License Administrator role because the contract changes only direct licensing and excludes broader user administration.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "User.Read.All"
+        ]
+      },
+      "plan_ttl_seconds": 900,
+      "postconditions": [
+        "exact_direct_license_desired_state_observed",
+        "group_inherited_licenses_unchanged"
+      ],
+      "preconditions": [
+        "complete_protected_object_evidence",
+        "exact_allowlisted_sku_and_service_plans",
+        "license_capacity_and_usage_location_valid",
+        "target_allowlisted_member_user",
+        "target_not_privileged_or_protected"
+      ],
+      "preflight_graph_calls": [
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignments",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleAssignmentScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/roleManagement/directory/roleEligibilityScheduleInstances",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/subscribedSkus",
+          "method": "GET"
+        },
+        {
+          "api_version": "v1.0",
+          "endpoint": "/users/{user_id}",
+          "method": "GET"
+        }
+      ],
+      "privacy_class": "opaque_public_private_receipt",
+      "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "resource_fence_id": "identity.allowlisted_user_and_sku.v1",
+      "resource_fences": [
+        "sku_id",
+        "signed_governance_sku_allowlist",
+        "signed_governance_user_allowlist",
+        "single_runtime_tenant_and_profile",
+        "tenant_id",
+        "user_id"
+      ],
+      "risk_tier": "T2",
+      "tool_name": "m365_entra_user_direct_license_set",
+      "verification": "strong_readback",
+      "verification_contract_id": "identity.direct_license_readback.v1",
+      "verified_on": "2026-07-28"
+    }
+  ],
+  "product": "m365-secure-mcp",
+  "schema_version": "2.0"
+}

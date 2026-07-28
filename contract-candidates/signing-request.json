@@ -1,0 +1,72 @@
+{
+  "activation_sequence": [
+    "merge-inactive-candidate-pr",
+    "execute-and-review-live-lab-for-all-five-operations",
+    "apply-corrections-and-regenerate-candidate-digest-if-needed",
+    "sign-final-reviewed-digest-with-external-production-authority",
+    "merge-separate-small-activation-pr"
+  ],
+  "artifact_digests": {
+    "candidate_registry": "sha256:e780771bc1e58cd1d9c6f70b1bd200f059aa9be403787f800a5d8fe1fb2b0952",
+    "graph_surface_diff": "sha256:75def38b4025c7d93f9591c90750a1096d9d634d7e2c20a62984fe923bcfe7ea",
+    "provenance": "sha256:96e7f2995ff94ec241c10882bdf74eebae1caba9ab222a3b53fbce89811c5f83",
+    "sbom_binding": "sha256:23b924df95e8552bc6bfffb5248631379de0dd7902c170de24d0578b2b1d742c"
+  },
+  "candidate_tool_registration": false,
+  "contains_private_material": false,
+  "digest_invalidated_by_candidate_change": true,
+  "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "graph_surface_diff": {
+    "activation_state": "candidate",
+    "active_manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
+    "active_surface_unchanged": true,
+    "candidate_delegated_scopes": [
+      "GroupMember.ReadWrite.All",
+      "LicenseAssignment.Read.All",
+      "LicenseAssignment.ReadWrite.All",
+      "RoleManagement.Read.Directory",
+      "User.EnableDisableAccount.All",
+      "User.Read.All",
+      "User.RevokeSessions.All"
+    ],
+    "candidate_endpoints": [
+      "DELETE /groups/{group_id}/members/{user_id}/$ref",
+      "PATCH /users/{user_id}",
+      "POST /groups/{group_id}/members/$ref",
+      "POST /users/{user_id}/assignLicense",
+      "POST /users/{user_id}/revokeSignInSessions"
+    ],
+    "candidate_manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
+    "candidate_only_delegated_scopes": [
+      "GroupMember.ReadWrite.All",
+      "LicenseAssignment.Read.All",
+      "LicenseAssignment.ReadWrite.All",
+      "User.EnableDisableAccount.All",
+      "User.RevokeSessions.All"
+    ],
+    "candidate_only_endpoints": [
+      "DELETE /groups/{group_id}/members/{user_id}/$ref",
+      "POST /groups/{group_id}/members/$ref",
+      "POST /users/{user_id}/assignLicense",
+      "POST /users/{user_id}/revokeSignInSessions"
+    ],
+    "runtime_registration_change": false,
+    "schema_version": "1.0"
+  },
+  "intended_key_id": "m365-contracts-2026-07",
+  "intended_public_fingerprint": "pending-external-inspection",
+  "manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
+  "review_reference": "pull-request-required-before-signing",
+  "schema_version": "1.0",
+  "signing_eligible": false,
+  "status": "awaiting_reviewed_live_lab",
+  "tests_required": [
+    "compiler-check",
+    "current-and-historical-signature-verification",
+    "candidate-activation-denial",
+    "governance-v1-v2-v3-compatibility",
+    "identity-recorded-playback",
+    "reviewed-live-lab-all-five-operations",
+    "privacy-and-secret-scan"
+  ]
+}

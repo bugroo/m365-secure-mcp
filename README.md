@@ -14,9 +14,13 @@ contracts.
 |---:|---:|---:|---:|---:|---:|
 | 130 | 9 Entra contracts | 1 T0 workflow | 102 max | 27 | 0 |
 
-| Observe and diagnose | Operate and automate | Assure and provide evidence |
-|---|---|---|
-| bounded inventory, preflight and operational evidence | fixed effects, proportional authorization and verified workflows | deterministic findings, receipts, change records and drift |
+| Permanent product pillar | Purpose |
+|---|---|
+| Observe and diagnose | bounded inventory, preflight and operational evidence |
+| Operate and automate | fixed effects, proportional authorization and verified workflows |
+| Assure and provide evidence | deterministic findings, receipts, change records and drift |
+| Experience and evaluation | reliable exposure, diagnostics and reproducible agent-facing evaluation |
+| Community and verifiable distribution | reviewable contributions, installation and attestable artifacts |
 
 [Installation](#installation) | [Security model](#security-model) |
 [Evidence](#evidence-contract) | [Diagnostics](#diagnose-before-serving) |
@@ -28,8 +32,10 @@ contracts.
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Secure Operations](docs/SECURE_OPERATIONS.md) |
 [Operator Foundation](docs/OPERATOR_FOUNDATION.md) |
+[Contract signing](docs/CONTRACT_SIGNING_RUNBOOK.md) |
 [Project north star](docs/PROJECT_NORTH_STAR.md) |
 [Roadmap](docs/ROADMAP.md) |
+[Community adoption gates](docs/COMMUNITY_ADOPTION_GATES.md) |
 [Open-source boundary](docs/OPEN_SOURCE_BOUNDARY.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
 
@@ -105,6 +111,15 @@ the [control signing runbook](docs/CONTROL_SIGNING_RUNBOOK.md). The compiler
 never signs, generates a production key or changes a trust anchor. Local
 `uv build` output is marked `local-unattested` and `not-a-release`.
 
+Contract manifests use a separate
+[contract-signing lifecycle](docs/CONTRACT_SIGNING_RUNBOOK.md). The five
+Identity schema-2.0 contracts are currently `candidate`/`preview`: they compile,
+have Governance/provider/tests/recordings, but are not registered or
+executable. PR #5 may merge with them inactive. All five operations require
+reviewed live-lab execution before the external authority signs the resulting
+final digest; any live-lab correction changes that digest. Activation then
+requires a separate small PR containing the reviewed direct cutover.
+
 ### What comes next
 
 The signed T0 readiness playbook, reusable Change-safe T1 operator, Assurance
@@ -112,9 +127,15 @@ verticals, multi-tenant radar, Posture Control build foundation, Governance
 v2, semantic Effect Model, and inactive Operator Foundation are implemented.
 Operator Foundation proves exact T2 plans, real T3 dual control, durable
 accepted/verified/uncertain outcomes, and resumable signed synthetic DAGs. It
-activates no new Graph operation. The next canonical workload program is the
-bounded Identity slice, followed by Intune, Defender, and production
-operational playbooks.
+activates no new Graph operation. The bounded Identity slice is implemented as
+five inactive candidates. Its remaining activation gates are candidate merge,
+reviewed live-lab execution of all five operations, external signing of the
+final post-lab digest and a separate activation PR.
+
+The next canonical programs are Operational Playbooks v1, Evaluation and
+Release Readiness, and Community Adoption. Endpoint/Intune, Defender and
+Conditional Access follow. This order makes complete workflows, usability,
+reproducible evaluation and community adoption real before catalog expansion.
 
 Posture runtime is postponed until those operational slices exist. Its reduced
 role is to turn bounded evidence into deterministic findings and

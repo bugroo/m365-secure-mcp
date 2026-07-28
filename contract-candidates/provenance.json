@@ -1,0 +1,18 @@
+{
+  "activation_state": "candidate",
+  "active_manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
+  "build_kind": "local-unattested",
+  "builder": "m365_secure_mcp.contract_compiler",
+  "compiler_version": "1.6",
+  "distribution_status": "not-a-release",
+  "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "live_lab_review_status": "required-before-signing",
+  "manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
+  "registry_digest": "sha256:e780771bc1e58cd1d9c6f70b1bd200f059aa9be403787f800a5d8fe1fb2b0952",
+  "release_attestation_status": "external-required",
+  "runtime_tool_generation": false,
+  "schema_version": "1.0",
+  "signature_present": false,
+  "signing_eligible": false,
+  "surface_diff_digest": "sha256:75def38b4025c7d93f9591c90750a1096d9d634d7e2c20a62984fe923bcfe7ea"
+}

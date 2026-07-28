@@ -1,0 +1,59 @@
+{
+  "contains_customer_data": false,
+  "recording_mode": "sanitized-synthetic",
+  "schema_version": "1.0",
+  "synthetic_identifiers": {
+    "group_id": "33333333-3333-4333-8333-333333333333",
+    "service_plan_id": "55555555-5555-4555-8555-555555555555",
+    "sku_id": "44444444-4444-4444-8444-444444444444",
+    "user_id": "22222222-2222-4222-8222-222222222222"
+  },
+  "transcripts": [
+    {
+      "expected_kind": "verified",
+      "operation_id": "entra.group.user_membership.add",
+      "provider_sequence": [
+        "preflight:not_member",
+        "write:accepted_204",
+        "readback:member"
+      ]
+    },
+    {
+      "expected_kind": "verified",
+      "operation_id": "entra.group.user_membership.remove",
+      "provider_sequence": [
+        "preflight:member",
+        "write:accepted_204_exact_ref",
+        "readback:not_member"
+      ]
+    },
+    {
+      "expected_kind": "verified",
+      "operation_id": "entra.user.account_state.set",
+      "provider_sequence": [
+        "preflight:enabled",
+        "write:accepted_204",
+        "readback:disabled"
+      ]
+    },
+    {
+      "expected_kind": "verified",
+      "operation_id": "entra.user.direct_license.set",
+      "provider_sequence": [
+        "preflight:capacity_available",
+        "write:accepted_200",
+        "readback:direct_assignment"
+      ]
+    },
+    {
+      "expected_kind": "accepted",
+      "operation_id": "entra.user.sessions.revoke",
+      "provider_sequence": [
+        "preflight:protected_evidence_complete",
+        "write:accepted_200_true",
+        "observation:pending"
+      ]
+    }
+  ],
+  "updated_only_by_explicit_action": true
+}
