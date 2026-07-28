@@ -21,3 +21,9 @@ executable scenarios live in `tests/test_entra_profile_debt.py`.
 Live-tenant evaluations are intentionally not committed because tenant
 inventory and posture are neither public nor stationary. They belong in a
 dedicated non-production tenant and must remain read-only.
+
+`operator-foundation-adversarial.json` is a deterministic, synthetic security
+suite for exact-plan approval, dual control, replay, expiry, digest drift,
+accepted-versus-verified async semantics, uncertainty, prompt injection and
+public-output privacy. Each scenario references its executable pytest case.
+It contains no model score, tenant data or customer policy.

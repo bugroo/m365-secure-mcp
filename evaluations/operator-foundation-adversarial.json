@@ -1,0 +1,57 @@
+{
+  "contains_customer_data": false,
+  "evaluation_kind": "deterministic_security",
+  "schema_version": "1.0",
+  "scenarios": [
+    {
+      "expected": "AWAITING_APPROVAL",
+      "id": "approval_bypass",
+      "test_reference": "tests/test_effectful_playbook.py::test_t2_playbook_pauses_for_external_approval_and_resumes"
+    },
+    {
+      "expected": "rejected",
+      "id": "approval_replay",
+      "test_reference": "tests/test_operator_authority.py::test_t2_exact_approval_is_single_use_and_replay_protected"
+    },
+    {
+      "expected": "EXECUTED_ACCEPTED",
+      "id": "async_not_verified",
+      "test_reference": "tests/test_operator_lifecycle.py::test_async_acceptance_is_not_verification_and_resumes_after_restart"
+    },
+    {
+      "expected": "rejected",
+      "id": "changed_policy_digest",
+      "test_reference": "tests/test_effectful_playbook.py::test_changed_policy_or_contract_digest_prevents_resume"
+    },
+    {
+      "expected": "rejected",
+      "id": "changed_target",
+      "test_reference": "tests/test_operator_authority.py::test_changed_plan_semantics_invalidate_approval"
+    },
+    {
+      "expected": "rejected",
+      "id": "expired_plan",
+      "test_reference": "tests/test_operator_authority.py::test_expired_plan_and_approval_fail_closed"
+    },
+    {
+      "expected": "rejected",
+      "id": "prompt_injection_authorization",
+      "test_reference": "tests/test_operator_authority.py::test_untrusted_content_cannot_become_approval_or_graph_parameter"
+    },
+    {
+      "expected": "no_raw_private_values",
+      "id": "public_output_privacy",
+      "test_reference": "tests/test_operator_lifecycle.py::test_public_projection_contains_only_opaque_references"
+    },
+    {
+      "expected": "rejected",
+      "id": "repeated_signer",
+      "test_reference": "tests/test_operator_authority.py::test_t3_rejects_missing_or_repeated_signer"
+    },
+    {
+      "expected": "MANUAL_REVIEW_REQUIRED",
+      "id": "uncertain_no_retry",
+      "test_reference": "tests/test_operator_lifecycle.py::test_transport_failures_preserve_commit_ambiguity"
+    }
+  ]
+}

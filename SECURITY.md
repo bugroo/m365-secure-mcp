@@ -159,6 +159,22 @@ of bounded administrative effects under signed authority.
   metadata and relaxed freshness fail closed. Governance v1 remains valid for
   existing tools but cannot enable the Control Library and is never migrated
   automatically.
+- Governance v3 is an explicit future-operations schema. It binds exact
+  contract-manifest, Effect Model, contract, effect, tier, authorization,
+  resource-fence, protected-object, async, verification and approval-authority
+  semantics. It cannot fall back to standing policy, alias a signer, select a
+  Graph request or mutate v1/v2 policy.
+- T2 plans are immutable, canonical, expiring and externally approved once.
+  T3 requires two independent signed authorities, identities, keys and signer
+  groups. Retired authorities cannot authorize execution and compromised
+  authorities are never trusted.
+- Provider acceptance is not verification. Durable owner-only lifecycle state
+  prevents duplicate execution after restart; interrupted or uncertain writes
+  halt for manual review and are never retried automatically.
+- Effectful playbook schema v2 uses typed nodes and a closed executor registry.
+  It pins all trusted digests, advances deterministically, pauses the whole DAG
+  on uncertainty and treats compensation as a separately authorized proposal.
+  The production signed playbook manifest remains read-only schema v1.
 - The M1 signed definitions do not contain freshness metadata. The public
   compatibility artifact is not signed-manifest metadata; Governance v2 pins
   its independent content digest so installed-code drift cannot silently

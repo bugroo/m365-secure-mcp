@@ -17,6 +17,11 @@ This catalog, the [compiled contract matrix](CONTRACT_MATRIX.md), and the
 Items in the [official implementation roadmap](ROADMAP.md) are planned only; a
 roadmap name is never a runtime-discovered or dynamically registered tool.
 
+Secure Operations 1 adds internal Operator Foundation schemas, state machines,
+signed synthetic fixtures and metadata only. It adds no MCP tool and activates
+no Graph operation. Future T2/T3 tools must satisfy the
+[Operator Foundation Definition of Done](OPERATOR_FOUNDATION.md#definition-of-done-for-a-stable-t2t3-operation).
+
 ## Legacy-write freeze
 
 The 27 current write registrations are frozen compatibility surfaces. No new

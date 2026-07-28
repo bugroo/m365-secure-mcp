@@ -28,11 +28,16 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .contract_manifest import (
     AuthorizationMode,
+    ContractEffect,
     ContractManifest,
     ContractSpec,
+    ContractSpecV2,
     RiskTier,
+    VerificationMode,
     authorization_is_at_least,
     canonical_json,
+    effect_model_digest,
+    effect_model_document,
     sha256_digest,
 )
 from .control_compatibility import (
@@ -707,6 +712,170 @@ class ControlLibraryGovernance(StrictModel):
         return self
 
 
+class ResourceFenceType(StrEnum):
+    """Closed resource classes supported by operational Governance."""
+
+    TENANT = "tenant"
+    USER = "user"
+    GROUP = "group"
+    DEVICE = "device"
+    POLICY = "policy"
+    APPLICATION = "application"
+    SERVICE_PRINCIPAL = "service_principal"
+
+
+class ProtectedObjectPolicy(StrEnum):
+    """How a compiled operation treats protected resources."""
+
+    EXCLUDE_PROTECTED = "exclude_protected"
+    NOT_APPLICABLE = "not_applicable"
+
+
+class AsyncRequirement(StrEnum):
+    """Provider-completion requirement fixed by signed Governance."""
+
+    SYNCHRONOUS_ONLY = "synchronous_only"
+    PROVIDER_ASYNC_ALLOWED = "provider_async_allowed"
+    PROVIDER_ASYNC_REQUIRED = "provider_async_required"
+
+
+class ApprovalAuthorityBinding(StrictModel):
+    """One approval public-key identity pinned by signed tenant Governance."""
+
+    authority_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,63}$")
+    identity_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,63}$")
+    key_id: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,99}$")
+    signer_group: str = Field(pattern=r"^[a-z][a-z0-9_.-]{2,63}$")
+    public_key_sha256: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+
+
+class OperationGovernanceBinding(StrictModel):
+    """Exact signed authority for one future compiled effectful contract."""
+
+    operation_id: str = Field(pattern=r"^[a-z][a-z0-9_.]{5,120}$")
+    contract_id: str = Field(pattern=r"^[a-z][a-z0-9_.]{5,120}$")
+    contract_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    effect: ContractEffect
+    minimum_risk_tier: RiskTier
+    authorization_mode: AuthorizationMode
+    resource_fence_types: list[ResourceFenceType] = Field(min_length=1, max_length=8)
+    protected_object_policy: ProtectedObjectPolicy
+    async_requirement: AsyncRequirement
+    verification: VerificationMode
+    approval_authority_ids: list[str] = Field(min_length=1, max_length=8)
+    required_signer_groups: list[str] = Field(min_length=1, max_length=8)
+
+    @field_validator(
+        "resource_fence_types",
+        "approval_authority_ids",
+        "required_signer_groups",
+    )
+    @classmethod
+    def sorted_unique_values(cls, value: list[object]) -> list[object]:
+        if value != sorted(set(value), key=str):
+            raise ValueError("operation Governance lists must be unique and sorted")
+        return value
+
+    @model_validator(mode="after")
+    def authorization_matches_tier(self) -> OperationGovernanceBinding:
+        if self.operation_id != self.contract_id:
+            raise ValueError("operation ID must equal its exact compiled contract ID")
+        if self.minimum_risk_tier is RiskTier.T4:
+            if self.authorization_mode is not AuthorizationMode.PROHIBITED:
+                raise ValueError("T4 operation Governance must be prohibited")
+            return self
+        if self.minimum_risk_tier not in {RiskTier.T2, RiskTier.T3}:
+            raise ValueError("Operator Foundation Governance supports only T2 or T3")
+        minimum = (
+            AuthorizationMode.EXPLICIT_PLAN
+            if self.minimum_risk_tier is RiskTier.T2
+            else AuthorizationMode.DUAL_CONTROL
+        )
+        if not authorization_is_at_least(self.authorization_mode, minimum):
+            raise ValueError("operation Governance weakens the tier authorization floor")
+        if self.authorization_mode is AuthorizationMode.EXPLICIT_PLAN:
+            if (
+                len(self.approval_authority_ids) < 1
+                or len(self.required_signer_groups) != 1
+            ):
+                raise ValueError("explicit-plan authority requires one signer group")
+        elif self.authorization_mode is AuthorizationMode.DUAL_CONTROL:
+            if (
+                len(self.approval_authority_ids) < 2
+                or len(self.required_signer_groups) < 2
+            ):
+                raise ValueError("dual control requires two distinct authorities and groups")
+        elif self.authorization_mode not in {
+            AuthorizationMode.BREAK_GLASS_ONLY,
+            AuthorizationMode.PROHIBITED,
+        }:
+            raise ValueError("effectful operation has an unsupported authorization mode")
+        if self.verification is VerificationMode.NOT_VERIFIABLE:
+            raise ValueError("effectful operation must define representable verification")
+        return self
+
+
+class OperationsGovernance(StrictModel):
+    """Signed operational bindings for future schema-v2 contracts."""
+
+    contract_manifest_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    contract_manifest_schema_versions: list[Literal["2.0"]] = Field(
+        min_length=1,
+        max_length=1,
+    )
+    effect_model_schema_version: Literal["1.0"]
+    effect_model_digest: str = Field(pattern=r"^sha256:[0-9a-f]{64}$")
+    approval_authorities: list[ApprovalAuthorityBinding] = Field(
+        min_length=1,
+        max_length=32,
+    )
+    operations: list[OperationGovernanceBinding] = Field(min_length=1, max_length=500)
+
+    @field_validator("contract_manifest_schema_versions")
+    @classmethod
+    def exact_schema_versions(cls, value: list[str]) -> list[str]:
+        if value != sorted(set(value)):
+            raise ValueError("contract schema versions must be unique and sorted")
+        return value
+
+    @model_validator(mode="after")
+    def exact_authority_and_operation_bindings(self) -> OperationsGovernance:
+        authority_ids = [item.authority_id for item in self.approval_authorities]
+        identity_ids = [item.identity_id for item in self.approval_authorities]
+        key_ids = [item.key_id for item in self.approval_authorities]
+        key_fingerprints = [
+            item.public_key_sha256 for item in self.approval_authorities
+        ]
+        operation_ids = [item.operation_id for item in self.operations]
+        if authority_ids != sorted(set(authority_ids)):
+            raise ValueError("approval authority IDs must be unique and sorted")
+        if len(identity_ids) != len(set(identity_ids)):
+            raise ValueError("approval authorities cannot alias one identity")
+        if len(key_ids) != len(set(key_ids)):
+            raise ValueError("approval authority key IDs must be unique")
+        if len(key_fingerprints) != len(set(key_fingerprints)):
+            raise ValueError("approval authorities cannot alias one public key")
+        if operation_ids != sorted(set(operation_ids)):
+            raise ValueError("operation Governance bindings must be unique and sorted")
+        known = set(authority_ids)
+        for operation in self.operations:
+            if set(operation.approval_authority_ids) - known:
+                raise ValueError("operation references an unknown approval authority")
+        return self
+
+    def operation(self, operation_id: str) -> OperationGovernanceBinding:
+        for operation in self.operations:
+            if operation.operation_id == operation_id:
+                return operation
+        raise KeyError(f"unknown governed operation: {operation_id}")
+
+    def authority(self, authority_id: str) -> ApprovalAuthorityBinding:
+        for authority in self.approval_authorities:
+            if authority.authority_id == authority_id:
+                return authority
+        raise KeyError(f"unknown approval authority: {authority_id}")
+
+
 class GovernancePolicyBase(StrictModel):
     """Common signed tenant policy fields shared by v1 and v2."""
 
@@ -849,8 +1018,78 @@ class GovernancePolicyV2(GovernancePolicyBase):
         return self
 
 
+class GovernancePolicyV3(GovernancePolicyBase):
+    """Governance v3 adds exact future operational bindings.
+
+    V3 is inactive until a reviewed schema-v2 contract manifest exists. It does
+    not migrate or alter Governance v1/v2 policy semantics.
+    """
+
+    schema_version: Literal["3.0"] = "3.0"
+    control_library: ControlLibraryGovernance | None = None
+    operations: OperationsGovernance
+
+    @model_validator(mode="after")
+    def operational_bindings_are_closed(self) -> GovernancePolicyV3:
+        if (
+            self.operations.contract_manifest_digest
+            != self.contract_manifest_digest
+        ):
+            raise ValueError(
+                "operational Governance must bind the policy contract manifest"
+            )
+        if self.operations.effect_model_digest != effect_model_digest():
+            raise ValueError("operational Governance effect-model digest is outdated")
+        if (
+            self.operations.effect_model_schema_version
+            != effect_model_document()["schema_version"]
+        ):
+            raise ValueError("operational Governance effect-model schema is unsupported")
+        enabled = {
+            contract_id
+            for profile in self.profiles.values()
+            for contract_id in profile.enabled_contracts
+        }
+        operation_ids = {item.operation_id for item in self.operations.operations}
+        if not operation_ids.issubset(enabled):
+            raise ValueError(
+                "every governed operation must be enabled by an exact profile"
+            )
+        if self.control_library is not None:
+            for exception in self.control_library.exceptions:
+                if exception.issued_at > self.issued_at:
+                    raise ValueError(
+                        "control exception cannot be issued after the policy"
+                    )
+                subject = exception.subject
+                if isinstance(subject, ControlWideSubjectSelector):
+                    setting = self.control_library.controls[exception.control_id]
+                    if not setting.allow_control_wide_exception:
+                        raise ValueError(
+                            "control-wide exception is not explicitly allowed"
+                        )
+                    continue
+                if isinstance(subject, ProfileSubjectSelector):
+                    if subject.profile is not self.active_profile:
+                        raise ValueError(
+                            "control exception cannot select another profile"
+                        )
+                    continue
+                allowed_by_kind = {
+                    "user": self.resources.users,
+                    "group": self.resources.groups,
+                    "application": self.resources.applications,
+                    "service_principal": self.resources.service_principals,
+                }
+                if subject.object_id not in allowed_by_kind[subject.kind]:
+                    raise ValueError(
+                        "control exception subject is outside tenant resource fences"
+                    )
+        return self
+
+
 GovernancePolicyDocument = Annotated[
-    GovernancePolicy | GovernancePolicyV2,
+    GovernancePolicy | GovernancePolicyV2 | GovernancePolicyV3,
     Field(discriminator="schema_version"),
 ]
 
@@ -920,6 +1159,28 @@ class EffectiveControlLibraryConfiguration:
             if setting.control_id == control_id:
                 return setting
         raise KeyError(f"unknown enabled control: {control_id}")
+
+
+@dataclass(frozen=True)
+class EffectiveOperationGovernance:
+    """Validated operational authority for one exact schema-v2 contract."""
+
+    operation_id: str
+    contract_digest: str
+    contract_manifest_digest: str
+    effect_model_digest: str
+    policy_digest: str
+    tenant_id: UUID
+    profile: GovernanceProfileName
+    effect: ContractEffect
+    risk_tier: RiskTier
+    authorization_mode: AuthorizationMode
+    resource_fence_types: tuple[ResourceFenceType, ...]
+    protected_object_policy: ProtectedObjectPolicy
+    async_requirement: AsyncRequirement
+    verification: VerificationMode
+    approval_authorities: tuple[ApprovalAuthorityBinding, ...]
+    required_signer_groups: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -1291,6 +1552,168 @@ class VerifiedGovernancePolicy:
         )
 
 
+_RISK_TIER_STRENGTH: Final[dict[RiskTier, int]] = {
+    RiskTier.T0: 0,
+    RiskTier.T1: 1,
+    RiskTier.T2: 2,
+    RiskTier.T3: 3,
+    RiskTier.T4: 4,
+}
+_RESOURCE_FENCE_TOKENS: Final[dict[ResourceFenceType, frozenset[str]]] = {
+    ResourceFenceType.TENANT: frozenset({"tenant", "tenant_id"}),
+    ResourceFenceType.USER: frozenset({"user", "user_id", "target_user_id"}),
+    ResourceFenceType.GROUP: frozenset({"group", "group_id", "target_group_id"}),
+    ResourceFenceType.DEVICE: frozenset({"device", "device_id", "managed_device_id"}),
+    ResourceFenceType.POLICY: frozenset({"policy", "policy_id"}),
+    ResourceFenceType.APPLICATION: frozenset({"application", "application_id"}),
+    ResourceFenceType.SERVICE_PRINCIPAL: frozenset(
+        {"service_principal", "service_principal_id"}
+    ),
+}
+
+
+def resolve_operation_governance(
+    policy: GovernancePolicyDocument,
+    contract: ContractSpecV2,
+    *,
+    contract_manifest_digest: str,
+) -> EffectiveOperationGovernance:
+    """Resolve one exact future operation without activating a Graph surface."""
+
+    if not isinstance(policy, GovernancePolicyV3):
+        raise GovernancePolicyError(
+            "effectful Operator Foundation requires Governance v3",
+            reason_code="OPERATIONS_REQUIRE_GOVERNANCE_V3",
+            operator_action=(
+                "Create and sign a Governance v3 policy for the exact reviewed "
+                "contract and effect-model digests; keep the existing policy unchanged."
+            ),
+        )
+    if policy.contract_manifest_digest != contract_manifest_digest:
+        raise GovernancePolicyError(
+            "operational Governance contract manifest binding changed",
+            reason_code="CONTRACT_MANIFEST_CHANGED",
+        )
+    operations = policy.operations
+    if operations.contract_manifest_digest != contract_manifest_digest:
+        raise GovernancePolicyError(
+            "operational Governance uses another contract manifest",
+            reason_code="CONTRACT_MANIFEST_CHANGED",
+        )
+    if operations.effect_model_digest != effect_model_digest():
+        raise GovernancePolicyError(
+            "operational Governance effect model changed",
+            reason_code="EFFECT_MODEL_CHANGED",
+        )
+    if "2.0" not in operations.contract_manifest_schema_versions:
+        raise GovernancePolicyError(
+            "operational Governance does not support the contract schema",
+            reason_code="CONTRACT_SCHEMA_INCOMPATIBLE",
+        )
+    try:
+        binding = operations.operation(contract.id)
+    except KeyError as exc:
+        raise GovernancePolicyError(
+            "operation is not bound by signed Governance",
+            reason_code="DENIED_OUT_OF_CONTRACT",
+        ) from exc
+    if contract.id not in policy.profiles[policy.active_profile].enabled_contracts:
+        raise GovernancePolicyError(
+            "operation is not enabled in the active Governance profile",
+            reason_code="DENIED_OUT_OF_CONTRACT",
+        )
+    if binding.contract_digest != sha256_digest(contract):
+        raise GovernancePolicyError(
+            "operation contract digest changed",
+            reason_code="CONTRACT_CHANGED",
+        )
+    if binding.effect is not contract.effect:
+        raise GovernancePolicyError(
+            "operation effect differs from signed Governance",
+            reason_code="EFFECT_CHANGED",
+        )
+    if _RISK_TIER_STRENGTH[binding.minimum_risk_tier] < _RISK_TIER_STRENGTH[
+        contract.risk_tier
+    ]:
+        raise GovernancePolicyError(
+            "operational Governance weakens the contract risk tier",
+            reason_code="POLICY_DOWNGRADE_REJECTED",
+        )
+    effective_mode = policy.authorization_overrides.get(
+        contract.id,
+        binding.authorization_mode,
+    )
+    if not authorization_is_at_least(
+        binding.authorization_mode,
+        contract.authorization_mode,
+    ) or not authorization_is_at_least(
+        effective_mode,
+        binding.authorization_mode,
+    ):
+        raise GovernancePolicyError(
+            "operational Governance weakens the authorization floor",
+            reason_code="POLICY_DOWNGRADE_REJECTED",
+        )
+    if binding.verification is not contract.verification:
+        raise GovernancePolicyError(
+            "operation verification differs from the compiled contract",
+            reason_code="VERIFICATION_CHANGED",
+        )
+    if (
+        binding.async_requirement is AsyncRequirement.PROVIDER_ASYNC_REQUIRED
+        and binding.verification
+        not in {VerificationMode.ASYNC_STATUS, VerificationMode.RESOURCE_OBSERVED}
+    ):
+        raise GovernancePolicyError(
+            "asynchronous operation lacks an observable verification contract",
+            reason_code="VERIFICATION_UNREPRESENTABLE",
+        )
+    contract_fences = set(contract.resource_fences)
+    for fence_type in binding.resource_fence_types:
+        if not (_RESOURCE_FENCE_TOKENS[fence_type] & contract_fences):
+            raise GovernancePolicyError(
+                "operation resource-fence type is absent from the contract",
+                reason_code="RESOURCE_FENCE_MISMATCH",
+            )
+    if (
+        set(binding.resource_fence_types)
+        & {
+            ResourceFenceType.USER,
+            ResourceFenceType.GROUP,
+            ResourceFenceType.DEVICE,
+            ResourceFenceType.POLICY,
+        }
+        and binding.protected_object_policy
+        is not ProtectedObjectPolicy.EXCLUDE_PROTECTED
+    ):
+        raise GovernancePolicyError(
+            "protected resource class lacks a fail-closed exclusion",
+            reason_code="PROTECTED_RESOURCE_POLICY_MISSING",
+        )
+    authorities = tuple(
+        operations.authority(authority_id)
+        for authority_id in binding.approval_authority_ids
+    )
+    return EffectiveOperationGovernance(
+        operation_id=binding.operation_id,
+        contract_digest=binding.contract_digest,
+        contract_manifest_digest=contract_manifest_digest,
+        effect_model_digest=operations.effect_model_digest,
+        policy_digest=sha256_digest(policy),
+        tenant_id=policy.tenant_id,
+        profile=policy.active_profile,
+        effect=binding.effect,
+        risk_tier=binding.minimum_risk_tier,
+        authorization_mode=effective_mode,
+        resource_fence_types=tuple(binding.resource_fence_types),
+        protected_object_policy=binding.protected_object_policy,
+        async_requirement=binding.async_requirement,
+        verification=binding.verification,
+        approval_authorities=authorities,
+        required_signer_groups=tuple(binding.required_signer_groups),
+    )
+
+
 def parse_governance_policy(document: object) -> GovernancePolicyDocument:
     """Select one exact schema without fallback or automatic migration."""
 
@@ -1312,6 +1735,8 @@ def parse_governance_policy(document: object) -> GovernancePolicyDocument:
         return GovernancePolicy.model_validate(document)
     if schema_version == "2.0":
         return GovernancePolicyV2.model_validate(document)
+    if schema_version == "3.0":
+        return GovernancePolicyV3.model_validate(document)
     raise GovernancePolicyError(
         "governance policy schema version is unsupported",
         reason_code="GOVERNANCE_SCHEMA_UNSUPPORTED",
@@ -1351,7 +1776,7 @@ def resolve_control_library_configuration(
 ) -> EffectiveControlLibraryConfiguration:
     """Validate signed v2 configuration against exact local M1 semantics."""
 
-    if not isinstance(policy, GovernancePolicyV2):
+    if not isinstance(policy, (GovernancePolicyV2, GovernancePolicyV3)):
         raise GovernancePolicyError(
             "Governance v1 cannot enable the Posture Control Library",
             reason_code="CONTROL_LIBRARY_REQUIRES_GOVERNANCE_V2",
@@ -1361,6 +1786,11 @@ def resolve_control_library_configuration(
         )
     manifest = control_manifest or load_global_control_manifest()
     configuration = policy.control_library
+    if configuration is None:
+        raise GovernancePolicyError(
+            "Governance v3 policy does not enable the Posture Control Library",
+            reason_code="CONTROL_LIBRARY_NOT_CONFIGURED",
+        )
     manifest_digest = sha256_digest(manifest)
     if configuration.control_manifest_digest != manifest_digest:
         raise GovernancePolicyError(
@@ -1711,7 +2141,10 @@ def validate_policy_against_manifest(
                         reason_code="DENIED_OUT_OF_CONTRACT",
                     )
 
-    if isinstance(policy, GovernancePolicyV2):
+    if isinstance(policy, GovernancePolicyV2) or (
+        isinstance(policy, GovernancePolicyV3)
+        and policy.control_library is not None
+    ):
         resolve_control_library_configuration(policy, control_manifest)
 
 
