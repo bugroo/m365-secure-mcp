@@ -34,6 +34,7 @@ from .contract_manifest import (
     sha256_digest,
 )
 from .governance import (
+    AsyncRequirement,
     AuthorizationDecision,
     EffectiveOperationGovernance,
     GovernanceProfileName,
@@ -55,6 +56,12 @@ from .operator_authority import (
     PreconditionBinding,
     SignedOperatorApproval,
     TargetReference,
+)
+from .operator_lifecycle import (
+    DurableOperationRecord,
+    DurableOperatorLifecycle,
+    OperationProvider,
+    OperatorLifecycleStatus,
 )
 from .security import (
     PrivateStateError,
@@ -530,6 +537,8 @@ class ChangeSafeOperator:
         preconditions: tuple[PreconditionBinding, ...],
         expected_postcondition: ExpectedPostcondition,
         compensation: CompensationDeclaration,
+        observation_timeout_seconds: int,
+        maximum_observation_polls: int,
         created_at: datetime,
         not_before: datetime,
         expires_at: datetime,
@@ -578,6 +587,8 @@ class ChangeSafeOperator:
             expected_postcondition=expected_postcondition,
             verification=governance.verification,
             compensation=compensation,
+            observation_timeout_seconds=observation_timeout_seconds,
+            maximum_observation_polls=maximum_observation_polls,
             created_at=created_at,
             not_before=not_before,
             expires_at=expires_at,
@@ -603,6 +614,65 @@ class ChangeSafeOperator:
             as_of=as_of,
             purpose="execution",
             consume=True,
+        )
+
+    async def execute_effectful(
+        self,
+        *,
+        plan: OperatorPlan,
+        governance: EffectiveOperationGovernance,
+        approvals: tuple[SignedOperatorApproval, ...],
+        validator: ApprovalSetValidator,
+        lifecycle: DurableOperatorLifecycle,
+        provider: OperationProvider,
+        operation_id: UUID,
+        as_of: datetime,
+    ) -> DurableOperationRecord:
+        """Run the common exact-contract path for synthetic/future T2/T3 effects."""
+
+        plan.validate_governance(governance)
+        existing = lifecycle.store.ensure(
+            plan,
+            operation_id=operation_id,
+            as_of=as_of,
+            observation_deadline=min(
+                plan.expires_at,
+                as_of + timedelta(seconds=plan.observation_timeout_seconds),
+            ),
+            max_polls=plan.maximum_observation_polls,
+        )
+        if existing.status is OperatorLifecycleStatus.PLANNED:
+            existing = lifecycle.store.transition(
+                existing,
+                OperatorLifecycleStatus.AWAITING_APPROVAL,
+                as_of=as_of,
+            )
+        authorized = existing is not None and (
+            existing.status is OperatorLifecycleStatus.AUTHORIZED
+        )
+        if existing.status is OperatorLifecycleStatus.AWAITING_APPROVAL:
+            if approvals:
+                if not validator.replay_store.consumed_exact(
+                    approvals,
+                    plan_digest=plan.digest,
+                ):
+                    self.authorize_effectful_plan(
+                        plan=plan,
+                        governance=governance,
+                        approvals=approvals,
+                        validator=validator,
+                        as_of=as_of,
+                    )
+                authorized = True
+        return await lifecycle.execute(
+            plan=plan,
+            operation_id=operation_id,
+            provider=provider,
+            as_of=as_of,
+            authorized=authorized,
+            async_allowed=(
+                governance.async_requirement is not AsyncRequirement.SYNCHRONOUS_ONLY
+            ),
         )
 
     @staticmethod

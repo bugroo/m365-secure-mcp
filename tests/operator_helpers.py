@@ -5,11 +5,13 @@ from __future__ import annotations
 import base64
 import hashlib
 from datetime import UTC, datetime, timedelta
-from uuid import UUID
+from pathlib import Path
+from uuid import UUID, uuid4
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+from m365_secure_mcp.change_safe import ChangeSafeOperator
 from m365_secure_mcp.contract_manifest import (
     AuthorizationMode,
     CompensationClass,
@@ -38,7 +40,19 @@ from m365_secure_mcp.governance import (
     ResourceFenceType,
     resolve_operation_governance,
 )
-from m365_secure_mcp.operator_authority import ApprovalAuthorityRecord
+from m365_secure_mcp.operator_authority import (
+    ApprovalAuthorityRecord,
+    ApprovalReplayStore,
+    ApprovalSetValidator,
+    ApprovalTrustRegistry,
+    CompensationDeclaration,
+    ExpectedPostcondition,
+    OperatorApprovalGrant,
+    PlanParameter,
+    PreconditionBinding,
+    TargetReference,
+    sign_operator_approval,
+)
 
 TENANT_ID = UUID("11111111-1111-4111-8111-111111111111")
 USER_ID = UUID("22222222-2222-4222-8222-222222222222")
@@ -208,7 +222,15 @@ def synthetic_governance(
                     protected_object_policy=(
                         ProtectedObjectPolicy.EXCLUDE_PROTECTED
                     ),
-                    async_requirement=AsyncRequirement.SYNCHRONOUS_ONLY,
+                    async_requirement=(
+                        AsyncRequirement.PROVIDER_ASYNC_ALLOWED
+                        if contract.verification
+                        in {
+                            VerificationMode.ASYNC_STATUS,
+                            VerificationMode.RESOURCE_OBSERVED,
+                        }
+                        else AsyncRequirement.SYNCHRONOUS_ONLY
+                    ),
                     verification=contract.verification,
                     approval_authority_ids=[
                         item.authority_id for item in authority_bindings
@@ -239,3 +261,109 @@ def effective_governance(
         contract,
         contract_manifest_digest=manifest_digest,
     )
+
+
+def operator_context(
+    tmp_path: Path,
+    *,
+    dual: bool = False,
+    verification: VerificationMode = VerificationMode.STRONG_READBACK,
+    observation_timeout_seconds: int = 120,
+    maximum_observation_polls: int = 3,
+):
+    signers = (Ed25519PrivateKey.generate(), Ed25519PrivateKey.generate())
+    all_authorities = (
+        authority_record(
+            "operations-approver",
+            "person-operations",
+            "operations-key-2026",
+            "operations",
+            signers[0],
+        ),
+        authority_record(
+            "security-approver",
+            "person-security",
+            "security-key-2026",
+            "security",
+            signers[1],
+        ),
+    )
+    authorities = all_authorities if dual else all_authorities[:1]
+    contract = synthetic_contract(verification=verification)
+    governance = effective_governance(
+        contract,
+        authorities,
+        risk_tier=RiskTier.T3 if dual else RiskTier.T2,
+        authorization_mode=(
+            AuthorizationMode.DUAL_CONTROL
+            if dual
+            else AuthorizationMode.EXPLICIT_PLAN
+        ),
+    )
+    operator = ChangeSafeOperator(
+        tenant_id=str(TENANT_ID),
+        deployment_namespace=DEPLOYMENT_NAMESPACE,
+    )
+    plan = operator.build_effectful_plan(
+        governance=governance,
+        plan_id=uuid4(),
+        nonce=uuid4(),
+        intended_operator_id=OPERATOR_ID,
+        target=TargetReference(
+            resource_type="user",
+            object_id=USER_ID,
+            opaque_reference="target:" + ("a" * 32),
+        ),
+        parameters=(PlanParameter(name="desired_state", value=False),),
+        preconditions=(
+            PreconditionBinding(
+                check_id="target.not_protected",
+                evidence_digest=sha256_digest({"protected": False}),
+            ),
+        ),
+        expected_postcondition=ExpectedPostcondition(
+            check_id="target.disabled",
+            expected_digest=sha256_digest({"enabled": False}),
+        ),
+        compensation=CompensationDeclaration(
+            classification=CompensationClass.CONDITIONAL_RESTORE,
+        ),
+        observation_timeout_seconds=observation_timeout_seconds,
+        maximum_observation_polls=maximum_observation_polls,
+        created_at=NOW - timedelta(seconds=10),
+        not_before=NOW - timedelta(seconds=5),
+        expires_at=NOW + timedelta(minutes=4),
+    )
+    private_root = tmp_path / "operator-context"
+    private_root.mkdir(mode=0o700)
+    validator = ApprovalSetValidator(
+        trust_registry=ApprovalTrustRegistry(
+            authorities=tuple(sorted(authorities, key=lambda item: item.authority_id))
+        ),
+        replay_store=ApprovalReplayStore(
+            private_root / "approvals.sqlite3",
+            DEPLOYMENT_NAMESPACE,
+        ),
+    )
+    approvals = tuple(
+        sign_operator_approval(
+            OperatorApprovalGrant(
+                approval_id=uuid4(),
+                plan_digest=plan.digest,
+                authority_id=authority.authority_id,
+                tenant_id=TENANT_ID,
+                profile="selected-write",
+                intended_operator_id=OPERATOR_ID,
+                issued_at=NOW,
+                expires_at=NOW + timedelta(minutes=2),
+            ),
+            signer,
+            key_id=authority.key_id,
+        )
+        for authority, signer in zip(
+            authorities,
+            signers[: len(authorities)],
+            strict=True,
+        )
+    )
+    return operator, plan, governance, validator, approvals

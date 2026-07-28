@@ -167,6 +167,8 @@ class OperatorPlan(StrictFrozenModel):
     expected_postcondition: ExpectedPostcondition
     verification: VerificationMode
     compensation: CompensationDeclaration
+    observation_timeout_seconds: int = Field(ge=1, le=3_600)
+    maximum_observation_polls: int = Field(ge=1, le=100)
     created_at: datetime
     not_before: datetime
     expires_at: datetime
@@ -481,6 +483,41 @@ class ApprovalReplayStore:
             raise
         finally:
             connection.close()
+
+    def consumed_exact(
+        self,
+        approvals: tuple[SignedOperatorApproval, ...],
+        *,
+        plan_digest: str,
+    ) -> bool:
+        """Recognize an atomic prior burn after a crash before state promotion."""
+
+        connection = self._connect()
+        try:
+            rows = [
+                connection.execute(
+                    """
+                    SELECT plan_digest, authority_id
+                    FROM consumed_operator_approvals
+                    WHERE approval_id = ?
+                    """,
+                    (str(approval.grant.approval_id),),
+                ).fetchone()
+                for approval in approvals
+            ]
+        finally:
+            connection.close()
+        if all(row is None for row in rows):
+            return False
+        if any(row is None for row in rows):
+            raise SecurityError("approval set was only partially consumed")
+        for approval, row in zip(approvals, rows, strict=True):
+            if row is None or (
+                str(row[0]) != plan_digest
+                or str(row[1]) != approval.grant.authority_id
+            ):
+                raise SecurityError("consumed approval does not match the exact plan")
+        return True
 
 
 class ApprovalSetValidator:

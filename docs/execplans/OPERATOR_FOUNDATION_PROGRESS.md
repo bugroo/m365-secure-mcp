@@ -25,13 +25,13 @@ This log is the durable resume point for
 - [x] Feature branch created.
 - [x] North star, repository instructions, ExecPlan, and progress log added.
 - [x] Governance v3 operational bindings and approval authorities.
-- [ ] Durable asynchronous operator lifecycle.
+- [x] Durable asynchronous operator lifecycle.
 - [ ] Signed synthetic effectful playbook foundation.
 - [ ] Evaluation fixtures and community documentation.
 - [ ] Full validation, commits, push, PR, and remote CI.
 
 ## Resume action
 
-Continue with the durable asynchronous operator lifecycle. Reuse
-`ChangeSafeOperator`, keep provider fixtures synthetic, and do not activate new
-Graph contracts or modify signed production manifests.
+Continue with the signed synthetic effectful playbook foundation. Keep its
+trust domain test-only, its node registries closed, and production manifests
+byte-for-byte unchanged.
