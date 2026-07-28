@@ -24,9 +24,9 @@ This is the durable resume point for
 - [x] Recorded/live-lab/evaluation fixtures.
 - [x] Roadmap and deterministic signing request.
 - [x] Full validation.
-- [ ] Push, PR and remote CI.
+- [x] Push, PR and remote CI.
 
 ## Resume action
 
-Push one PR and wait for remote CI. The external signing ceremony remains the
-only activation boundary.
+PR #5 is open and its CI is green. The external signing ceremony against the
+exact candidate digest is the only activation boundary.
