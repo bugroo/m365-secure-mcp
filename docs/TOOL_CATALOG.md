@@ -17,6 +17,23 @@ This catalog, the [compiled contract matrix](CONTRACT_MATRIX.md), and the
 Items in the [official implementation roadmap](ROADMAP.md) are planned only; a
 roadmap name is never a runtime-discovered or dynamically registered tool.
 
+## Identity schema-2.0 candidates
+
+Five Identity contracts are compiled and reviewed as inactive `candidate`
+artifacts:
+
+- `entra.user.sessions.revoke`
+- `entra.user.account_state.set`
+- `entra.group.user_membership.add`
+- `entra.group.user_membership.remove`
+- `entra.user.direct_license.set`
+
+They do not appear in `--list-tools`, are not registered by the MCP server and
+cannot execute Graph. Their public review surface is the
+[candidate matrix](IDENTITY_CANDIDATE_MATRIX.md). Activation requires the
+independent production contract-signing ceremony and an atomic reviewed
+cutover. README examples and active counts therefore continue to exclude them.
+
 Secure Operations 1 adds internal Operator Foundation schemas, state machines,
 signed synthetic fixtures and metadata only. It adds no MCP tool and activates
 no Graph operation. Future T2/T3 tools must satisfy the

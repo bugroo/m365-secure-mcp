@@ -141,18 +141,24 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
         "",
         (
             "| Contract | Lifecycle | Effect | Graph call | Tier | Authorization | "
-            "Role | Delegated scopes | Verification |"
+            "Role | Delegated scopes | Verification | License prerequisites | "
+            "Official references |"
         ),
-        "|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for item in manifest.contracts:
         scopes = "<br>".join(f"`{scope}`" for scope in item.permissions.delegated_scopes)
         roles = "<br>".join(f"`{role}`" for role in item.permissions.operator_roles)
+        licenses = "<br>".join(item.license_prerequisites)
+        references = "<br>".join(
+            f"[Microsoft]({reference})" for reference in item.official_references
+        )
         lines.append(
             f"| `{item.id}` | `{item.lifecycle_state.value}` | `{item.effect.value}` | "
             f"`{item.graph.method} {item.graph.endpoint}` | `{item.risk_tier.value}` | "
             f"`{item.authorization_mode.value}` | {roles} | {scopes} | "
-            f"`{item.verification.value}` |"
+            f"`{item.verification.value}` | {licenses} | "
+            f"{references}<br>verified `{item.verified_on}` |"
         )
     lines.extend(
         [

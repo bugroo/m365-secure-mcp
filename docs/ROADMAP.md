@@ -31,8 +31,8 @@ operation dispositions live in [Secure Operations](SECURE_OPERATIONS.md).
 | Plane | Implemented baseline |
 |---|---|
 | Build | independently signed contract, playbook and posture-control manifests; closed compiler; per-artifact digests; provenance and CycloneDX SBOM |
-| Governance | backward-compatible signed schemas v1/v2, profiles, resource allowlists, authorization hardening and private Posture Control configuration |
-| Runtime | 27 fixed opt-in write registrations, eight compiled T0 reads, one compiled Change-safe T1 write, bounded retries, receipts and change records |
+| Governance | backward-compatible signed schemas v1/v2/v3, profiles, resource allowlists, authorization hardening, private Posture Control configuration and inactive Identity operation bindings |
+| Runtime | 27 fixed opt-in write registrations, eight compiled T0 reads, one compiled Change-safe T1 write, bounded retries, receipts and change records; five Identity providers remain candidate-only |
 | Assurance | Entra posture/drift/debt evidence, credential posture, signed T0 readiness playbook, encrypted tenant-local snapshots and external read-only MSP radar |
 
 The compiled write `entra.user.operational_profile.update` is the reference
@@ -80,7 +80,36 @@ Completed and retained:
 These foundations do not imply T2 support, real dual control, effectful
 playbooks or runtime Posture assessment.
 
-## Canonical milestone order
+## Canonical program order
+
+This sequence supersedes the earlier Secure Operations numbering below, which
+is retained as architectural history and detailed acceptance context.
+
+1. **Contract Signing Lifecycle and Identity Slice** — implemented as five
+   schema-2.0 `candidate`/`preview` contracts plus an independent trust
+   lifecycle; awaiting external production authority custody and signature.
+2. **Operational Playbooks v1** — Compromised Account Containment, Bounded
+   Employee Onboarding and Preserve-Data Employee Offboarding. Unsupported
+   capabilities remain explicit manual handoffs.
+3. **Evaluation and Release Readiness** — consolidate recorded tests, execute
+   reviewed live-lab scenarios, publish a reproducible Evaluation Suite,
+   compatibility matrix and scorecard.
+4. **Community Adoption Program** — validated quickstart and demo, contributor
+   experience, first verifiable release, future `server.json`, MCP Registry
+   submission and OpenSSF Baseline/Best Practices assessment. The release
+   prerequisites are frozen in
+   [Community adoption gates](COMMUNITY_ADOPTION_GATES.md).
+5. **Endpoint/Intune.**
+6. **Defender.**
+7. **Conditional Access.**
+8. **Reduced Posture Runtime.**
+9. **Progressive Legacy Catalog Migration.**
+
+Recorded and live-lab harnesses begin with each operation; the evaluation
+program later consolidates and publishes results. Community adoption precedes
+indefinite catalog growth. Tool count is never an acceptance metric.
+
+## Completed Secure Operations foundations
 
 ### Secure Operations 0 — Contract Effect Model
 
@@ -141,9 +170,9 @@ Acceptance:
 Implementation and integration requirements are documented in
 [Operator Foundation](OPERATOR_FOUNDATION.md).
 
-### Secure Operations 2 — Identity Slice
+### Secure Operations 2 — Identity Slice candidate
 
-Add five separately reviewed signed operations:
+Five separately reviewed operations now compile as unsigned candidates:
 
 1. `entra.user.sessions.revoke`
 2. `entra.user.account_state.set`
@@ -151,10 +180,11 @@ Add five separately reviewed signed operations:
 4. `entra.group.user_membership.remove`
 5. `entra.user.direct_license.set`
 
-All are planned as T2/`explicit_plan`. Exact endpoints, least-privilege
-permissions, roles, fences, exclusions, verification and compensation must be
-confirmed from current Microsoft Graph v1.0 documentation before signing.
-No contract may accept an arbitrary Graph request component.
+All are T2/`explicit_plan`. Exact endpoints, least-privilege permissions,
+roles, fences, exclusions, verification and compensation are recorded from
+current Microsoft Graph v1.0 documentation. They remain unavailable until the
+independent external contract authority signs the exact candidate digest and
+the direct cutover is reviewed.
 
 Acceptance:
 

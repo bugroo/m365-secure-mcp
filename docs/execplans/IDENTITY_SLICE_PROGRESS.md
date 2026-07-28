@@ -22,10 +22,12 @@ This is the durable resume point for
 - [x] Identity candidate manifest and generated candidate artifacts.
 - [x] Governance and runtime/provider integration.
 - [x] Recorded/live-lab/evaluation fixtures.
-- [ ] Roadmap, signing request and full validation.
+- [x] Roadmap and deterministic signing request.
+- [ ] Full validation.
 - [ ] Push, PR and remote CI.
 
 ## Resume action
 
-Update the north star, roadmap, tool catalog, signing request guidance and
-community-adoption gates, then run the complete validation program.
+Run the complete validation, package/secret/privacy inspections, then push one
+PR and wait for remote CI. The external signing ceremony remains the only
+activation boundary.

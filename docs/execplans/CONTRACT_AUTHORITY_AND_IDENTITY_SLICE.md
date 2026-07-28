@@ -94,3 +94,23 @@ authority unchanged.
 - Direct cutover retires `profile-debt-2026-07` only in the same reviewed
   change that adds the new public key, signature and generated active artifacts.
 - Use one independent `m365-contracts-*` authority namespace.
+- Keep the candidate manifest outside package runtime data; its generated
+  artifacts participate in compiler `--check` but not tool registration.
+- Provider code is complete and tested through synthetic playback, while the
+  active catalog loader returns no Identity manifest until a current
+  production signature is packaged.
+- Session revocation records provider acceptance and bounded observation; it
+  never claims immediate token invalidation as a verified postcondition.
+
+## Discoveries
+
+- The existing active contract signer private key is unavailable, so the
+  historical v1 signature must be preserved through direct cutover rather than
+  re-signing.
+- Graph group-member removal is safe only through the dedicated exact method
+  ending in `/$ref`; it is not added to the generic JSON request method.
+- Complete protected-user evidence requires active, scheduled, eligible and
+  group-derived role checks. Missing or paginated/incomplete evidence blocks
+  execution.
+- Microsoft session revocation can take several minutes; acceptance is
+  intentionally distinct from verification.

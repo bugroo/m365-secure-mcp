@@ -48,10 +48,18 @@ An outdated Effect Model, changed contract, missing fence, unrepresentable
 verification, aliased authority or authorization downgrade fails closed.
 Governance may raise T2 to T3 but cannot lower the compiled floor.
 
-The production contract manifest remains schema v1, so v3 operational bindings
-are exercised only with synthetic inactive fixtures in Operator Foundation.
-Governance v1/v2 continue to authorize the existing tool surface unchanged.
-See [Operator Foundation](OPERATOR_FOUNDATION.md).
+The production contract manifest remains schema v1. The five schema-v2
+Identity contracts are unsigned candidates, so their v3 bindings are exercised
+only through synthetic and sanitized playback fixtures. Governance v1/v2
+continue to authorize the existing tool surface unchanged. See
+[Operator Foundation](OPERATOR_FOUNDATION.md).
+
+Identity Slice adds tenant-private exact user/group fences, protected,
+break-glass and emergency-access identifiers, allowlisted SKU/service-plan
+sets and a fail-closed synchronized-user policy. Each operation also binds the
+compiled resource-fence ID, protected-object policy ID, async behavior and
+verification-contract ID. These fields authorize nothing while the matching
+contract manifest remains an unsigned candidate; no policy is auto-migrated.
 
 ## Governance v2 control section
 
