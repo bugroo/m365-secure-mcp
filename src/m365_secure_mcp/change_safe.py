@@ -15,7 +15,7 @@ import sqlite3
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Generic, Literal, TypeVar
+from typing import Any, Generic, Literal, TypeVar, cast
 from uuid import NAMESPACE_URL, UUID, uuid5
 
 from cryptography.exceptions import InvalidSignature
@@ -33,7 +33,11 @@ from .contract_manifest import (
     canonical_json,
     sha256_digest,
 )
-from .governance import AuthorizationDecision, GovernanceProfileName
+from .governance import (
+    AuthorizationDecision,
+    EffectiveOperationGovernance,
+    GovernanceProfileName,
+)
 from .operations import (
     ChangeRecord,
     GovernedReceipt,
@@ -41,6 +45,16 @@ from .operations import (
     OperationStatus,
     PermissionImpactPreview,
     ResponsibleParty,
+)
+from .operator_authority import (
+    ApprovalSetValidator,
+    CompensationDeclaration,
+    ExpectedPostcondition,
+    OperatorPlan,
+    PlanParameter,
+    PreconditionBinding,
+    SignedOperatorApproval,
+    TargetReference,
 )
 from .security import (
     PrivateStateError,
@@ -503,6 +517,93 @@ class ChangeSafeOperator:
         self.tenant_id = tenant_id
         self.deployment_namespace = deployment_namespace
         self.approval_broker = approval_broker
+
+    def build_effectful_plan(
+        self,
+        *,
+        governance: EffectiveOperationGovernance,
+        plan_id: UUID,
+        nonce: UUID,
+        intended_operator_id: UUID,
+        target: TargetReference,
+        parameters: tuple[PlanParameter, ...],
+        preconditions: tuple[PreconditionBinding, ...],
+        expected_postcondition: ExpectedPostcondition,
+        compensation: CompensationDeclaration,
+        created_at: datetime,
+        not_before: datetime,
+        expires_at: datetime,
+        playbook_digest: str | None = None,
+    ) -> OperatorPlan:
+        """Build one immutable T2/T3 plan from resolved signed Governance.
+
+        ``governance`` is intentionally accepted as the resolved immutable
+        record rather than raw policy text. No Graph request component exists
+        in this API.
+        """
+
+        if governance.authorization_mode not in {
+            AuthorizationMode.EXPLICIT_PLAN,
+            AuthorizationMode.DUAL_CONTROL,
+        }:
+            raise SecurityError(
+                "Operator Foundation cannot fall back from T2/T3 to standing policy"
+            )
+        plan = OperatorPlan(
+            plan_id=plan_id,
+            nonce=nonce,
+            operation_id=governance.operation_id,
+            contract_id=governance.operation_id,
+            contract_digest=governance.contract_digest,
+            contract_manifest_digest=governance.contract_manifest_digest,
+            effect_model_digest=governance.effect_model_digest,
+            policy_digest=governance.policy_digest,
+            playbook_digest=playbook_digest,
+            tenant_id=governance.tenant_id,
+            deployment_namespace=self.deployment_namespace,
+            profile=governance.profile,
+            intended_operator_id=intended_operator_id,
+            effect=governance.effect,
+            risk_tier=cast(Literal["T2", "T3"], governance.risk_tier.value),
+            authorization_mode=cast(
+                Literal[
+                    AuthorizationMode.EXPLICIT_PLAN,
+                    AuthorizationMode.DUAL_CONTROL,
+                ],
+                governance.authorization_mode,
+            ),
+            target=target,
+            parameters=parameters,
+            preconditions=preconditions,
+            expected_postcondition=expected_postcondition,
+            verification=governance.verification,
+            compensation=compensation,
+            created_at=created_at,
+            not_before=not_before,
+            expires_at=expires_at,
+        )
+        plan.validate_governance(governance)
+        return plan
+
+    @staticmethod
+    def authorize_effectful_plan(
+        *,
+        plan: OperatorPlan,
+        governance: EffectiveOperationGovernance,
+        approvals: tuple[SignedOperatorApproval, ...],
+        validator: ApprovalSetValidator,
+        as_of: datetime,
+    ) -> tuple[str, ...]:
+        """Validate and atomically burn exact approval before any effect."""
+
+        return validator.validate(
+            plan,
+            governance,
+            approvals,
+            as_of=as_of,
+            purpose="execution",
+            consume=True,
+        )
 
     @staticmethod
     def permission_impact(

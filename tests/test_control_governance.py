@@ -329,7 +329,7 @@ def test_tampered_governance_v2_is_rejected(tmp_path: Path) -> None:
 
 def test_unknown_governance_schema_version_is_rejected() -> None:
     with pytest.raises(GovernancePolicyError) as exc_info:
-        parse_governance_policy({"schema_version": "3.0"})
+        parse_governance_policy({"schema_version": "4.0"})
     assert exc_info.value.reason_code == "GOVERNANCE_SCHEMA_UNSUPPORTED"
 
 

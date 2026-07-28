@@ -24,7 +24,7 @@ This log is the durable resume point for
 - [x] Baseline verified.
 - [x] Feature branch created.
 - [x] North star, repository instructions, ExecPlan, and progress log added.
-- [ ] Governance v3 operational bindings and approval authorities.
+- [x] Governance v3 operational bindings and approval authorities.
 - [ ] Durable asynchronous operator lifecycle.
 - [ ] Signed synthetic effectful playbook foundation.
 - [ ] Evaluation fixtures and community documentation.
@@ -32,6 +32,6 @@ This log is the durable resume point for
 
 ## Resume action
 
-Continue with Governance v3 and exact T2/T3 approval-authority tests. Do not
-activate new Graph contracts or modify signed production manifests.
-
+Continue with the durable asynchronous operator lifecycle. Reuse
+`ChangeSafeOperator`, keep provider fixtures synthetic, and do not activate new
+Graph contracts or modify signed production manifests.
