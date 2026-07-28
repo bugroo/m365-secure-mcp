@@ -1,0 +1,61 @@
+{
+  "artifact_digests": {
+    "candidate_registry": "sha256:7d35bf301c2f464a2c242584f7fc671d0b502868de34b78000a88ea29ed5d107",
+    "graph_surface_diff": "sha256:4bf165afd93f25e7c62729808fad2160f56eb6715940f60ec2480571c845c863",
+    "provenance": "sha256:10f6504510f75b4da5ce44598f8ac38341320e9dd5ef4f948d7561833111e9a2",
+    "sbom_binding": "sha256:9f8ecea01b115a3429ed5b77c01e685484384016eba7dbe5abd990531b47bf67"
+  },
+  "contains_private_material": false,
+  "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "graph_surface_diff": {
+    "activation_state": "candidate",
+    "active_manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
+    "active_surface_unchanged": true,
+    "candidate_delegated_scopes": [
+      "GroupMember.ReadWrite.All",
+      "LicenseAssignment.Read.All",
+      "LicenseAssignment.ReadWrite.All",
+      "RoleManagement.Read.Directory",
+      "User.EnableDisableAccount.All",
+      "User.Read.All",
+      "User.RevokeSessions.All"
+    ],
+    "candidate_endpoints": [
+      "DELETE /groups/{group_id}/members/{user_id}/$ref",
+      "PATCH /users/{user_id}",
+      "POST /groups/{group_id}/members/$ref",
+      "POST /users/{user_id}/assignLicense",
+      "POST /users/{user_id}/revokeSignInSessions"
+    ],
+    "candidate_manifest_digest": "sha256:1c0de0c9fb647d711bd1f8193d158db04ddc699b0af5d47edba1c8d555594c14",
+    "candidate_only_delegated_scopes": [
+      "GroupMember.ReadWrite.All",
+      "LicenseAssignment.Read.All",
+      "LicenseAssignment.ReadWrite.All",
+      "User.EnableDisableAccount.All",
+      "User.RevokeSessions.All"
+    ],
+    "candidate_only_endpoints": [
+      "DELETE /groups/{group_id}/members/{user_id}/$ref",
+      "POST /groups/{group_id}/members/$ref",
+      "POST /users/{user_id}/assignLicense",
+      "POST /users/{user_id}/revokeSignInSessions"
+    ],
+    "runtime_registration_change": false,
+    "schema_version": "1.0"
+  },
+  "intended_key_id": "m365-contracts-2026-07",
+  "intended_public_fingerprint": "pending-external-inspection",
+  "manifest_digest": "sha256:1c0de0c9fb647d711bd1f8193d158db04ddc699b0af5d47edba1c8d555594c14",
+  "review_reference": "pull-request-required-before-signing",
+  "schema_version": "1.0",
+  "status": "awaiting_external_contract_authority",
+  "tests_required": [
+    "compiler-check",
+    "current-and-historical-signature-verification",
+    "candidate-activation-denial",
+    "governance-v1-v2-v3-compatibility",
+    "identity-recorded-playback",
+    "privacy-and-secret-scan"
+  ]
+}

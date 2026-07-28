@@ -1,0 +1,120 @@
+{
+  "activation_state": "candidate",
+  "contracts": {
+    "entra.group.user_membership.add": {
+      "authorization_mode": "explicit_plan",
+      "contract_digest": "sha256:248c8af0a8f7b45107eced62385e4fad11808e2eea0bef720148a7622f9cc2ee",
+      "delegated_scopes": [
+        "GroupMember.ReadWrite.All",
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
+      "effect": "relationship_add",
+      "endpoint": "/groups/{group_id}/members/$ref",
+      "executor_id": "identity.group_user_membership_add.v1",
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "method": "POST",
+      "operator_roles": [
+        "Groups Administrator"
+      ],
+      "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
+      "resource_fence_id": "identity.allowlisted_user_and_group.v1",
+      "risk_tier": "T2",
+      "verification_contract_id": "identity.group_membership_readback.v1"
+    },
+    "entra.group.user_membership.remove": {
+      "authorization_mode": "explicit_plan",
+      "contract_digest": "sha256:6895e522ea0252234ede94c7585d1b9f638de63bb104201ad537614fd9572e4a",
+      "delegated_scopes": [
+        "GroupMember.ReadWrite.All",
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
+      "effect": "relationship_remove",
+      "endpoint": "/groups/{group_id}/members/{user_id}/$ref",
+      "executor_id": "identity.group_user_membership_remove.v1",
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "method": "DELETE",
+      "operator_roles": [
+        "Groups Administrator"
+      ],
+      "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
+      "resource_fence_id": "identity.allowlisted_user_and_group.v1",
+      "risk_tier": "T2",
+      "verification_contract_id": "identity.group_membership_readback.v1"
+    },
+    "entra.user.account_state.set": {
+      "authorization_mode": "explicit_plan",
+      "contract_digest": "sha256:2bf0bcab425d30f0628496d04f0efb91578c8b8fc6ca9c4ead8fc2d29cc0ef57",
+      "delegated_scopes": [
+        "RoleManagement.Read.Directory",
+        "User.EnableDisableAccount.All",
+        "User.Read.All"
+      ],
+      "effect": "state_transition",
+      "endpoint": "/users/{user_id}",
+      "executor_id": "identity.user_account_state_set.v1",
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "method": "PATCH",
+      "operator_roles": [
+        "User Administrator"
+      ],
+      "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "resource_fence_id": "identity.allowlisted_user.v1",
+      "risk_tier": "T2",
+      "verification_contract_id": "identity.user_account_state_readback.v1"
+    },
+    "entra.user.direct_license.set": {
+      "authorization_mode": "explicit_plan",
+      "contract_digest": "sha256:95bc0df31dc25886588790d169d42d42b313e3b5581373a71dde347c91af47e3",
+      "delegated_scopes": [
+        "LicenseAssignment.Read.All",
+        "LicenseAssignment.ReadWrite.All",
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
+      "effect": "state_transition",
+      "endpoint": "/users/{user_id}/assignLicense",
+      "executor_id": "identity.user_direct_license_set.v1",
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "method": "POST",
+      "operator_roles": [
+        "License Administrator"
+      ],
+      "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "resource_fence_id": "identity.allowlisted_user_and_sku.v1",
+      "risk_tier": "T2",
+      "verification_contract_id": "identity.direct_license_readback.v1"
+    },
+    "entra.user.sessions.revoke": {
+      "authorization_mode": "explicit_plan",
+      "contract_digest": "sha256:76c048dad3f67ad7e12624409e7abaff32b958226d63f9021ea7944e46c587dc",
+      "delegated_scopes": [
+        "RoleManagement.Read.Directory",
+        "User.Read.All",
+        "User.RevokeSessions.All"
+      ],
+      "effect": "invoke_action",
+      "endpoint": "/users/{user_id}/revokeSignInSessions",
+      "executor_id": "identity.user_sessions_revoke.v1",
+      "lifecycle_state": "candidate",
+      "maturity": "preview",
+      "method": "POST",
+      "operator_roles": [
+        "Helpdesk Administrator"
+      ],
+      "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "resource_fence_id": "identity.allowlisted_user.v1",
+      "risk_tier": "T2",
+      "verification_contract_id": "identity.session_revocation_acceptance.v1"
+    }
+  },
+  "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "manifest_digest": "sha256:1c0de0c9fb647d711bd1f8193d158db04ddc699b0af5d47edba1c8d555594c14",
+  "manifest_schema_version": "2.0",
+  "schema_version": "1.0"
+}

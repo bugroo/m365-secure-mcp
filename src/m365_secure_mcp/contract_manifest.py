@@ -83,6 +83,57 @@ class CompensationClass(StrEnum):
     NOT_COMPENSATABLE = "not_compensatable"
 
 
+class ContractLifecycleState(StrEnum):
+    DRAFT = "draft"
+    CANDIDATE = "candidate"
+    ACTIVE = "active"
+    RETIRED = "retired"
+
+
+class ContractMaturity(StrEnum):
+    EXPERIMENTAL = "experimental"
+    PREVIEW = "preview"
+    STABLE = "stable"
+    DEPRECATED = "deprecated"
+
+
+class AsyncBehavior(StrEnum):
+    SYNCHRONOUS = "synchronous"
+    PROVIDER_EVENTUAL = "provider_eventual"
+
+
+class ContractPrivacyClass(StrEnum):
+    OPAQUE_PUBLIC_PRIVATE_RECEIPT = "opaque_public_private_receipt"
+
+
+class IdentityExecutorId(StrEnum):
+    USER_SESSIONS_REVOKE_V1 = "identity.user_sessions_revoke.v1"
+    USER_ACCOUNT_STATE_SET_V1 = "identity.user_account_state_set.v1"
+    GROUP_USER_MEMBERSHIP_ADD_V1 = "identity.group_user_membership_add.v1"
+    GROUP_USER_MEMBERSHIP_REMOVE_V1 = "identity.group_user_membership_remove.v1"
+    USER_DIRECT_LICENSE_SET_V1 = "identity.user_direct_license_set.v1"
+
+
+class ProtectedObjectPolicyId(StrEnum):
+    NON_PRIVILEGED_MEMBER_USER_V1 = "identity.non_privileged_member_user.v1"
+    NON_PRIVILEGED_MEMBER_USER_STATIC_GROUP_V1 = (
+        "identity.non_privileged_member_user_static_group.v1"
+    )
+
+
+class ResourceFenceId(StrEnum):
+    ALLOWLISTED_USER_V1 = "identity.allowlisted_user.v1"
+    ALLOWLISTED_USER_AND_GROUP_V1 = "identity.allowlisted_user_and_group.v1"
+    ALLOWLISTED_USER_AND_SKU_V1 = "identity.allowlisted_user_and_sku.v1"
+
+
+class VerificationContractId(StrEnum):
+    SESSION_REVOCATION_ACCEPTANCE_V1 = "identity.session_revocation_acceptance.v1"
+    USER_ACCOUNT_STATE_READBACK_V1 = "identity.user_account_state_readback.v1"
+    GROUP_MEMBERSHIP_READBACK_V1 = "identity.group_membership_readback.v1"
+    DIRECT_LICENSE_READBACK_V1 = "identity.direct_license_readback.v1"
+
+
 class ContractEffect(StrEnum):
     """Closed semantic effect vocabulary for compiled Graph contracts."""
 
@@ -187,6 +238,20 @@ class EffectGraphCall(StrictModel):
     """Graph call schema reserved for future explicit-effect manifests."""
 
     method: Literal["GET", "POST", "PATCH", "DELETE"]
+    endpoint: str = Field(min_length=2, max_length=300)
+    api_version: Literal["v1.0"]
+
+    @field_validator("endpoint")
+    @classmethod
+    def fixed_graph_path(cls, value: str) -> str:
+        return _validate_fixed_graph_path(
+            value,
+            allowed_placeholders=_V2_PLACEHOLDERS,
+        )
+
+
+class PreflightGraphCallV2(StrictModel):
+    method: Literal["GET"]
     endpoint: str = Field(min_length=2, max_length=300)
     api_version: Literal["v1.0"]
 
@@ -315,7 +380,7 @@ class ContractSpecV2(StrictModel):
     description: str = Field(min_length=20, max_length=500)
     module: str = Field(pattern=r"^[a-z][a-z0-9_]{1,63}$")
     graph: EffectGraphCall
-    preflight_graph_calls: list[GraphCall] = Field(default_factory=list)
+    preflight_graph_calls: list[PreflightGraphCallV2] = Field(default_factory=list)
     input_schema: dict[str, Any]
     output_fields: list[str] = Field(min_length=1)
     permissions: ContractPermissions
@@ -329,12 +394,24 @@ class ContractSpecV2(StrictModel):
     verification: VerificationMode
     compensation: CompensationClass
     effect: ContractEffect
+    lifecycle_state: ContractLifecycleState
+    executor_id: IdentityExecutorId
+    resource_fence_id: ResourceFenceId
+    protected_object_policy_id: ProtectedObjectPolicyId
+    verification_contract_id: VerificationContractId
+    async_behavior: AsyncBehavior
+    ambiguity_handling: Literal["never_retry_automatically"]
+    privacy_class: ContractPrivacyClass
+    maturity: ContractMaturity
+    license_prerequisites: list[str] = Field(min_length=1)
+    official_references: list[str] = Field(min_length=1)
+    verified_on: str = Field(pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
     @model_validator(mode="after")
     def validate_explicit_effect(self) -> ContractSpecV2:
         _validate_common_contract_semantics(
             input_schema=self.input_schema,
-            preflight_graph_calls=self.preflight_graph_calls,
+            preflight_graph_calls=[],
             graph_method=self.graph.method,
             risk_tier=self.risk_tier,
             authorization_mode=self.authorization_mode,
@@ -384,6 +461,23 @@ class ContractSpecV2(StrictModel):
                 )
         elif self.graph.method == "DELETE":
             raise ValueError("DELETE is reserved for relationship_remove")
+        if self.lifecycle_state is ContractLifecycleState.ACTIVE:
+            raise ValueError(
+                "schema-2.0 candidate source cannot declare itself active"
+            )
+        if self.maturity is ContractMaturity.STABLE:
+            raise ValueError("candidate contracts cannot be stable before live review")
+        if self.risk_tier not in {RiskTier.T2, RiskTier.T3}:
+            raise ValueError("Identity candidate writes must be T2 or T3")
+        if self.authorization_mode not in {
+            AuthorizationMode.EXPLICIT_PLAN,
+            AuthorizationMode.DUAL_CONTROL,
+        }:
+            raise ValueError("Identity candidate writes require explicit authorization")
+        if self.official_references != sorted(set(self.official_references)):
+            raise ValueError("official references must be unique and sorted")
+        if self.license_prerequisites != sorted(set(self.license_prerequisites)):
+            raise ValueError("license prerequisites must be unique and sorted")
         return self
 
 
@@ -641,6 +735,38 @@ def verify_contract_manifest_signature(
         )
     except (ValueError, InvalidSignature) as exc:
         raise RuntimeError("global contract manifest signature is invalid") from exc
+    return authority
+
+
+def authorize_candidate_activation(
+    manifest: ContractManifestV2,
+    signature: ManifestSignature | None,
+    *,
+    authorities: Sequence[ContractSigningAuthority] | None = None,
+    allow_test_authorities: bool = False,
+) -> ContractSigningAuthority:
+    """Fail closed unless a candidate has a current production signature.
+
+    This primitive does not register tools. The external cutover must add the
+    signed artifact and call this gate from a separately reviewed runtime
+    registration change.
+    """
+
+    if signature is None:
+        raise RuntimeError("unsigned contract candidate cannot be activated")
+    authority = verify_contract_manifest_signature(
+        manifest,
+        signature,
+        authorities=authorities,
+        allow_test_authorities=allow_test_authorities,
+    )
+    if authority.authority_class is not SigningAuthorityClass.PRODUCTION:
+        raise RuntimeError("test contract authority cannot activate candidates")
+    if any(
+        contract.lifecycle_state is not ContractLifecycleState.CANDIDATE
+        for contract in manifest.contracts
+    ):
+        raise RuntimeError("only reviewed contract candidates may be activated")
     return authority
 
 

@@ -1,0 +1,37 @@
+{
+  "activation_state": "candidate",
+  "active_manifest_digest": "sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba",
+  "active_surface_unchanged": true,
+  "candidate_delegated_scopes": [
+    "GroupMember.ReadWrite.All",
+    "LicenseAssignment.Read.All",
+    "LicenseAssignment.ReadWrite.All",
+    "RoleManagement.Read.Directory",
+    "User.EnableDisableAccount.All",
+    "User.Read.All",
+    "User.RevokeSessions.All"
+  ],
+  "candidate_endpoints": [
+    "DELETE /groups/{group_id}/members/{user_id}/$ref",
+    "PATCH /users/{user_id}",
+    "POST /groups/{group_id}/members/$ref",
+    "POST /users/{user_id}/assignLicense",
+    "POST /users/{user_id}/revokeSignInSessions"
+  ],
+  "candidate_manifest_digest": "sha256:1c0de0c9fb647d711bd1f8193d158db04ddc699b0af5d47edba1c8d555594c14",
+  "candidate_only_delegated_scopes": [
+    "GroupMember.ReadWrite.All",
+    "LicenseAssignment.Read.All",
+    "LicenseAssignment.ReadWrite.All",
+    "User.EnableDisableAccount.All",
+    "User.RevokeSessions.All"
+  ],
+  "candidate_only_endpoints": [
+    "DELETE /groups/{group_id}/members/{user_id}/$ref",
+    "POST /groups/{group_id}/members/$ref",
+    "POST /users/{user_id}/assignLicense",
+    "POST /users/{user_id}/revokeSignInSessions"
+  ],
+  "runtime_registration_change": false,
+  "schema_version": "1.0"
+}

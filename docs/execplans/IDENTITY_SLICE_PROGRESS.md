@@ -19,7 +19,7 @@ This is the durable resume point for
 - [x] Official Microsoft Graph references verified for all five operations.
 - [x] Contract authority registry and direct-cutover verification primitives.
 - [x] Contract signing CLI and runbook.
-- [ ] Identity candidate manifest and generated candidate artifacts.
+- [x] Identity candidate manifest and generated candidate artifacts.
 - [ ] Governance and runtime/provider integration.
 - [ ] Recorded/live-lab/evaluation fixtures.
 - [ ] Roadmap, signing request and full validation.
@@ -27,5 +27,5 @@ This is the durable resume point for
 
 ## Resume action
 
-Compile the five schema-2.0 candidate contracts and their public generated
-artifacts. Do not activate candidate operations.
+Extend Governance and the common operator/provider path for the five candidate
+operations. Do not activate or register candidate operations.

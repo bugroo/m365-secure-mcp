@@ -12,11 +12,13 @@ from uuid import NAMESPACE_URL, uuid5
 
 from .contract_manifest import (
     ContractManifest,
+    ContractManifestV2,
     canonical_json,
     contract_effect,
     effect_model_digest,
     effect_model_document,
     load_global_manifest,
+    parse_contract_manifest,
     sha256_digest,
 )
 from .control_compatibility import (
@@ -27,7 +29,7 @@ from .control_compatibility import (
 from .control_manifest import ControlManifest, load_global_control_manifest
 from .playbook_manifest import PlaybookManifest, load_global_playbook_manifest
 
-COMPILER_VERSION = "1.5"
+COMPILER_VERSION = "1.6"
 
 
 def _repo_root() -> Path:
@@ -112,6 +114,208 @@ def _permission_matrix(manifest: ContractManifest) -> str:
         ]
     )
     return "\n".join(lines)
+
+
+def load_identity_candidate(root: Path) -> ContractManifestV2:
+    """Load the reviewed but unsigned Identity candidate source."""
+
+    document = json.loads(
+        (root / "contract-candidates/identity-slice.json").read_text()
+    )
+    manifest = parse_contract_manifest(document)
+    if not isinstance(manifest, ContractManifestV2):
+        raise ValueError("Identity candidate must use contract schema 2.0")
+    if any(item.lifecycle_state.value != "candidate" for item in manifest.contracts):
+        raise ValueError("Identity candidate source contains an active contract")
+    return manifest
+
+
+def _candidate_matrix(manifest: ContractManifestV2) -> str:
+    lines = [
+        "# Identity Slice candidate contract matrix",
+        "",
+        (
+            "Generated from the unsigned schema-2.0 candidate manifest. These "
+            "contracts are **not active MCP tools** and cannot execute Graph."
+        ),
+        "",
+        (
+            "| Contract | Lifecycle | Effect | Graph call | Tier | Authorization | "
+            "Role | Delegated scopes | Verification |"
+        ),
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for item in manifest.contracts:
+        scopes = "<br>".join(f"`{scope}`" for scope in item.permissions.delegated_scopes)
+        roles = "<br>".join(f"`{role}`" for role in item.permissions.operator_roles)
+        lines.append(
+            f"| `{item.id}` | `{item.lifecycle_state.value}` | `{item.effect.value}` | "
+            f"`{item.graph.method} {item.graph.endpoint}` | `{item.risk_tier.value}` | "
+            f"`{item.authorization_mode.value}` | {roles} | {scopes} | "
+            f"`{item.verification.value}` |"
+        )
+    lines.extend(
+        [
+            "",
+            "Activation requires the external contract-signing direct cutover, a",
+            "current production authority, and the signature plus generated active",
+            "artifacts in one reviewed change. Test keys cannot activate candidates.",
+            "",
+        ]
+    )
+    return "\n".join(lines)
+
+
+def compile_identity_candidate_outputs(
+    manifest: ContractManifestV2,
+    *,
+    active_manifest: ContractManifest,
+    root: Path,
+) -> dict[Path, bytes]:
+    """Generate review-only artifacts that never feed runtime registration."""
+
+    candidate_digest = sha256_digest(manifest)
+    active_digest = sha256_digest(active_manifest)
+    model_digest = effect_model_digest()
+    contract_digests = {
+        item.id: sha256_digest(item) for item in manifest.contracts
+    }
+    candidate_endpoints = sorted(
+        {
+            f"{item.graph.method} {item.graph.endpoint}"
+            for item in manifest.contracts
+        }
+    )
+    active_endpoints = sorted(
+        {
+            f"{item.graph.method} {item.graph.endpoint}"
+            for item in active_manifest.contracts
+        }
+    )
+    candidate_scopes = sorted(
+        {
+            scope
+            for item in manifest.contracts
+            for scope in item.permissions.delegated_scopes
+        }
+    )
+    active_scopes = sorted(
+        {
+            scope
+            for item in active_manifest.contracts
+            for scope in item.permissions.delegated_scopes
+        }
+    )
+    registry = {
+        "schema_version": "1.0",
+        "activation_state": "candidate",
+        "manifest_schema_version": manifest.schema_version,
+        "manifest_digest": candidate_digest,
+        "effect_model_digest": model_digest,
+        "contracts": {
+            item.id: {
+                "contract_digest": contract_digests[item.id],
+                "effect": item.effect.value,
+                "endpoint": item.graph.endpoint,
+                "method": item.graph.method,
+                "authorization_mode": item.authorization_mode.value,
+                "risk_tier": item.risk_tier.value,
+                "lifecycle_state": item.lifecycle_state.value,
+                "maturity": item.maturity.value,
+                "executor_id": item.executor_id.value,
+                "resource_fence_id": item.resource_fence_id.value,
+                "protected_object_policy_id": item.protected_object_policy_id.value,
+                "verification_contract_id": item.verification_contract_id.value,
+                "delegated_scopes": item.permissions.delegated_scopes,
+                "operator_roles": item.permissions.operator_roles,
+            }
+            for item in manifest.contracts
+        },
+    }
+    surface_diff = {
+        "schema_version": "1.0",
+        "active_manifest_digest": active_digest,
+        "candidate_manifest_digest": candidate_digest,
+        "activation_state": "candidate",
+        "active_surface_unchanged": True,
+        "candidate_endpoints": candidate_endpoints,
+        "candidate_only_endpoints": sorted(set(candidate_endpoints) - set(active_endpoints)),
+        "candidate_delegated_scopes": candidate_scopes,
+        "candidate_only_delegated_scopes": sorted(
+            set(candidate_scopes) - set(active_scopes)
+        ),
+        "runtime_registration_change": False,
+    }
+    candidate_provenance = {
+        "schema_version": "1.0",
+        "builder": "m365_secure_mcp.contract_compiler",
+        "compiler_version": COMPILER_VERSION,
+        "build_kind": "local-unattested",
+        "distribution_status": "not-a-release",
+        "release_attestation_status": "external-required",
+        "activation_state": "candidate",
+        "manifest_digest": candidate_digest,
+        "effect_model_digest": model_digest,
+        "signature_present": False,
+        "runtime_tool_generation": False,
+        "active_manifest_digest": active_digest,
+        "registry_digest": sha256_digest(registry),
+        "surface_diff_digest": sha256_digest(surface_diff),
+    }
+    sbom_binding = {
+        "schema_version": "1.0",
+        "activation_state": "candidate",
+        "manifest_digest": candidate_digest,
+        "effect_model_digest": model_digest,
+        "candidate_provenance_digest": sha256_digest(candidate_provenance),
+        "release_sbom_digest": (
+            "sha256:"
+            + hashlib.sha256(
+                (root / "contract-artifacts/sbom.cdx.json").read_bytes()
+            ).hexdigest()
+        ),
+        "release_attestation_status": "external-required",
+    }
+    signing_request = {
+        "schema_version": "1.0",
+        "status": "awaiting_external_contract_authority",
+        "manifest_digest": candidate_digest,
+        "effect_model_digest": model_digest,
+        "intended_key_id": "m365-contracts-2026-07",
+        "intended_public_fingerprint": "pending-external-inspection",
+        "artifact_digests": {
+            "candidate_registry": sha256_digest(registry),
+            "graph_surface_diff": sha256_digest(surface_diff),
+            "provenance": sha256_digest(candidate_provenance),
+            "sbom_binding": sha256_digest(sbom_binding),
+        },
+        "tests_required": [
+            "compiler-check",
+            "current-and-historical-signature-verification",
+            "candidate-activation-denial",
+            "governance-v1-v2-v3-compatibility",
+            "identity-recorded-playback",
+            "privacy-and-secret-scan",
+        ],
+        "graph_surface_diff": surface_diff,
+        "review_reference": "pull-request-required-before-signing",
+        "contains_private_material": False,
+    }
+
+    def encoded(value: object) -> bytes:
+        return (
+            json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
+        ).encode()
+
+    outputs = {
+        root / "contract-candidates/generated-registry.json": encoded(registry),
+        root / "contract-candidates/graph-surface-diff.json": encoded(surface_diff),
+        root / "contract-candidates/provenance.json": encoded(candidate_provenance),
+        root / "contract-candidates/sbom-binding.json": encoded(sbom_binding),
+        root / "contract-candidates/signing-request.json": encoded(signing_request),
+        root / "docs/IDENTITY_CANDIDATE_MATRIX.md": _candidate_matrix(manifest).encode(),
+    }
+    return outputs
 
 
 def _generated_controls(
@@ -561,7 +765,7 @@ def compile_outputs(
             json.dumps(value, indent=2, ensure_ascii=False, sort_keys=True) + "\n"
         ).encode()
 
-    return {
+    outputs = {
         root / "src/m365_secure_mcp/_generated_contracts.py": (
             _generated_python(manifest).encode()
         ),
@@ -674,6 +878,15 @@ def compile_outputs(
             sbom
         ),
     }
+    identity_candidate = load_identity_candidate(root)
+    outputs.update(
+        compile_identity_candidate_outputs(
+            identity_candidate,
+            active_manifest=manifest,
+            root=root,
+        )
+    )
+    return outputs
 
 
 def write_outputs(outputs: dict[Path, bytes]) -> None:
