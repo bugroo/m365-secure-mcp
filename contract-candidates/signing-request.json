@@ -1,10 +1,12 @@
 {
   "activation_sequence": [
     "merge-inactive-candidate-pr",
-    "execute-and-review-live-lab-for-all-five-operations",
+    "provision-core-identity-lab",
+    "execute-five-operations-with-isolated-operator-profiles",
     "apply-corrections-and-regenerate-candidate-digest-if-needed",
     "sign-final-reviewed-digest-with-external-production-authority",
-    "merge-separate-small-activation-pr"
+    "merge-separate-small-activation-pr",
+    "complete-extended-identity-lab-before-stable"
   ],
   "artifact_digests": {
     "candidate_registry": "sha256:e9456beeaef0c4da6d577eb53f4f65efbfc02144f21c1797326e4b842d11650a",
@@ -59,14 +61,15 @@
   "review_reference": "pull-request-required-before-signing",
   "schema_version": "1.0",
   "signing_eligible": false,
-  "status": "awaiting_reviewed_live_lab",
+  "status": "awaiting_reviewed_core_identity_lab",
   "tests_required": [
     "compiler-check",
     "current-and-historical-signature-verification",
     "candidate-activation-denial",
     "governance-v1-v2-v3-compatibility",
     "identity-recorded-playback",
-    "reviewed-live-lab-all-five-operations",
+    "reviewed-core-live-lab-all-five-operations-isolated-operators",
+    "extended-live-lab-required-before-stable",
     "privacy-and-secret-scan"
   ]
 }

@@ -30,8 +30,10 @@ requirements without authenticating or writing to Graph.
 ## Scope
 
 1. Merge PR #5 with candidates inactive and verify protected `main`.
-2. Define an owner-only external lab inventory and explicit process gate.
-3. Define the complete synthetic resource topology and manual provisioning.
+2. Define an owner-only external lab inventory and explicit process gate with
+   five isolated operator profiles.
+3. Split the synthetic topology into mandatory Core and promotion-only
+   Extended labs.
 4. Add minimized evidence schemas and a deterministic leak scanner.
 5. Run the five candidates and negative cases only when the dedicated lab,
    credentials, Governance and approval authority are mounted.
@@ -66,7 +68,9 @@ external lab material, not by a code or architectural defect.
 - no lab write is possible without exact enable flag, profile, acknowledgement,
   tenant/client match, owner-only inventory and external authority files;
 - inventory and errors never enter MCP output;
-- all five candidates and required negative fixtures are represented;
+- all five candidates, isolated operators and required Core negative fixtures
+  are represented;
+- Extended gaps remain `not_executed` and prevent `stable`, not `preview`;
 - public evidence rejects raw identifiers, UPNs, IPs, request IDs and secrets;
 - no production candidate is signed or activated before reviewed live tests;
 - active historical manifests and Graph surfaces remain unchanged;
@@ -102,8 +106,12 @@ halts the target and requires manual review rather than retry.
 - Tenant and resource IDs live only in an external owner-only inventory.
 - A marker group with an externally pinned description digest independently
   marks the tenant as a lab but never authorizes a write.
-- The dedicated lab App Registration uses the exact aggregate candidate scope
-  closure and no automatic consent.
+- The dedicated single-tenant public-client App Registration uses the exact
+  aggregate candidate scope closure, system-browser PKCE (device code only as
+  explicit fallback), no secret, no ROPC and no automatic consent.
+- Five separate token-cache namespaces, signed policies and token subjects
+  bind session, account, group, license and negative authority. One person may
+  operate several profiles, but one token/profile cannot impersonate another.
 - Effect authorization and protected-object evidence roles are represented
   separately. Every operation requires `Global Reader` in addition to its
   effect-specific role because that is the least common supported role across
@@ -116,8 +124,9 @@ halts the target and requires manual review rather than retry.
 
 - Actual Graph response, replication, throttling and ambiguous-transport
   behavior remain unverified until the dedicated lab exists.
-- Dynamic and role-assignable group fixtures and group-based licensing require
-  suitable non-production licensing and manual privileged setup.
+- Dynamic and role-assignable groups, real synchronization, PIM,
+  group-based licensing and advanced concurrency form the Extended gate.
+  Unavailable cases remain `not_executed`; operations cannot become `stable`.
 - The signing authority remains an intentionally external human boundary after
   the lab passes.
 - The merged PR #5 candidate digest is invalidated by the reviewed role-metadata

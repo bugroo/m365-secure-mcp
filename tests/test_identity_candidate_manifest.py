@@ -264,14 +264,20 @@ def test_signing_request_requires_live_lab_and_separate_activation_pr() -> None:
     request = json.loads(
         (ROOT / "contract-candidates/signing-request.json").read_text()
     )
-    assert request["status"] == "awaiting_reviewed_live_lab"
+    assert request["status"] == "awaiting_reviewed_core_identity_lab"
     assert request["signing_eligible"] is False
     assert request["candidate_tool_registration"] is False
     assert request["digest_invalidated_by_candidate_change"] is True
     assert request["activation_sequence"] == [
         "merge-inactive-candidate-pr",
-        "execute-and-review-live-lab-for-all-five-operations",
+        "provision-core-identity-lab",
+        "execute-five-operations-with-isolated-operator-profiles",
         "apply-corrections-and-regenerate-candidate-digest-if-needed",
         "sign-final-reviewed-digest-with-external-production-authority",
         "merge-separate-small-activation-pr",
+        "complete-extended-identity-lab-before-stable",
     ]
+    assert (
+        "extended-live-lab-required-before-stable"
+        in request["tests_required"]
+    )

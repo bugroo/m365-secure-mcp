@@ -1,41 +1,49 @@
 # Identity Slice live-lab boundary
 
-Identity live tests are writes. They may run only in a dedicated,
-non-production tenant with synthetic resources. Customer tenants, WERIXO
-production, routine administrator identities and real emergency-access
-accounts are prohibited.
+Identity live tests are writes. They run only in a dedicated, non-production
+tenant with synthetic resources and isolated operator profiles. Customer
+tenants, WERIXO production, everyday administration identities and real
+emergency-access accounts are prohibited.
 
-PR #5 merged the five schema-2.0 contracts as inactive candidates. Live-lab
-validation occurs before production signing. A candidate signature is not a
-prerequisite for the lab; a reviewed lab correction instead changes the
-candidate digest that will later be signed.
+The five schema-2.0 Identity contracts remain inactive candidates. This lab
+gate neither authenticates nor calls Graph. It proves that a separately
+reviewed runner has the exact external inventory and authority boundary before
+any live operation.
 
-## Fail-closed process gate
+## Authentication boundary
 
-`m365-identity-live-lab` is an offline boundary utility. It does not register
-an MCP tool, sign a plan, authenticate or execute Graph. Before a separate
-reviewed live runner may write, the process must satisfy all of these bindings:
+The lab uses one single-tenant public-client/native App Registration:
+
+- exact tenant authority `https://login.microsoftonline.com/{lab-tenant-id}`;
+  `common`, `organizations` and tenant selection from tool input are forbidden;
+- system-browser authorization code with PKCE is the primary flow;
+- device code is an explicit, MFA-compatible fallback and requires
+  `M365_ALLOW_DEVICE_CODE=true`;
+- exact redirect URI `http://localhost`;
+- no client secret and no confidential-client flow;
+- ROPC/username-password is prohibited;
+- each operator uses a distinct external OS-keychain cache namespace;
+- tokens, cache files, credentials and identifiers never enter Git, fixtures,
+  logs or public evidence.
+
+The process must set:
 
 - `M365_IDENTITY_LIVE_LAB=1`;
 - `M365_LAB_PROFILE=live-lab`;
+- `M365_LAB_OPERATOR_PROFILE` to exactly one profile below;
 - `M365_IDENTITY_LIVE_LAB_WRITE_ACK=DEDICATED_NONPRODUCTION_IDENTITY_LAB`;
-- `M365_LAB_TENANT_ID` exactly matches the external inventory;
-- `M365_CLIENT_ID` exactly matches the dedicated lab App Registration;
-- `M365_IDENTITY_LIVE_LAB_INVENTORY` points to an owner-only regular `0600`
-  file and not a symlink;
-- the external Governance v3 policy verifies, binds the exact tenant,
-  `selected-write` profile, candidate/effect digests and exact inventory
-  fences;
-- the external approval verifier is owner-only and its public-key fingerprint
-  is pinned by that signed Governance policy;
-- candidate-manifest and Effect Model digests match the checked-out source.
+- matching `M365_LAB_TENANT_ID` and `M365_TENANT_ID`;
+- matching `M365_CLIENT_ID`;
+- `M365_TOKEN_CACHE_MODE=keyring`;
+- the profile-specific `M365_KEYRING_SERVICE`;
+- owner-only Governance policy and public verification-key paths;
+- the profile-specific approval public key for an effect operator;
+- an owner-only regular `0600` external inventory path.
 
-The inventory path and all identifiers stay outside Git. Errors and successful
-summaries contain no tenant, client, user, group, SKU or service-plan IDs.
-Use the committed
+The inventory path and all identifiers stay outside Git. The committed
 [`identity-live-lab.inventory.template.json`](../examples/identity-live-lab.inventory.template.json)
-only as a substitution template; it intentionally does not validate as an
-inventory.
+contains placeholders and intentionally does not validate before external
+substitution.
 
 ```bash
 uv run m365-identity-live-lab requirements
@@ -44,17 +52,34 @@ uv run m365-identity-live-lab validate-inventory \
 uv run m365-identity-live-lab gate
 ```
 
-The process profile `live-lab` is an independent lab boundary; the signed
-Governance profile remains the closed `selected-write` profile used by T2
-operations. The explicit flags are necessary but not sufficient. Before every
-write, the live runner must also authenticate the exact operator, validate the
-token tenant/audience/scope closure, verify the independent marker group,
-inspect all synthetic fixtures and compare signed Governance fences.
+## Isolated operator profiles
 
-## Required delegated permission closure
+The App Registration retains only the aggregate delegated scopes fixed by the
+five contracts. Effect authorization is separated by token subject, signed
+Governance policy, approval authority and token-cache namespace:
 
-Administrator consent is manual and applies only to the dedicated lab App
-Registration:
+| Profile | Directory roles | Closed effect surface |
+|---|---|---|
+| `session-operator` | Global Reader; Helpdesk Administrator | `entra.user.sessions.revoke` |
+| `account-operator` | Global Reader; User Administrator | `entra.user.account_state.set` |
+| `group-operator` | Global Reader; Groups Administrator | membership add and remove |
+| `license-operator` | Global Reader; License Administrator | `entra.user.direct_license.set` |
+| `negative-operator` | Global Reader only | none |
+
+One person may perform more than one test profile, but every profile requires a
+separate delegated token session and authority namespace. A plan binds the
+tenant, profile, token subject, policy digest and intended operator. Its
+single-use approval binds the same tenant/profile/subject and exact plan
+digest. A token from another profile cannot reuse it.
+
+The gate fails closed when the effect role or evidence role is missing. The
+negative operator proves that delegated scopes alone cannot authorize an
+effect. Its signed deny policy enables no Identity candidate and has no
+approval authority.
+
+## Permission categories
+
+Administrator consent remains manual. The exact aggregate delegated closure is:
 
 - `GroupMember.ReadWrite.All`
 - `LicenseAssignment.Read.All`
@@ -64,133 +89,101 @@ Registration:
 - `User.Read.All`
 - `User.RevokeSessions.All`
 
-Do not add a permission merely to make a test pass. A missing permission is
-recorded against the exact preflight, effect, readback or protected-object
-call and reviewed against the candidate matrix.
+The generated matrix keeps four categories distinct:
 
-The lab operator uses the project effect roles already selected by the
-candidates:
+1. effect permissions;
+2. preflight permissions;
+3. readback permissions;
+4. protected-object evidence permissions.
 
-- Helpdesk Administrator;
-- User Administrator;
-- Groups Administrator;
-- License Administrator.
+It also distinguishes Microsoft-supported least-privileged roles from the
+project-required effect role and the project-required evidence role.
+`RoleManagement.Read.Directory` is required for permanent role assignments and
+also satisfies the active and eligible assignment-schedule reads. Those
+schedule APIs document narrower scopes, but adding them would not reduce the
+effective privilege while the permanent-assignment call remains required, so
+the lab does not add them.
 
-It also requires `Global Reader` for the protected-object evidence calls.
-`Global Reader` is the least common Microsoft-supported role across the fixed
-v1.0 calls for permanent role assignments, active assignment schedule
-instances and eligible assignment schedule instances. This evidence role does
-not authorize the write itself; each operation still requires its separate
-effect role. Both role categories are explicit in the generated candidate
-matrix.
+Groups Administrator remains the project requirement for this phase.
+Microsoft also supports Group owner for some membership effects, but owner
+mode is excluded until the token subject is cryptographically bound to
+ownership of the exact group and that relationship is revalidated at TOCTOU.
 
-Groups Administrator remains deliberate for this phase. Group owner is not
-enabled until token-subject ownership of the exact group is cryptographically
-bound, revalidated at TOCTOU and proven by reviewed live tests.
+## Core Identity Lab
 
-## External synthetic inventory
+Core is mandatory before production signing and `preview` activation. It
+contains the safety evidence needed to prevent dangerous execution:
 
-The dedicated tenant must contain the following fixtures. Roles, consent,
-credentials and emergency-access controls are prepared manually and verified;
-this repository never creates them.
+- all five operations;
+- normal cloud-managed Member users in enabled and disabled states;
+- static membership add/remove and already-satisfied no-ops;
+- direct license assignment/removal, capacity, `usageLocation` and bounded
+  service plans;
+- five isolated operator profiles, including the negative operator;
+- TOCTOU rejection;
+- accepted, verified and uncertain classifications;
+- administrator, synthetic break-glass and protected-object rejection with
+  complete role evidence;
+- tenant and allowlist isolation;
+- no automatic retry after uncertainty.
 
-### Users
+Core external inventory requires:
 
-- normal cloud-managed Member, enabled;
-- normal cloud-managed Member, disabled;
-- user with the allowed SKU assigned directly;
-- user with the allowed SKU inherited from a group and not directly assigned;
-- Guest;
-- synchronized user;
-- user holding an administrative role;
-- ordinary synthetic user classified as break-glass only by lab Governance;
-- user without `usageLocation`;
-- user outside every operation allowlist.
+- enabled and disabled cloud-managed users;
+- direct-license user, Guest, administrator, synthetic break-glass fixture,
+  user without `usageLocation`, and a user outside allowlists;
+- allowed static group, protected static group, group outside allowlists, and
+  an independent marker group;
+- one existing and one absent membership relationship;
+- allowed SKU with capacity, a disallowed SKU, and allowed/disallowed service
+  plans.
 
-The synthetic break-glass fixture is not a real emergency-access account and
-must have no production purpose.
+The synthetic break-glass fixture is an ordinary lab identity classified as
+protected by Governance. It is never a real emergency-access account.
 
-### Groups
+## Extended Identity Lab
 
-- allowed static group;
-- protected static group;
-- dynamic group;
-- role-assignable group;
-- group outside the operation allowlist;
-- independent static marker group outside all operation allowlists.
+Extended is mandatory before any operation may move from `preview` to
+`stable`. It covers infrastructure-dependent cases:
 
-The marker group description is random lab text whose SHA-256 digest is pinned
-only in the external inventory. Its immutable ID and description digest form
-the independent in-tenant lab marker. Marker content is evidence, never
-authorization.
+- a genuinely synchronized user;
+- active and eligible PIM assignments;
+- dynamic and role-assignable groups;
+- group-based licensing;
+- advanced replication and concurrency behavior.
 
-### Licensing and relationships
+If an Extended fixture is unavailable, its evidence state is
+`not_executed`—never passed. Deterministic and sanitized recorded tests retain
+coverage, and maturity remains `preview`. Extended absence cannot weaken Core
+protected-object checks.
 
-- allowed subscribed SKU with available units;
-- second subscribed SKU outside Governance;
-- target with valid `usageLocation`;
-- target without `usageLocation`;
-- direct and group-inherited assignments;
-- allowed and non-allowed service plans from the allowed SKU;
-- one existing and one absent membership relationship.
+## Evidence and maturity
 
-Dynamic membership and role-assignable group fixtures may require Microsoft
-Entra licensing. Group-based licensing must be supported by the selected lab
-subscription. No customer or production subscription is acceptable.
-
-## Live execution order
-
-After the offline gate and read-only tenant inspection succeed, the reviewed
-runner executes only the candidate contracts through Governance v3, exact T2
-plans, external lab approvals and `ChangeSafeOperator`:
-
-1. session revocation: provider acceptance, bounded observation and no retry;
-2. account enabled/disabled transitions, no-op, drift and protected denials;
-3. membership add/remove, no-op, replication, concurrency and exact `/$ref`;
-4. direct-license assign/plan-update/remove/no-op and negative capacity,
-   location, inherited and allowlist cases;
-5. regression of all five contracts after any correction.
-
-An uncertain write pauses testing for that target and requires manual
-verification. Compensation is always a new approved plan. The harness never
-promotes session revocation to verified token invalidation.
-
-## Public evidence
-
-Only the closed `PublicLiveLabEvidence` schema may be committed. It permits:
-
-- scenario;
-- synthetic resource class;
-- operation;
-- expected and observed state;
-- approximate duration bucket;
-- accepted/verified/uncertain classification;
-- sanitized error code;
-- contract digest;
-- pass/fail.
-
-Run the deterministic scanner before staging evidence:
+Public evidence schema 2.0 requires every Core and Extended scenario exactly
+once. It retains only scenario, lab level, synthetic resource class, operation,
+expected/observed status, duration bucket, classification, sanitized error,
+contract digest and `passed`/`failed`/`not_executed` execution state.
 
 ```bash
 uv run m365-identity-live-lab scan-evidence \
   --evidence /external-owner-only/sanitized-live-lab.evidence
 ```
 
-The scanner rejects tenant/object/device/subscription/request IDs, UUIDs,
-UPNs, email addresses, IP addresses, tokens, key material and unknown fields.
-Recordings update only through an explicit reviewed action.
+The scanner rejects tenant/object/device/subscription/request IDs, UPNs,
+email addresses, IP addresses, tokens, key material and unknown fields.
 
-## Activation gate
+## Activation sequence
 
-Production signing is allowed only after all five operations and negative
-cases have reviewed live evidence, regressions pass and final public evidence
-passes the privacy scanner. Then:
+1. Merge the inactive candidate and lab-boundary PR.
+2. Provision the Core Identity Lab externally.
+3. Execute all five operations with isolated operator profiles.
+4. Correct any divergence while contracts remain candidates.
+5. Regenerate recordings, matrices, artifacts and candidate digest.
+6. Freeze the final reviewed candidate.
+7. Perform the external contract-signing ceremony.
+8. Deliver a small activation PR with initial maturity `preview`.
+9. Begin Operational Playbooks v1.
+10. Complete Extended Lab before any promotion to `stable`.
 
-1. regenerate every candidate artifact;
-2. freeze and review the final digest;
-3. set `signing_eligible: true` only with the five reviewed evidence records;
-4. perform the external signing ceremony;
-5. activate through a separate small PR.
-
-No candidate is an MCP tool before that activation PR. Live-lab completion
-does not make an operation `stable`; initial maturity remains `preview`.
+Any lab correction invalidates the previous digest. No Identity candidate is
+registered as a production MCP tool before the separate activation PR.

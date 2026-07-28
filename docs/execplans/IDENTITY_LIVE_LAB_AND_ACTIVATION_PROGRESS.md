@@ -35,13 +35,20 @@ This is the durable resume point for
   fingerprint verified by the offline gate rather than inferred from paths.
 - [x] Minimized public evidence schema and deterministic privacy scanner.
 - [x] Unit and adversarial tests for the offline lab boundary.
+- [x] Five isolated operator profiles with separate subject, Governance,
+  approval and OS-keychain namespaces.
+- [x] Single-tenant public-client authentication contract: browser PKCE
+  primary, explicit device-code fallback, no secret and no ROPC.
+- [x] Core/Extended inventory, evidence and maturity gates.
 - [ ] Dedicated non-production tenant exists and is explicitly allowlisted.
-- [ ] External inventory, Governance v3 policy and approval verifier mounted.
-- [ ] All five positive and negative live-lab operation sets executed.
+- [ ] Five external operator token sessions and profile-specific Governance
+  material mounted.
+- [ ] Mandatory Core operation and negative scenario sets executed.
 - [ ] Sanitized live evidence reviewed and regressions passed.
 - [ ] Final candidate digest frozen and marked signing eligible.
 - [ ] External production signing ceremony.
 - [ ] Separate activation PR.
+- [ ] Extended Lab executed before any operation is promoted to `stable`.
 
 ## Environment discovery
 
@@ -51,7 +58,7 @@ authentication was attempted and no Graph call or tenant write occurred.
 
 ## Validation checkpoint
 
-- 454 tests collected: 453 passed and the explicit live-lab network boundary
+- 465 tests collected: 464 passed and the explicit live-lab network boundary
   skipped because the opt-in is absent.
 - compiler check, Ruff, strict mypy, dependency audit and package build pass.
 - active contract, Effect Model, playbook, control and compatibility artifacts
@@ -66,12 +73,16 @@ authentication was attempted and no Graph call or tenant write occurred.
   `sha256:b27d5a394b9b60242f157b508368cd6cac9ac5420efe42c16252739eb15707a4`.
 - candidate SBOM binding:
   `sha256:a18afae05e5c10941ec47e052ff0e617a2f6691000b1662bf60c5caf8b3ded07`.
+- candidate signing request remains ineligible and now records
+  `awaiting_reviewed_core_identity_lab`; the candidate manifest digest and all
+  artifact semantic digests above remain unchanged.
 
 ## Exact resume action
 
-Provision the dedicated tenant and external material listed in
+Provision the Core Identity Lab and external material listed in
 [`IDENTITY_LIVE_LAB.md`](../IDENTITY_LIVE_LAB.md). Render the committed
-placeholder inventory outside Git, set it to owner-only `0600`, then run:
+schema-2.0 placeholder inventory outside Git, set it to owner-only `0600`,
+create one process environment per isolated operator profile, then run:
 
 ```bash
 uv run m365-identity-live-lab validate-inventory \
@@ -79,5 +90,7 @@ uv run m365-identity-live-lab validate-inventory \
 uv run m365-identity-live-lab gate
 ```
 
-Only after both succeed may the reviewed live runner authenticate and begin
-the five-operation test sequence. Do not sign the current candidate digest.
+Only after both succeed for all five profiles may the reviewed live runner
+authenticate and begin the Core sequence. Do not sign the current candidate
+digest. Extended cases may remain `not_executed`, but no operation can become
+`stable` until they are reviewed.

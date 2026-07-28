@@ -159,9 +159,10 @@ def test_identity_activation_gate_and_playbook_order_are_canonical() -> None:
         normalized_roadmap
     )
     assert "candidate implementation PR may merge" in normalized_runbook
-    assert "live-lab scenarios for all five Identity operations" in (
+    assert "Core Identity Lab scenarios for all five operations" in (
         normalized_runbook
     )
+    assert "Extended Identity Lab evidence" in normalized_runbook
     assert "Signing a pre-lab digest is prohibited" in normalized_runbook
     assert "separate, small PR" in normalized_runbook
 

@@ -133,8 +133,9 @@ Operator Foundation proves exact T2 plans, real T3 dual control, durable
 accepted/verified/uncertain outcomes, and resumable signed synthetic DAGs. It
 activates no new Graph operation. The bounded Identity slice is implemented as
 five inactive candidates. Its remaining activation gates are candidate merge,
-reviewed live-lab execution of all five operations, external signing of the
-final post-lab digest and a separate activation PR.
+reviewed Core live-lab execution of all five operations with isolated
+operators, external signing of the final post-lab digest and a separate
+`preview` activation PR. Extended lab evidence is required before `stable`.
 
 The next canonical programs are Operational Playbooks v1, Evaluation and
 Release Readiness, and Community Adoption. Endpoint/Intune, Defender and

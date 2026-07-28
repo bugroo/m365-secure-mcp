@@ -94,8 +94,10 @@ is retained as architectural history and detailed acceptance context.
 1. **Contract Signing Lifecycle and Identity Slice** — implemented as five
    schema-2.0 `candidate`/`preview` contracts plus an independent trust
    lifecycle. PR #5 merged the candidates inactive. Reviewed live-lab
-   execution of all five operations must precede the external signature and a
-   separate activation PR. The current provisioning gate is recorded in the
+   execution of the mandatory Core cases with isolated operators must precede
+   the external signature and a separate `preview` activation PR. Extended
+   cases are mandatory before `stable`; unavailable cases remain
+   `not_executed`. The current provisioning gate is recorded in the
    [live-lab progress log](execplans/IDENTITY_LIVE_LAB_AND_ACTIVATION_PROGRESS.md).
 2. **Operational Playbooks v1** — Compromised Account Containment, Bounded
    Employee Onboarding and Preserve-Data Employee Offboarding. Unsupported
@@ -194,8 +196,10 @@ Microsoft-supported roles, the project's operational role, fences, exclusions,
 verification and compensation are recorded from current Microsoft Graph
 v1.0 documentation. They remain unavailable through this candidate PR.
 Activation requires reviewed live-lab execution of all five operations, any
-resulting corrections and digest regeneration, an external signature over
-that final digest, and a separate small activation PR.
+Core negative cases with isolated operator profiles, any resulting corrections
+and digest regeneration, an external signature over that final digest, and a
+separate small activation PR. Promotion beyond `preview` additionally requires
+the Extended Identity Lab.
 
 Acceptance:
 

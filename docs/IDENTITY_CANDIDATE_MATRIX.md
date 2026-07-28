@@ -25,9 +25,12 @@ The aggregate delegated-scope closure is shown separately from the reason each p
 ## Activation gate
 
 This candidate PR may merge while every contract remains inactive.
-All five operations require reviewed live-lab execution before signing.
+All five operations require reviewed Core Identity Lab execution with
+isolated operator profiles before signing and `preview` activation.
 Any live-lab correction changes and invalidates the candidate digest.
 The external signer signs only the resulting final reviewed digest.
 A separate, small activation PR performs the direct cutover and adds the
 production signature and active artifacts. No candidate is registered as
 an MCP tool before that activation PR. Test keys cannot activate candidates.
+Extended Identity Lab evidence is required before promotion to `stable`;
+unavailable Extended scenarios remain `not_executed`, never passed.
