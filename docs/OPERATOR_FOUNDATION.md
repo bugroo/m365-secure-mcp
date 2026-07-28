@@ -38,6 +38,12 @@ duplicate keys, missing groups, retired authorities, compromised authorities,
 expiry, replay, changed parameters, changed target, or changed trusted digest
 fail closed.
 
+The code enforces different authority IDs, identity IDs, public keys,
+fingerprints, and signer groups. It cannot prove that two keys are held by
+different natural persons or organizational functions. That separation of
+duties depends on external key custody, operator assignment, and Governance
+procedures.
+
 Approval keys and customer policies remain outside the repository. Production
 runtime never generates an approval, and approval documents are not MCP tool
 arguments or public output. Retired keys may verify historical pre-retirement
