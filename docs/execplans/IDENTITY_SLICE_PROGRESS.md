@@ -18,7 +18,7 @@ This is the durable resume point for
 - [x] PR #4 documentation corrected, CI revalidated and merge completed.
 - [x] Official Microsoft Graph references verified for all five operations.
 - [x] Contract authority registry and direct-cutover verification primitives.
-- [ ] Contract signing CLI and runbook.
+- [x] Contract signing CLI and runbook.
 - [ ] Identity candidate manifest and generated candidate artifacts.
 - [ ] Governance and runtime/provider integration.
 - [ ] Recorded/live-lab/evaluation fixtures.
@@ -27,5 +27,5 @@ This is the durable resume point for
 
 ## Resume action
 
-Implement the independent offline contract-signing CLI and runbook, then
-continue to the candidate manifest. Do not activate candidate operations.
+Compile the five schema-2.0 candidate contracts and their public generated
+artifacts. Do not activate candidate operations.
