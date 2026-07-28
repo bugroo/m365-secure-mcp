@@ -1,0 +1,125 @@
+{
+  "schema_version": "2.0",
+  "environment": "dedicated-nonproduction",
+  "profile": "live-lab",
+  "tenant_id": "${LAB_TENANT_OBJECT_ID}",
+  "client_id": "${LAB_PUBLIC_CLIENT_APPLICATION_ID}",
+  "authentication": {
+    "application_type": "single-tenant-public-client",
+    "primary_flow": "system-browser-pkce",
+    "fallback_flow": "device-code-explicit",
+    "redirect_uri": "http://localhost",
+    "token_cache": "os-keychain-owner-only",
+    "mfa_compatible": true,
+    "client_secret_prohibited": true,
+    "ropc_prohibited": true
+  },
+  "operators": {
+    "session": {
+      "profile_id": "session-operator",
+      "subject_id": "${LAB_SESSION_OPERATOR_OBJECT_ID}",
+      "governance_policy_digest": "${SESSION_GOVERNANCE_POLICY_DIGEST}",
+      "approval_public_key_sha256": "${SESSION_APPROVAL_PUBLIC_KEY_SHA256}",
+      "keyring_service": "m365-secure-mcp-live-lab-session-operator",
+      "required_roles": ["Global Reader", "Helpdesk Administrator"],
+      "allowed_operation_ids": ["entra.user.sessions.revoke"]
+    },
+    "account": {
+      "profile_id": "account-operator",
+      "subject_id": "${LAB_ACCOUNT_OPERATOR_OBJECT_ID}",
+      "governance_policy_digest": "${ACCOUNT_GOVERNANCE_POLICY_DIGEST}",
+      "approval_public_key_sha256": "${ACCOUNT_APPROVAL_PUBLIC_KEY_SHA256}",
+      "keyring_service": "m365-secure-mcp-live-lab-account-operator",
+      "required_roles": ["Global Reader", "User Administrator"],
+      "allowed_operation_ids": ["entra.user.account_state.set"]
+    },
+    "group": {
+      "profile_id": "group-operator",
+      "subject_id": "${LAB_GROUP_OPERATOR_OBJECT_ID}",
+      "governance_policy_digest": "${GROUP_GOVERNANCE_POLICY_DIGEST}",
+      "approval_public_key_sha256": "${GROUP_APPROVAL_PUBLIC_KEY_SHA256}",
+      "keyring_service": "m365-secure-mcp-live-lab-group-operator",
+      "required_roles": ["Global Reader", "Groups Administrator"],
+      "allowed_operation_ids": [
+        "entra.group.user_membership.add",
+        "entra.group.user_membership.remove"
+      ]
+    },
+    "license": {
+      "profile_id": "license-operator",
+      "subject_id": "${LAB_LICENSE_OPERATOR_OBJECT_ID}",
+      "governance_policy_digest": "${LICENSE_GOVERNANCE_POLICY_DIGEST}",
+      "approval_public_key_sha256": "${LICENSE_APPROVAL_PUBLIC_KEY_SHA256}",
+      "keyring_service": "m365-secure-mcp-live-lab-license-operator",
+      "required_roles": ["Global Reader", "License Administrator"],
+      "allowed_operation_ids": ["entra.user.direct_license.set"]
+    },
+    "negative": {
+      "profile_id": "negative-operator",
+      "subject_id": "${LAB_NEGATIVE_OPERATOR_OBJECT_ID}",
+      "governance_policy_digest": "${NEGATIVE_GOVERNANCE_POLICY_DIGEST}",
+      "approval_public_key_sha256": null,
+      "keyring_service": "m365-secure-mcp-live-lab-negative-operator",
+      "required_roles": ["Global Reader"],
+      "allowed_operation_ids": []
+    }
+  },
+  "candidate_manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
+  "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "marker": {
+    "group_id": "${LAB_MARKER_GROUP_OBJECT_ID}",
+    "description_digest": "${LAB_MARKER_DESCRIPTION_SHA256}"
+  },
+  "core_users": {
+    "normal_enabled_user_id": "${LAB_USER_NORMAL_ENABLED_OBJECT_ID}",
+    "normal_disabled_user_id": "${LAB_USER_NORMAL_DISABLED_OBJECT_ID}",
+    "direct_license_user_id": "${LAB_USER_DIRECT_LICENSE_OBJECT_ID}",
+    "guest_user_id": "${LAB_USER_GUEST_OBJECT_ID}",
+    "administrator_user_id": "${LAB_USER_ADMINISTRATOR_OBJECT_ID}",
+    "break_glass_user_id": "${LAB_USER_SYNTHETIC_BREAK_GLASS_OBJECT_ID}",
+    "no_usage_location_user_id": "${LAB_USER_NO_USAGE_LOCATION_OBJECT_ID}",
+    "outside_allowlist_user_id": "${LAB_USER_OUTSIDE_ALLOWLIST_OBJECT_ID}"
+  },
+  "core_groups": {
+    "allowed_static_group_id": "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}",
+    "protected_static_group_id": "${LAB_GROUP_PROTECTED_STATIC_OBJECT_ID}",
+    "outside_allowlist_group_id": "${LAB_GROUP_OUTSIDE_ALLOWLIST_OBJECT_ID}"
+  },
+  "core_relationships": {
+    "already_member_user_id": "${LAB_USER_NORMAL_ENABLED_OBJECT_ID}",
+    "already_member_group_id": "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}",
+    "non_member_user_id": "${LAB_USER_NORMAL_DISABLED_OBJECT_ID}",
+    "non_member_group_id": "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}"
+  },
+  "extended": {
+    "state": "not_provisioned"
+  },
+  "licenses": {
+    "allowed_sku_id": "${LAB_ALLOWED_SUBSCRIBED_SKU_ID}",
+    "disallowed_sku_id": "${LAB_DISALLOWED_SUBSCRIBED_SKU_ID}",
+    "allowed_service_plan_ids": ["${LAB_ALLOWED_SERVICE_PLAN_ID}"],
+    "disallowed_service_plan_id": "${LAB_DISALLOWED_SERVICE_PLAN_ID}"
+  },
+  "allowlisted_user_ids": [
+    "${LAB_USER_NORMAL_ENABLED_OBJECT_ID}",
+    "${LAB_USER_NORMAL_DISABLED_OBJECT_ID}",
+    "${LAB_USER_DIRECT_LICENSE_OBJECT_ID}",
+    "${LAB_USER_GUEST_OBJECT_ID}",
+    "${LAB_USER_ADMINISTRATOR_OBJECT_ID}",
+    "${LAB_USER_SYNTHETIC_BREAK_GLASS_OBJECT_ID}",
+    "${LAB_USER_NO_USAGE_LOCATION_OBJECT_ID}"
+  ],
+  "allowlisted_group_ids": [
+    "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}",
+    "${LAB_GROUP_PROTECTED_STATIC_OBJECT_ID}"
+  ],
+  "protected_user_ids": [
+    "${LAB_USER_ADMINISTRATOR_OBJECT_ID}",
+    "${LAB_USER_SYNTHETIC_BREAK_GLASS_OBJECT_ID}"
+  ],
+  "protected_group_ids": ["${LAB_GROUP_PROTECTED_STATIC_OBJECT_ID}"],
+  "allowed_sku_ids": ["${LAB_ALLOWED_SUBSCRIBED_SKU_ID}"],
+  "allowed_service_plan_ids": {
+    "${LAB_ALLOWED_SUBSCRIBED_SKU_ID}": ["${LAB_ALLOWED_SERVICE_PLAN_ID}"]
+  }
+}

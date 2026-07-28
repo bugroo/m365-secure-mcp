@@ -301,12 +301,23 @@ class ContractPermissionsV2(ContractPermissions):
         default_factory=list
     )
     microsoft_supported_roles: list[str] = Field(default_factory=list)
+    microsoft_supported_evidence_roles: list[str] = Field(default_factory=list)
     project_required_role: str | None = Field(
         default=None,
         min_length=3,
         max_length=120,
     )
+    project_required_evidence_role: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=120,
+    )
     project_role_rationale: str | None = Field(
+        default=None,
+        min_length=20,
+        max_length=500,
+    )
+    project_evidence_role_rationale: str | None = Field(
         default=None,
         min_length=20,
         max_length=500,
@@ -327,7 +338,10 @@ class ContractPermissionsV2(ContractPermissions):
             raise ValueError("contract requests a prohibited directory scope")
         return value
 
-    @field_validator("microsoft_supported_roles")
+    @field_validator(
+        "microsoft_supported_roles",
+        "microsoft_supported_evidence_roles",
+    )
     @classmethod
     def unique_supported_roles(cls, value: list[str]) -> list[str]:
         if value != sorted(set(value)):
@@ -588,11 +602,14 @@ class ContractSpecV2(StrictModel):
                 )
             if (
                 not permissions.microsoft_supported_roles
+                or not permissions.microsoft_supported_evidence_roles
                 or permissions.project_required_role is None
+                or permissions.project_required_evidence_role is None
                 or permissions.project_role_rationale is None
+                or permissions.project_evidence_role_rationale is None
             ):
                 raise ValueError(
-                    "reviewed workload contracts require supported and project roles"
+                    "reviewed workload contracts require effect and evidence roles"
                 )
             if (
                 permissions.project_required_role
@@ -601,11 +618,21 @@ class ContractSpecV2(StrictModel):
                 raise ValueError(
                     "project-required role must be Microsoft-supported"
                 )
-            if permissions.operator_roles != [
-                permissions.project_required_role
-            ]:
+            if (
+                permissions.project_required_evidence_role
+                not in permissions.microsoft_supported_evidence_roles
+            ):
                 raise ValueError(
-                    "legacy operator-role closure must equal project-required role"
+                    "project-required evidence role must be Microsoft-supported"
+                )
+            if permissions.operator_roles != sorted(
+                {
+                    permissions.project_required_role,
+                    permissions.project_required_evidence_role,
+                }
+            ):
+                raise ValueError(
+                    "operator-role closure must equal effect and evidence roles"
                 )
         return self
 

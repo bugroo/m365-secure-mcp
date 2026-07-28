@@ -33,6 +33,7 @@ contracts.
 [Secure Operations](docs/SECURE_OPERATIONS.md) |
 [Operator Foundation](docs/OPERATOR_FOUNDATION.md) |
 [Contract signing](docs/CONTRACT_SIGNING_RUNBOOK.md) |
+[Identity live lab](docs/IDENTITY_LIVE_LAB.md) |
 [Project north star](docs/PROJECT_NORTH_STAR.md) |
 [Roadmap](docs/ROADMAP.md) |
 [Community adoption gates](docs/COMMUNITY_ADOPTION_GATES.md) |
@@ -115,10 +116,13 @@ Contract manifests use a separate
 [contract-signing lifecycle](docs/CONTRACT_SIGNING_RUNBOOK.md). The five
 Identity schema-2.0 contracts are currently `candidate`/`preview`: they compile,
 have Governance/provider/tests/recordings, but are not registered or
-executable. PR #5 may merge with them inactive. All five operations require
-reviewed live-lab execution before the external authority signs the resulting
-final digest; any live-lab correction changes that digest. Activation then
-requires a separate small PR containing the reviewed direct cutover.
+executable through the production MCP surface. PR #5 merged them inactive. All
+five operations require reviewed
+execution in a dedicated non-production
+[Identity live lab](docs/IDENTITY_LIVE_LAB.md) before the external authority
+signs the resulting final digest; any correction changes that digest.
+Activation then requires a separate small PR containing the reviewed direct
+cutover.
 
 ### What comes next
 
@@ -129,8 +133,9 @@ Operator Foundation proves exact T2 plans, real T3 dual control, durable
 accepted/verified/uncertain outcomes, and resumable signed synthetic DAGs. It
 activates no new Graph operation. The bounded Identity slice is implemented as
 five inactive candidates. Its remaining activation gates are candidate merge,
-reviewed live-lab execution of all five operations, external signing of the
-final post-lab digest and a separate activation PR.
+reviewed Core live-lab execution of all five operations with isolated
+operators, external signing of the final post-lab digest and a separate
+`preview` activation PR. Extended lab evidence is required before `stable`.
 
 The next canonical programs are Operational Playbooks v1, Evaluation and
 Release Readiness, and Community Adoption. Endpoint/Intune, Defender and

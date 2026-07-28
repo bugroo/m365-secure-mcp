@@ -40,7 +40,9 @@ registry and never prints private bytes.
 The candidate implementation PR may merge with all schema-2.0 operations
 inactive. Before the first reviewed cutover:
 
-1. execute and review live-lab scenarios for all five Identity operations;
+1. execute and review the mandatory Core Identity Lab scenarios for all five
+   operations using isolated session, account, group, license and negative
+   operator profiles;
 2. apply any resulting correction and regenerate every candidate artifact;
 3. review the final manifest and artifact digests;
 4. sign only that final post-lab manifest digest.
@@ -49,6 +51,13 @@ Any candidate correction, including one derived from live-lab evidence,
 invalidates the earlier digest and signing request. Signing a pre-lab digest is
 prohibited. Activation is delivered in a separate, small PR; no candidate is
 registered as a tool before that PR.
+
+Initial activation maturity is `preview`. Extended Identity Lab evidence
+(real synchronization, active/eligible PIM, dynamic and role-assignable groups,
+group-based licensing, and advanced replication/concurrency) is required
+before promotion to `stable`. An unavailable Extended scenario remains
+`not_executed`; it is never converted into a pass and does not weaken the Core
+signing gate.
 
 The activation cutover is atomic:
 

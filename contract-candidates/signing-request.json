@@ -1,16 +1,18 @@
 {
   "activation_sequence": [
     "merge-inactive-candidate-pr",
-    "execute-and-review-live-lab-for-all-five-operations",
+    "provision-core-identity-lab",
+    "execute-five-operations-with-isolated-operator-profiles",
     "apply-corrections-and-regenerate-candidate-digest-if-needed",
     "sign-final-reviewed-digest-with-external-production-authority",
-    "merge-separate-small-activation-pr"
+    "merge-separate-small-activation-pr",
+    "complete-extended-identity-lab-before-stable"
   ],
   "artifact_digests": {
-    "candidate_registry": "sha256:e780771bc1e58cd1d9c6f70b1bd200f059aa9be403787f800a5d8fe1fb2b0952",
-    "graph_surface_diff": "sha256:75def38b4025c7d93f9591c90750a1096d9d634d7e2c20a62984fe923bcfe7ea",
-    "provenance": "sha256:96e7f2995ff94ec241c10882bdf74eebae1caba9ab222a3b53fbce89811c5f83",
-    "sbom_binding": "sha256:23b924df95e8552bc6bfffb5248631379de0dd7902c170de24d0578b2b1d742c"
+    "candidate_registry": "sha256:e9456beeaef0c4da6d577eb53f4f65efbfc02144f21c1797326e4b842d11650a",
+    "graph_surface_diff": "sha256:07dc7a08236fce2f19e22e9c9dd282cacc56a16a22d30558906938554a93d634",
+    "provenance": "sha256:b27d5a394b9b60242f157b508368cd6cac9ac5420efe42c16252739eb15707a4",
+    "sbom_binding": "sha256:a18afae05e5c10941ec47e052ff0e617a2f6691000b1662bf60c5caf8b3ded07"
   },
   "candidate_tool_registration": false,
   "contains_private_material": false,
@@ -36,7 +38,7 @@
       "POST /users/{user_id}/assignLicense",
       "POST /users/{user_id}/revokeSignInSessions"
     ],
-    "candidate_manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
+    "candidate_manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
     "candidate_only_delegated_scopes": [
       "GroupMember.ReadWrite.All",
       "LicenseAssignment.Read.All",
@@ -55,18 +57,19 @@
   },
   "intended_key_id": "m365-contracts-2026-07",
   "intended_public_fingerprint": "pending-external-inspection",
-  "manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
+  "manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
   "review_reference": "pull-request-required-before-signing",
   "schema_version": "1.0",
   "signing_eligible": false,
-  "status": "awaiting_reviewed_live_lab",
+  "status": "awaiting_reviewed_core_identity_lab",
   "tests_required": [
     "compiler-check",
     "current-and-historical-signature-verification",
     "candidate-activation-denial",
     "governance-v1-v2-v3-compatibility",
     "identity-recorded-playback",
-    "reviewed-live-lab-all-five-operations",
+    "reviewed-core-live-lab-all-five-operations-isolated-operators",
+    "extended-live-lab-required-before-stable",
     "privacy-and-secret-scan"
   ]
 }

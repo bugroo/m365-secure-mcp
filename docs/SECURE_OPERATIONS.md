@@ -139,11 +139,12 @@ All five schema-2.0 contracts now compile as `candidate`/`preview`, with fixed
 Graph v1.0 calls, Governance v3 bindings, closed providers, protected-object
 checks, recorded playback and deterministic evaluations. They are not active
 MCP tools and cannot execute Graph. The candidate PR may merge inactive.
-Reviewed live-lab execution of all five operations must occur before an
-independent production contract authority signs the final post-lab manifest
-digest. Any correction invalidates the earlier digest. A separate small
-activation PR performs the atomic cutover; no candidate registers as a tool
-before that PR. Administrator consent remains manual.
+Reviewed Core live-lab execution of all five operations with isolated
+operators must occur before an independent production contract authority signs
+the final post-lab manifest digest. Any correction invalidates the earlier
+digest. A separate small activation PR performs the atomic `preview` cutover;
+no candidate registers as a tool before that PR. Extended live-lab evidence is
+required before `stable`. Administrator consent remains manual.
 
 ## Operational playbook direction
 

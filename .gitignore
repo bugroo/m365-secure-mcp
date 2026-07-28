@@ -20,3 +20,6 @@ token-cache*
 *.policy.json
 *-policy.json
 private/
+identity-live-lab*.json
+identity-live-lab*.evidence
+!examples/identity-live-lab.inventory.template.json

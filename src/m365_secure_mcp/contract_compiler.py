@@ -171,9 +171,11 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
                 "| Contract | Effect permissions | Preflight permissions | "
                 "Readback permissions | Protected-object evidence permissions | "
                 "Microsoft-supported least-privileged roles | "
-                "Project-required operational role | Project rationale |"
+                "Project-required operational role | Project rationale | "
+                "Microsoft-supported evidence roles | "
+                "Project-required evidence role | Evidence-role rationale |"
             ),
-            "|---|---|---|---|---|---|---|---|",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
     )
     for item in manifest.contracts:
@@ -189,7 +191,10 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
             f"{values(permissions.protected_object_evidence_delegated_scopes)} | "
             f"{values(permissions.microsoft_supported_roles)} | "
             f"`{permissions.project_required_role}` | "
-            f"{permissions.project_role_rationale} |"
+            f"{permissions.project_role_rationale} | "
+            f"{values(permissions.microsoft_supported_evidence_roles)} | "
+            f"`{permissions.project_required_evidence_role}` | "
+            f"{permissions.project_evidence_role_rationale} |"
         )
     lines.extend(
         [
@@ -197,12 +202,15 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
             "## Activation gate",
             "",
             "This candidate PR may merge while every contract remains inactive.",
-            "All five operations require reviewed live-lab execution before signing.",
+            "All five operations require reviewed Core Identity Lab execution with",
+            "isolated operator profiles before signing and `preview` activation.",
             "Any live-lab correction changes and invalidates the candidate digest.",
             "The external signer signs only the resulting final reviewed digest.",
             "A separate, small activation PR performs the direct cutover and adds the",
             "production signature and active artifacts. No candidate is registered as",
             "an MCP tool before that activation PR. Test keys cannot activate candidates.",
+            "Extended Identity Lab evidence is required before promotion to `stable`;",
+            "unavailable Extended scenarios remain `not_executed`, never passed.",
             "",
         ]
     )
@@ -288,6 +296,15 @@ def compile_identity_candidate_outputs(
                 ),
                 "project_required_role": item.permissions.project_required_role,
                 "project_role_rationale": item.permissions.project_role_rationale,
+                "microsoft_supported_evidence_roles": (
+                    item.permissions.microsoft_supported_evidence_roles
+                ),
+                "project_required_evidence_role": (
+                    item.permissions.project_required_evidence_role
+                ),
+                "project_evidence_role_rationale": (
+                    item.permissions.project_evidence_role_rationale
+                ),
             }
             for item in manifest.contracts
         },
@@ -341,7 +358,7 @@ def compile_identity_candidate_outputs(
     }
     signing_request = {
         "schema_version": "1.0",
-        "status": "awaiting_reviewed_live_lab",
+        "status": "awaiting_reviewed_core_identity_lab",
         "signing_eligible": False,
         "manifest_digest": candidate_digest,
         "effect_model_digest": model_digest,
@@ -359,15 +376,18 @@ def compile_identity_candidate_outputs(
             "candidate-activation-denial",
             "governance-v1-v2-v3-compatibility",
             "identity-recorded-playback",
-            "reviewed-live-lab-all-five-operations",
+            "reviewed-core-live-lab-all-five-operations-isolated-operators",
+            "extended-live-lab-required-before-stable",
             "privacy-and-secret-scan",
         ],
         "activation_sequence": [
             "merge-inactive-candidate-pr",
-            "execute-and-review-live-lab-for-all-five-operations",
+            "provision-core-identity-lab",
+            "execute-five-operations-with-isolated-operator-profiles",
             "apply-corrections-and-regenerate-candidate-digest-if-needed",
             "sign-final-reviewed-digest-with-external-production-authority",
             "merge-separate-small-activation-pr",
+            "complete-extended-identity-lab-before-stable",
         ],
         "candidate_tool_registration": False,
         "digest_invalidated_by_candidate_change": True,

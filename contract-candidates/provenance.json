@@ -7,12 +7,12 @@
   "distribution_status": "not-a-release",
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
   "live_lab_review_status": "required-before-signing",
-  "manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
-  "registry_digest": "sha256:e780771bc1e58cd1d9c6f70b1bd200f059aa9be403787f800a5d8fe1fb2b0952",
+  "manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
+  "registry_digest": "sha256:e9456beeaef0c4da6d577eb53f4f65efbfc02144f21c1797326e4b842d11650a",
   "release_attestation_status": "external-required",
   "runtime_tool_generation": false,
   "schema_version": "1.0",
   "signature_present": false,
   "signing_eligible": false,
-  "surface_diff_digest": "sha256:75def38b4025c7d93f9591c90750a1096d9d634d7e2c20a62984fe923bcfe7ea"
+  "surface_diff_digest": "sha256:07dc7a08236fce2f19e22e9c9dd282cacc56a16a22d30558906938554a93d634"
 }
