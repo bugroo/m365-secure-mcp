@@ -7,6 +7,8 @@ from pathlib import Path
 
 import pytest
 
+from m365_secure_mcp.identity_live_lab import load_gate_from_environment
+
 ROOT = Path(__file__).resolve().parents[1]
 RECORDING = ROOT / "tests/recordings/identity/identity-slice-v1.json"
 KNOWN_SYNTHETIC_IDS = {
@@ -67,10 +69,7 @@ def test_live_identity_lab_harness_is_disabled_by_default() -> None:
     os.environ.get("M365_IDENTITY_LIVE_LAB") != "1",
     reason="explicit non-production lab opt-in is required",
 )
-def test_live_identity_lab_requires_external_reviewed_harness() -> None:
-    assert os.environ.get("M365_LAB_PROFILE") == "lab-only"
-    assert os.environ.get("M365_LAB_TENANT_ID")
-    pytest.skip(
-        "The network runner is external and remains disabled until the "
-        "production candidate-signing ceremony."
-    )
+def test_live_identity_lab_requires_exact_external_gate() -> None:
+    result = load_gate_from_environment(root=ROOT)
+    assert result.profile == "live-lab"
+    assert result.environment == "dedicated-nonproduction"

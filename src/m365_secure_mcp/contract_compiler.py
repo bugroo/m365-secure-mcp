@@ -171,9 +171,11 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
                 "| Contract | Effect permissions | Preflight permissions | "
                 "Readback permissions | Protected-object evidence permissions | "
                 "Microsoft-supported least-privileged roles | "
-                "Project-required operational role | Project rationale |"
+                "Project-required operational role | Project rationale | "
+                "Microsoft-supported evidence roles | "
+                "Project-required evidence role | Evidence-role rationale |"
             ),
-            "|---|---|---|---|---|---|---|---|",
+            "|---|---|---|---|---|---|---|---|---|---|---|",
         ]
     )
     for item in manifest.contracts:
@@ -189,7 +191,10 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
             f"{values(permissions.protected_object_evidence_delegated_scopes)} | "
             f"{values(permissions.microsoft_supported_roles)} | "
             f"`{permissions.project_required_role}` | "
-            f"{permissions.project_role_rationale} |"
+            f"{permissions.project_role_rationale} | "
+            f"{values(permissions.microsoft_supported_evidence_roles)} | "
+            f"`{permissions.project_required_evidence_role}` | "
+            f"{permissions.project_evidence_role_rationale} |"
         )
     lines.extend(
         [
@@ -288,6 +293,15 @@ def compile_identity_candidate_outputs(
                 ),
                 "project_required_role": item.permissions.project_required_role,
                 "project_role_rationale": item.permissions.project_role_rationale,
+                "microsoft_supported_evidence_roles": (
+                    item.permissions.microsoft_supported_evidence_roles
+                ),
+                "project_required_evidence_role": (
+                    item.permissions.project_required_evidence_role
+                ),
+                "project_evidence_role_rationale": (
+                    item.permissions.project_evidence_role_rationale
+                ),
             }
             for item in manifest.contracts
         },

@@ -31,17 +31,18 @@ This is the durable resume point for
 - [x] Candidate merge/live-lab/signing/activation gates made explicit.
 - [x] Final local validation: 435 collected, 434 passed, one live-lab skipped;
   compiler, Ruff, strict mypy, dependency audit, build and diff check passed.
-- [ ] Remote CI must remain green before merge.
-- [ ] Merge PR #5 with all candidates inactive.
+- [x] Remote CI green before merge.
+- [x] Merge PR #5 with all candidates inactive.
 - [ ] Execute and review live-lab scenarios for all five operations.
 - [ ] Regenerate after any live-lab correction and sign only the final digest.
 - [ ] Activate through a separate reviewed PR.
 
 ## Resume action
 
-PR #5 carries the inactive candidate digest
+PR #5 merged the inactive candidate digest
 `sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399`.
-Remote CI must be green before merge. The exact next sequence is:
-merge inactive candidate PR → reviewed live lab for all five operations →
-apply corrections and regenerate the final digest → external signing →
-separate activation PR.
+The successor progress log is
+[Identity Live-Lab and Activation](IDENTITY_LIVE_LAB_AND_ACTIVATION_PROGRESS.md).
+The exact next sequence is: provision dedicated lab → reviewed live lab for
+all five operations → apply corrections and regenerate the final digest →
+external signing → separate activation PR.

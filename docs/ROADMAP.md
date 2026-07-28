@@ -93,9 +93,10 @@ is retained as architectural history and detailed acceptance context.
 
 1. **Contract Signing Lifecycle and Identity Slice** — implemented as five
    schema-2.0 `candidate`/`preview` contracts plus an independent trust
-   lifecycle. The candidate PR may merge inactive; reviewed live-lab execution
-   of all five operations must precede the external signature and a separate
-   activation PR.
+   lifecycle. PR #5 merged the candidates inactive. Reviewed live-lab
+   execution of all five operations must precede the external signature and a
+   separate activation PR. The current provisioning gate is recorded in the
+   [live-lab progress log](execplans/IDENTITY_LIVE_LAB_AND_ACTIVATION_PROGRESS.md).
 2. **Operational Playbooks v1** — Compromised Account Containment, Bounded
    Employee Onboarding and Preserve-Data Employee Offboarding. Unsupported
    capabilities remain explicit manual handoffs.

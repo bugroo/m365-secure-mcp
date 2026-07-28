@@ -28,6 +28,7 @@ m365-approval = "m365_secure_mcp.approval_cli:main"
 m365-msp-radar = "m365_secure_mcp.msp_radar:main"
 m365-control-signing = "m365_secure_mcp.control_signing_cli:main"
 m365-contract-signing = "m365_secure_mcp.contract_signing_cli:main"
+m365-identity-live-lab = "m365_secure_mcp.identity_live_lab:main"
 
 [dependency-groups]
 dev = [

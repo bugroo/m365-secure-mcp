@@ -1,6 +1,6 @@
 # ExecPlan: Contract Authority Lifecycle and Identity Slice
 
-Status: candidate implementation complete; awaiting merge and reviewed live lab
+Status: candidate implementation merged; live lab tracked in successor ExecPlan
 
 Branch: `feat/secure-operations-identity-slice`
 
@@ -136,11 +136,9 @@ authority unchanged.
   Group-inherited assignment never satisfies a direct-assignment request and
   never becomes a removal target when no direct assignment exists.
 
-## Remaining external boundary
+## Successor boundary
 
-Merge PR #5 with candidates inactive, execute and review all five live-lab
-operations, and apply any correction before treating a digest as final. Then
-generate and custody one encrypted Ed25519 signer outside the repository,
-inspect its public fingerprint, sign that exact post-lab digest and deliver the
-atomic cutover in a separate activation PR. No candidate tool registers before
-that PR.
+PR #5 merged with candidates inactive. Live-lab provisioning, reviewed
+execution, final-digest freeze, external signing and the separate activation
+PR are tracked in
+[Identity Live-Lab and Activation](IDENTITY_LIVE_LAB_AND_ACTIVATION.md).

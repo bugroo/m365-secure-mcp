@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "environment": "dedicated-nonproduction",
+  "profile": "live-lab",
+  "tenant_id": "${LAB_TENANT_OBJECT_ID}",
+  "client_id": "${LAB_PUBLIC_CLIENT_APPLICATION_ID}",
+  "operator_object_id": "${LAB_OPERATOR_OBJECT_ID}",
+  "candidate_manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
+  "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
+  "governance_policy_digest": "${SIGNED_LAB_GOVERNANCE_POLICY_DIGEST}",
+  "marker": {
+    "group_id": "${LAB_MARKER_GROUP_OBJECT_ID}",
+    "description_digest": "${LAB_MARKER_DESCRIPTION_SHA256}"
+  },
+  "users": {
+    "normal_enabled_user_id": "${LAB_USER_NORMAL_ENABLED_OBJECT_ID}",
+    "normal_disabled_user_id": "${LAB_USER_NORMAL_DISABLED_OBJECT_ID}",
+    "direct_license_user_id": "${LAB_USER_DIRECT_LICENSE_OBJECT_ID}",
+    "inherited_license_user_id": "${LAB_USER_INHERITED_LICENSE_OBJECT_ID}",
+    "guest_user_id": "${LAB_USER_GUEST_OBJECT_ID}",
+    "synchronized_user_id": "${LAB_USER_SYNCHRONIZED_OBJECT_ID}",
+    "administrator_user_id": "${LAB_USER_ADMINISTRATOR_OBJECT_ID}",
+    "break_glass_user_id": "${LAB_USER_SYNTHETIC_BREAK_GLASS_OBJECT_ID}",
+    "no_usage_location_user_id": "${LAB_USER_NO_USAGE_LOCATION_OBJECT_ID}",
+    "outside_allowlist_user_id": "${LAB_USER_OUTSIDE_ALLOWLIST_OBJECT_ID}"
+  },
+  "groups": {
+    "allowed_static_group_id": "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}",
+    "protected_static_group_id": "${LAB_GROUP_PROTECTED_STATIC_OBJECT_ID}",
+    "dynamic_group_id": "${LAB_GROUP_DYNAMIC_OBJECT_ID}",
+    "role_assignable_group_id": "${LAB_GROUP_ROLE_ASSIGNABLE_OBJECT_ID}",
+    "outside_allowlist_group_id": "${LAB_GROUP_OUTSIDE_ALLOWLIST_OBJECT_ID}"
+  },
+  "relationships": {
+    "already_member_user_id": "${LAB_USER_NORMAL_ENABLED_OBJECT_ID}",
+    "already_member_group_id": "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}",
+    "non_member_user_id": "${LAB_USER_NORMAL_DISABLED_OBJECT_ID}",
+    "non_member_group_id": "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}",
+    "inherited_license_group_id": "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}"
+  },
+  "licenses": {
+    "allowed_sku_id": "${LAB_ALLOWED_SUBSCRIBED_SKU_ID}",
+    "disallowed_sku_id": "${LAB_DISALLOWED_SUBSCRIBED_SKU_ID}",
+    "allowed_service_plan_ids": [
+      "${LAB_ALLOWED_SERVICE_PLAN_ID}"
+    ],
+    "disallowed_service_plan_id": "${LAB_DISALLOWED_SERVICE_PLAN_ID}"
+  },
+  "allowlisted_user_ids": [
+    "${LAB_USER_NORMAL_ENABLED_OBJECT_ID}",
+    "${LAB_USER_NORMAL_DISABLED_OBJECT_ID}",
+    "${LAB_USER_DIRECT_LICENSE_OBJECT_ID}",
+    "${LAB_USER_INHERITED_LICENSE_OBJECT_ID}",
+    "${LAB_USER_GUEST_OBJECT_ID}",
+    "${LAB_USER_SYNCHRONIZED_OBJECT_ID}",
+    "${LAB_USER_ADMINISTRATOR_OBJECT_ID}",
+    "${LAB_USER_SYNTHETIC_BREAK_GLASS_OBJECT_ID}",
+    "${LAB_USER_NO_USAGE_LOCATION_OBJECT_ID}"
+  ],
+  "allowlisted_group_ids": [
+    "${LAB_GROUP_ALLOWED_STATIC_OBJECT_ID}",
+    "${LAB_GROUP_PROTECTED_STATIC_OBJECT_ID}",
+    "${LAB_GROUP_DYNAMIC_OBJECT_ID}",
+    "${LAB_GROUP_ROLE_ASSIGNABLE_OBJECT_ID}"
+  ],
+  "protected_user_ids": [
+    "${LAB_USER_ADMINISTRATOR_OBJECT_ID}",
+    "${LAB_USER_SYNTHETIC_BREAK_GLASS_OBJECT_ID}"
+  ],
+  "protected_group_ids": [
+    "${LAB_GROUP_PROTECTED_STATIC_OBJECT_ID}"
+  ],
+  "allowed_sku_ids": [
+    "${LAB_ALLOWED_SUBSCRIBED_SKU_ID}"
+  ],
+  "allowed_service_plan_ids": {
+    "${LAB_ALLOWED_SUBSCRIBED_SKU_ID}": [
+      "${LAB_ALLOWED_SERVICE_PLAN_ID}"
+    ]
+  }
+}

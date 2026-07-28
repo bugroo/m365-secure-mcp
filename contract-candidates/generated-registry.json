@@ -3,7 +3,7 @@
   "contracts": {
     "entra.group.user_membership.add": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:c34ef98d5fdfee286c3321bfe4b120ef7442264b8f47a5c2c3780fc86919b957",
+      "contract_digest": "sha256:45af91ed55f6da9bf98dba412ba934df33c45bdd6c9fbc6d5e47119758eb55cd",
       "delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "RoleManagement.Read.Directory",
@@ -18,6 +18,10 @@
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "POST",
+      "microsoft_supported_evidence_roles": [
+        "Global Reader",
+        "Privileged Role Administrator"
+      ],
       "microsoft_supported_roles": [
         "Directory Writers",
         "Exchange Administrator (Microsoft 365 groups only)",
@@ -31,12 +35,15 @@
         "Yammer Administrator (Microsoft 365 groups only)"
       ],
       "operator_roles": [
+        "Global Reader",
         "Groups Administrator"
       ],
       "preflight_delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "User.Read.All"
       ],
+      "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
+      "project_required_evidence_role": "Global Reader",
       "project_required_role": "Groups Administrator",
       "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
       "protected_object_evidence_delegated_scopes": [
@@ -53,7 +60,7 @@
     },
     "entra.group.user_membership.remove": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:869483342b0bea3fce090cfeaaf5b650da41642e3cda62bdce2e3ad5c9e68fd1",
+      "contract_digest": "sha256:3a55f20e152625603096d16c820118ccef83ada2b567fdca69003399d7b3c783",
       "delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "RoleManagement.Read.Directory",
@@ -68,6 +75,10 @@
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "DELETE",
+      "microsoft_supported_evidence_roles": [
+        "Global Reader",
+        "Privileged Role Administrator"
+      ],
       "microsoft_supported_roles": [
         "Directory Writers",
         "Exchange Administrator (Microsoft 365 groups only)",
@@ -81,12 +92,15 @@
         "Yammer Administrator (Microsoft 365 groups only)"
       ],
       "operator_roles": [
+        "Global Reader",
         "Groups Administrator"
       ],
       "preflight_delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "User.Read.All"
       ],
+      "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
+      "project_required_evidence_role": "Global Reader",
       "project_required_role": "Groups Administrator",
       "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
       "protected_object_evidence_delegated_scopes": [
@@ -103,7 +117,7 @@
     },
     "entra.user.account_state.set": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:649348b7ca773747290bd387384afdc6d3ba17415ef08babda5f0e6fd38217ff",
+      "contract_digest": "sha256:3a6b2394b94f9fa5bf2b4b99c75b91ad958bf10659bcc2cf2cd4892fa60377fd",
       "delegated_scopes": [
         "RoleManagement.Read.Directory",
         "User.EnableDisableAccount.All",
@@ -119,16 +133,23 @@
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "PATCH",
+      "microsoft_supported_evidence_roles": [
+        "Global Reader",
+        "Privileged Role Administrator"
+      ],
       "microsoft_supported_roles": [
         "Authentication Administrator",
         "User Administrator"
       ],
       "operator_roles": [
+        "Global Reader",
         "User Administrator"
       ],
       "preflight_delegated_scopes": [
         "User.Read.All"
       ],
+      "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
+      "project_required_evidence_role": "Global Reader",
       "project_required_role": "User Administrator",
       "project_role_rationale": "The project selects User Administrator for non-administrator member accounts and rejects every protected or privileged target before the effect.",
       "protected_object_evidence_delegated_scopes": [
@@ -145,7 +166,7 @@
     },
     "entra.user.direct_license.set": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:faa38d7f7ab8e5d89a2c49dbdb5ec8b2d653bebc313ff7d245289cc8ae94bd7f",
+      "contract_digest": "sha256:c60c499f415e7735b4150b143da7db02519bc67df3b153098556b38a50fc643e",
       "delegated_scopes": [
         "LicenseAssignment.Read.All",
         "LicenseAssignment.ReadWrite.All",
@@ -161,18 +182,25 @@
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "POST",
+      "microsoft_supported_evidence_roles": [
+        "Global Reader",
+        "Privileged Role Administrator"
+      ],
       "microsoft_supported_roles": [
         "Directory Writers",
         "License Administrator",
         "User Administrator"
       ],
       "operator_roles": [
+        "Global Reader",
         "License Administrator"
       ],
       "preflight_delegated_scopes": [
         "LicenseAssignment.Read.All",
         "User.Read.All"
       ],
+      "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
+      "project_required_evidence_role": "Global Reader",
       "project_required_role": "License Administrator",
       "project_role_rationale": "The project requires the Microsoft-supported License Administrator role because the contract changes only direct licensing and excludes broader user administration.",
       "protected_object_evidence_delegated_scopes": [
@@ -189,7 +217,7 @@
     },
     "entra.user.sessions.revoke": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:93ce415444e1625674d2379a88d7faf92003ae2d968522715679766ee6fb7640",
+      "contract_digest": "sha256:1a98b706754e797659f856b316f64eb545789bba9400f82dd7f6826ee0e5f3c4",
       "delegated_scopes": [
         "RoleManagement.Read.Directory",
         "User.Read.All",
@@ -204,15 +232,22 @@
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "POST",
+      "microsoft_supported_evidence_roles": [
+        "Global Reader",
+        "Privileged Role Administrator"
+      ],
       "microsoft_supported_roles": [
         "Helpdesk Administrator"
       ],
       "operator_roles": [
+        "Global Reader",
         "Helpdesk Administrator"
       ],
       "preflight_delegated_scopes": [
         "User.Read.All"
       ],
+      "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
+      "project_required_evidence_role": "Global Reader",
       "project_required_role": "Helpdesk Administrator",
       "project_role_rationale": "The project requires Helpdesk Administrator because its Microsoft-supported refresh-token revocation task matches this bounded non-protected-user operation.",
       "protected_object_evidence_delegated_scopes": [
@@ -227,7 +262,7 @@
     }
   },
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
-  "manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
+  "manifest_digest": "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7",
   "manifest_schema_version": "2.0",
   "schema_version": "1.0"
 }

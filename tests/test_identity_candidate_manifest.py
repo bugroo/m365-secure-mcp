@@ -58,7 +58,7 @@ def test_candidate_manifest_is_complete_deterministic_and_not_registered() -> No
     candidate = load_identity_candidate(ROOT)
     assert [item.id for item in candidate.contracts] == EXPECTED_IDS
     assert sha256_digest(candidate) == (
-        "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399"
+        "sha256:2c084bc85d7cb0fd13d042e503f0465aa21308b4fda40dcf99a48a95330f2ab7"
     )
     assert all(
         item.lifecycle_state is ContractLifecycleState.CANDIDATE
@@ -131,10 +131,18 @@ def test_identity_candidate_separates_permissions_and_roles() -> None:
         assert permissions.project_required_role in (
             permissions.microsoft_supported_roles
         )
-        assert permissions.operator_roles == [
-            permissions.project_required_role
-        ]
+        assert permissions.microsoft_supported_evidence_roles
+        assert permissions.project_required_evidence_role in (
+            permissions.microsoft_supported_evidence_roles
+        )
+        assert permissions.operator_roles == sorted(
+            {
+                permissions.project_required_role,
+                permissions.project_required_evidence_role,
+            }
+        )
         assert permissions.project_role_rationale
+        assert permissions.project_evidence_role_rationale
 
 
 def test_group_owner_is_documented_but_project_requires_groups_administrator() -> None:
@@ -163,8 +171,24 @@ def test_reviewed_workload_contract_rejects_incomplete_permission_metadata() -> 
 
     source = load_identity_candidate(ROOT).contracts[0].model_dump(mode="json")
     source["permissions"]["project_required_role"] = None
-    with pytest.raises(ValidationError, match="supported and project roles"):
+    with pytest.raises(ValidationError, match="effect and evidence roles"):
         ContractSpecV2.model_validate(source)
+
+    source = load_identity_candidate(ROOT).contracts[0].model_dump(mode="json")
+    source["permissions"]["project_required_evidence_role"] = None
+    with pytest.raises(ValidationError, match="effect and evidence roles"):
+        ContractSpecV2.model_validate(source)
+
+
+def test_identity_candidate_requires_global_reader_for_protection_evidence() -> None:
+    candidate = load_identity_candidate(ROOT)
+    for contract in candidate.contracts:
+        permissions = contract.permissions
+        assert permissions.project_required_evidence_role == "Global Reader"
+        assert "Global Reader" in permissions.microsoft_supported_evidence_roles
+        assert "Privileged Role Administrator" in (
+            permissions.microsoft_supported_evidence_roles
+        )
 
 
 def test_unsigned_and_test_signed_candidate_cannot_activate() -> None:

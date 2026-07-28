@@ -40,6 +40,9 @@
       "official_references": [
         "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/permissions-reference",
         "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignments?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignmentscheduleinstances?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0",
         "https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0"
       ],
       "output_fields": [
@@ -61,13 +64,20 @@
         "microsoft_supported_roles": [
           "Helpdesk Administrator"
         ],
+        "microsoft_supported_evidence_roles": [
+          "Global Reader",
+          "Privileged Role Administrator"
+        ],
         "operator_roles": [
+          "Global Reader",
           "Helpdesk Administrator"
         ],
         "preflight_delegated_scopes": [
           "User.Read.All"
         ],
         "project_required_role": "Helpdesk Administrator",
+        "project_required_evidence_role": "Global Reader",
+        "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
         "project_role_rationale": "The project requires Helpdesk Administrator because its Microsoft-supported refresh-token revocation task matches this bounded non-protected-user operation.",
         "protected_object_evidence_delegated_scopes": [
           "RoleManagement.Read.Directory",
@@ -168,6 +178,9 @@
       "official_references": [
         "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/privileged-roles-permissions",
         "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignments?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignmentscheduleinstances?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0",
         "https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0"
       ],
       "output_fields": [
@@ -191,13 +204,20 @@
           "Authentication Administrator",
           "User Administrator"
         ],
+        "microsoft_supported_evidence_roles": [
+          "Global Reader",
+          "Privileged Role Administrator"
+        ],
         "operator_roles": [
+          "Global Reader",
           "User Administrator"
         ],
         "preflight_delegated_scopes": [
           "User.Read.All"
         ],
         "project_required_role": "User Administrator",
+        "project_required_evidence_role": "Global Reader",
+        "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
         "project_role_rationale": "The project selects User Administrator for non-administrator member accounts and rejects every protected or privileged target before the effect.",
         "protected_object_evidence_delegated_scopes": [
           "RoleManagement.Read.Directory",
@@ -298,7 +318,10 @@
       "maturity": "preview",
       "module": "entra_identity",
       "official_references": [
-        "https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0"
+        "https://learn.microsoft.com/en-us/graph/api/group-post-members?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignments?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignmentscheduleinstances?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0"
       ],
       "output_fields": [
         "operation_reference",
@@ -328,7 +351,12 @@
           "User Administrator",
           "Yammer Administrator (Microsoft 365 groups only)"
         ],
+        "microsoft_supported_evidence_roles": [
+          "Global Reader",
+          "Privileged Role Administrator"
+        ],
         "operator_roles": [
+          "Global Reader",
           "Groups Administrator"
         ],
         "preflight_delegated_scopes": [
@@ -336,6 +364,8 @@
           "User.Read.All"
         ],
         "project_required_role": "Groups Administrator",
+        "project_required_evidence_role": "Global Reader",
+        "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
         "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
         "protected_object_evidence_delegated_scopes": [
           "RoleManagement.Read.Directory",
@@ -443,7 +473,10 @@
       "maturity": "preview",
       "module": "entra_identity",
       "official_references": [
-        "https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0"
+        "https://learn.microsoft.com/en-us/graph/api/group-delete-members?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignments?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignmentscheduleinstances?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0"
       ],
       "output_fields": [
         "operation_reference",
@@ -473,7 +506,12 @@
           "User Administrator",
           "Yammer Administrator (Microsoft 365 groups only)"
         ],
+        "microsoft_supported_evidence_roles": [
+          "Global Reader",
+          "Privileged Role Administrator"
+        ],
         "operator_roles": [
+          "Global Reader",
           "Groups Administrator"
         ],
         "preflight_delegated_scopes": [
@@ -481,6 +519,8 @@
           "User.Read.All"
         ],
         "project_required_role": "Groups Administrator",
+        "project_required_evidence_role": "Global Reader",
+        "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
         "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
         "protected_object_evidence_delegated_scopes": [
           "RoleManagement.Read.Directory",
@@ -604,6 +644,9 @@
       "maturity": "preview",
       "module": "entra_identity",
       "official_references": [
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignments?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleassignmentscheduleinstances?view=graph-rest-1.0",
+        "https://learn.microsoft.com/en-us/graph/api/rbacapplication-list-roleeligibilityscheduleinstances?view=graph-rest-1.0",
         "https://learn.microsoft.com/en-us/graph/api/subscribedsku-list?view=graph-rest-1.0",
         "https://learn.microsoft.com/en-us/graph/api/user-assignlicense?view=graph-rest-1.0"
       ],
@@ -629,7 +672,12 @@
           "License Administrator",
           "User Administrator"
         ],
+        "microsoft_supported_evidence_roles": [
+          "Global Reader",
+          "Privileged Role Administrator"
+        ],
         "operator_roles": [
+          "Global Reader",
           "License Administrator"
         ],
         "preflight_delegated_scopes": [
@@ -637,6 +685,8 @@
           "User.Read.All"
         ],
         "project_required_role": "License Administrator",
+        "project_required_evidence_role": "Global Reader",
+        "project_evidence_role_rationale": "Global Reader is the least common Microsoft-supported role across permanent, active-schedule, and eligible-schedule role evidence calls used to exclude privileged targets.",
         "project_role_rationale": "The project requires the Microsoft-supported License Administrator role because the contract changes only direct licensing and excludes broader user administration.",
         "protected_object_evidence_delegated_scopes": [
           "RoleManagement.Read.Directory",
