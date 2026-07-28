@@ -18,7 +18,9 @@ signed build artifacts, signed tenant Governance and the MCP host remain
 authoritative. Runtime cannot grant consent, widen policy, register a tool,
 approve its own plan or update itself.
 
-This file is authoritative for planned work. The
+The permanent product constraints live in the
+[project north star](PROJECT_NORTH_STAR.md). This file is authoritative for
+planned work under those constraints. The
 [tool catalog](TOOL_CATALOG.md) and generated
 [contract matrix](CONTRACT_MATRIX.md) remain authoritative for the active
 runtime surface. The binding legacy-write freeze, semantic effect rules and

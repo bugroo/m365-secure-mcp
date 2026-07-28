@@ -27,6 +27,7 @@ contracts.
 [MSP deployment](#host-and-customer-tenants) |
 [Tool catalog](docs/TOOL_CATALOG.md) |
 [Secure Operations](docs/SECURE_OPERATIONS.md) |
+[Project north star](docs/PROJECT_NORTH_STAR.md) |
 [Roadmap](docs/ROADMAP.md) |
 [Open-source boundary](docs/OPEN_SOURCE_BOUNDARY.md) |
 [Entra setup](docs/ENTRA_SETUP.md)
