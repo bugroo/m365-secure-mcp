@@ -58,7 +58,7 @@ def test_candidate_manifest_is_complete_deterministic_and_not_registered() -> No
     candidate = load_identity_candidate(ROOT)
     assert [item.id for item in candidate.contracts] == EXPECTED_IDS
     assert sha256_digest(candidate) == (
-        "sha256:1e7d065531d8d638960e15f9908e81f4fb73a0c40ba61d1cc377b3ab786f6d56"
+        "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399"
     )
     assert all(
         item.lifecycle_state is ContractLifecycleState.CANDIDATE
@@ -111,6 +111,60 @@ def test_identity_candidate_has_exact_reviewed_graph_surface() -> None:
     assert "object_delete" not in {
         item.effect.value for item in candidate.contracts
     }
+
+
+def test_identity_candidate_separates_permissions_and_roles() -> None:
+    candidate = load_identity_candidate(ROOT)
+    for contract in candidate.contracts:
+        permissions = contract.permissions
+        categorized = sorted(
+            {
+                *permissions.effect_delegated_scopes,
+                *permissions.preflight_delegated_scopes,
+                *permissions.readback_delegated_scopes,
+                *permissions.protected_object_evidence_delegated_scopes,
+            }
+        )
+        assert permissions.effect_delegated_scopes
+        assert categorized == permissions.delegated_scopes
+        assert permissions.microsoft_supported_roles
+        assert permissions.project_required_role in (
+            permissions.microsoft_supported_roles
+        )
+        assert permissions.operator_roles == [
+            permissions.project_required_role
+        ]
+        assert permissions.project_role_rationale
+
+
+def test_group_owner_is_documented_but_project_requires_groups_administrator() -> None:
+    candidate = load_identity_candidate(ROOT)
+    for contract_id in (
+        "entra.group.user_membership.add",
+        "entra.group.user_membership.remove",
+    ):
+        permissions = candidate.contract(contract_id).permissions
+        assert any(
+            role.startswith("Group owner")
+            for role in permissions.microsoft_supported_roles
+        )
+        assert permissions.project_required_role == "Groups Administrator"
+        rationale = permissions.project_role_rationale or ""
+        assert "token-subject" in rationale
+        assert "TOCTOU" in rationale
+        assert "live-lab" in rationale
+
+
+def test_reviewed_workload_contract_rejects_incomplete_permission_metadata() -> None:
+    source = load_identity_candidate(ROOT).contracts[0].model_dump(mode="json")
+    source["permissions"]["effect_delegated_scopes"] = []
+    with pytest.raises(ValidationError, match="effect permissions"):
+        ContractSpecV2.model_validate(source)
+
+    source = load_identity_candidate(ROOT).contracts[0].model_dump(mode="json")
+    source["permissions"]["project_required_role"] = None
+    with pytest.raises(ValidationError, match="supported and project roles"):
+        ContractSpecV2.model_validate(source)
 
 
 def test_unsigned_and_test_signed_candidate_cannot_activate() -> None:
@@ -180,3 +234,20 @@ def test_candidate_artifacts_are_public_and_signature_free() -> None:
     assert "BEGIN ENCRYPTED PRIVATE KEY" not in content
     assert "werixo.internal" not in content.lower()
     assert "pending-external-inspection" in content
+
+
+def test_signing_request_requires_live_lab_and_separate_activation_pr() -> None:
+    request = json.loads(
+        (ROOT / "contract-candidates/signing-request.json").read_text()
+    )
+    assert request["status"] == "awaiting_reviewed_live_lab"
+    assert request["signing_eligible"] is False
+    assert request["candidate_tool_registration"] is False
+    assert request["digest_invalidated_by_candidate_change"] is True
+    assert request["activation_sequence"] == [
+        "merge-inactive-candidate-pr",
+        "execute-and-review-live-lab-for-all-five-operations",
+        "apply-corrections-and-regenerate-candidate-digest-if-needed",
+        "sign-final-reviewed-digest-with-external-production-authority",
+        "merge-separate-small-activation-pr",
+    ]

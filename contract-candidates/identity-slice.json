@@ -38,6 +38,7 @@
       "maturity": "preview",
       "module": "entra_identity",
       "official_references": [
+        "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/permissions-reference",
         "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access",
         "https://learn.microsoft.com/en-us/graph/api/user-revokesigninsessions?view=graph-rest-1.0"
       ],
@@ -54,9 +55,25 @@
           "User.Read.All",
           "User.RevokeSessions.All"
         ],
+        "effect_delegated_scopes": [
+          "User.RevokeSessions.All"
+        ],
+        "microsoft_supported_roles": [
+          "Helpdesk Administrator"
+        ],
         "operator_roles": [
           "Helpdesk Administrator"
-        ]
+        ],
+        "preflight_delegated_scopes": [
+          "User.Read.All"
+        ],
+        "project_required_role": "Helpdesk Administrator",
+        "project_role_rationale": "The project requires Helpdesk Administrator because its Microsoft-supported refresh-token revocation task matches this bounded non-protected-user operation.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": []
       },
       "plan_ttl_seconds": 900,
       "postconditions": [
@@ -149,6 +166,7 @@
       "maturity": "preview",
       "module": "entra_identity",
       "official_references": [
+        "https://learn.microsoft.com/en-us/entra/identity/role-based-access-control/privileged-roles-permissions",
         "https://learn.microsoft.com/en-us/entra/identity/users/users-revoke-access",
         "https://learn.microsoft.com/en-us/graph/api/user-update?view=graph-rest-1.0"
       ],
@@ -165,8 +183,28 @@
           "User.EnableDisableAccount.All",
           "User.Read.All"
         ],
+        "effect_delegated_scopes": [
+          "User.EnableDisableAccount.All",
+          "User.Read.All"
+        ],
+        "microsoft_supported_roles": [
+          "Authentication Administrator",
+          "User Administrator"
+        ],
         "operator_roles": [
           "User Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "User.Read.All"
+        ],
+        "project_required_role": "User Administrator",
+        "project_role_rationale": "The project selects User Administrator for non-administrator member accounts and rejects every protected or privileged target before the effect.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "User.Read.All"
         ]
       },
       "plan_ttl_seconds": 900,
@@ -275,8 +313,36 @@
           "RoleManagement.Read.Directory",
           "User.Read.All"
         ],
+        "effect_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
+        ],
+        "microsoft_supported_roles": [
+          "Directory Writers",
+          "Exchange Administrator (Microsoft 365 groups only)",
+          "Group owners",
+          "Groups Administrator",
+          "Identity Governance Administrator",
+          "Intune Administrator (security groups only)",
+          "SharePoint Administrator (Microsoft 365 groups only)",
+          "Teams Administrator (Microsoft 365 groups only)",
+          "User Administrator",
+          "Yammer Administrator (Microsoft 365 groups only)"
+        ],
         "operator_roles": [
           "Groups Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "GroupMember.ReadWrite.All",
+          "User.Read.All"
+        ],
+        "project_required_role": "Groups Administrator",
+        "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
         ]
       },
       "plan_ttl_seconds": 900,
@@ -392,8 +458,36 @@
           "RoleManagement.Read.Directory",
           "User.Read.All"
         ],
+        "effect_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
+        ],
+        "microsoft_supported_roles": [
+          "Directory Writers",
+          "Exchange Administrator (Microsoft 365 groups only)",
+          "Group owners",
+          "Groups Administrator",
+          "Identity Governance Administrator",
+          "Intune Administrator (security groups only)",
+          "SharePoint Administrator (Microsoft 365 groups only)",
+          "Teams Administrator (Microsoft 365 groups only)",
+          "User Administrator",
+          "Yammer Administrator (Microsoft 365 groups only)"
+        ],
         "operator_roles": [
           "Groups Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "GroupMember.ReadWrite.All",
+          "User.Read.All"
+        ],
+        "project_required_role": "Groups Administrator",
+        "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "GroupMember.ReadWrite.All"
         ]
       },
       "plan_ttl_seconds": 900,
@@ -527,8 +621,29 @@
           "RoleManagement.Read.Directory",
           "User.Read.All"
         ],
+        "effect_delegated_scopes": [
+          "LicenseAssignment.ReadWrite.All"
+        ],
+        "microsoft_supported_roles": [
+          "Directory Writers",
+          "License Administrator",
+          "User Administrator"
+        ],
         "operator_roles": [
           "License Administrator"
+        ],
+        "preflight_delegated_scopes": [
+          "LicenseAssignment.Read.All",
+          "User.Read.All"
+        ],
+        "project_required_role": "License Administrator",
+        "project_role_rationale": "The project requires the Microsoft-supported License Administrator role because the contract changes only direct licensing and excludes broader user administration.",
+        "protected_object_evidence_delegated_scopes": [
+          "RoleManagement.Read.Directory",
+          "User.Read.All"
+        ],
+        "readback_delegated_scopes": [
+          "User.Read.All"
         ]
       },
       "plan_ttl_seconds": 900,

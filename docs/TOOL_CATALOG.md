@@ -30,9 +30,12 @@ artifacts:
 
 They do not appear in `--list-tools`, are not registered by the MCP server and
 cannot execute Graph. Their public review surface is the
-[candidate matrix](IDENTITY_CANDIDATE_MATRIX.md). Activation requires the
-independent production contract-signing ceremony and an atomic reviewed
-cutover. README examples and active counts therefore continue to exclude them.
+[candidate matrix](IDENTITY_CANDIDATE_MATRIX.md). PR #5 may merge while they
+remain inactive. Activation requires reviewed live-lab execution of all five
+operations, regeneration after any correction, an external signature over the
+final digest and a separate atomic activation PR. No candidate is registered
+before that PR. README examples and active counts therefore continue to
+exclude them.
 
 Secure Operations 1 adds internal Operator Foundation schemas, state machines,
 signed synthetic fixtures and metadata only. It adds no MCP tool and activates

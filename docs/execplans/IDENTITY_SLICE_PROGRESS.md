@@ -25,11 +25,23 @@ This is the durable resume point for
 - [x] Roadmap and deterministic signing request.
 - [x] Full validation.
 - [x] Final license-verification hardening and candidate digest recorded.
+- [x] Five-pillar roadmap and historical milestone states reconciled.
+- [x] Effect, preflight/readback and protected-evidence permissions separated.
+- [x] Microsoft-supported roles separated from the project operational role.
+- [x] Candidate merge/live-lab/signing/activation gates made explicit.
+- [x] Final local validation: 435 collected, 434 passed, one live-lab skipped;
+  compiler, Ruff, strict mypy, dependency audit, build and diff check passed.
 - [ ] Remote CI must remain green before merge.
+- [ ] Merge PR #5 with all candidates inactive.
+- [ ] Execute and review live-lab scenarios for all five operations.
+- [ ] Regenerate after any live-lab correction and sign only the final digest.
+- [ ] Activate through a separate reviewed PR.
 
 ## Resume action
 
-PR #5 carries the reviewed candidate digest
-`sha256:1e7d065531d8d638960e15f9908e81f4fb73a0c40ba61d1cc377b3ab786f6d56`.
-Remote CI must be green before merge. The external signing ceremony is the only
-activation boundary after review.
+PR #5 carries the inactive candidate digest
+`sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399`.
+Remote CI must be green before merge. The exact next sequence is:
+merge inactive candidate PR → reviewed live lab for all five operations →
+apply corrections and regenerate the final digest → external signing →
+separate activation PR.

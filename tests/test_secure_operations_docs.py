@@ -132,13 +132,38 @@ def test_canonical_milestone_order_and_identity_slice_are_documented() -> None:
         assert f"`{operation}`" in roadmap
 
 
-def test_product_positioning_has_three_equal_pillars() -> None:
+def test_product_positioning_has_five_permanent_pillars() -> None:
     readme = (ROOT / "README.md").read_text()
     assert "policy-bound Microsoft 365 Operations Control Plane" in readme
-    assert "Observe and diagnose" in readme
-    assert "Operate and automate" in readme
-    assert "Assure and provide evidence" in readme
+    for pillar in [
+        "Observe and diagnose",
+        "Operate and automate",
+        "Assure and provide evidence",
+        "Experience and evaluation",
+        "Community and verifiable distribution",
+    ]:
+        assert pillar in readme
     assert "primarily read-only product or a compliance summarizer" in readme
+
+
+def test_identity_activation_gate_and_playbook_order_are_canonical() -> None:
+    roadmap = (ROOT / "docs/ROADMAP.md").read_text()
+    runbook = (ROOT / "docs/CONTRACT_SIGNING_RUNBOOK.md").read_text()
+    normalized_roadmap = " ".join(roadmap.split())
+    normalized_runbook = " ".join(runbook.split())
+    assert "Operational Playbooks v1 starts immediately after Identity Slice" in (
+        normalized_roadmap
+    )
+    assert "explicit manual handoffs" in normalized_roadmap
+    assert "do not postpone or displace Evaluation and Release Readiness" in (
+        normalized_roadmap
+    )
+    assert "candidate implementation PR may merge" in normalized_runbook
+    assert "live-lab scenarios for all five Identity operations" in (
+        normalized_runbook
+    )
+    assert "Signing a pre-lab digest is prohibited" in normalized_runbook
+    assert "separate, small PR" in normalized_runbook
 
 
 def test_posture_findings_and_untrusted_content_cannot_authorize() -> None:

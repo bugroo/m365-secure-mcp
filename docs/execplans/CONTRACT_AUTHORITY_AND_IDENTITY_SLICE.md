@@ -1,6 +1,6 @@
 # ExecPlan: Contract Authority Lifecycle and Identity Slice
 
-Status: implementation complete; awaiting external signing ceremony
+Status: candidate implementation complete; awaiting merge and reviewed live lab
 
 Branch: `feat/secure-operations-identity-slice`
 
@@ -23,6 +23,9 @@ and signing request will be complete before an external signing ceremony.
    receipts for synthetic and recorded playback.
 6. Generate candidate matrices, provenance, SBOM binding and signing request.
 7. Update the canonical roadmap and leave one reviewable PR with green CI.
+8. Merge candidates inactive, run and review all five live-lab operations,
+   regenerate after any correction, then sign the final digest and activate in
+   a separate PR.
 
 ## Non-goals
 
@@ -44,7 +47,7 @@ and signing request will be complete before an external signing ceremony.
 
 ## Validation evidence
 
-- 430 tests collected: 429 passed and one live-lab test skipped by default.
+- 435 tests collected: 434 passed and one live-lab test skipped by default.
 - compiler/check: 27 deterministic artifacts verified.
 - Ruff and strict mypy: clean.
 - dependency audit: no known third-party vulnerabilities; the local package is
@@ -91,10 +94,10 @@ authority unchanged.
 
 ## Risks
 
-- the final activation needs externally generated encrypted Ed25519 material
-  and human passphrase entry;
-- Microsoft Graph behavior is proven with sanitized playback until an explicit
-  lab execution is reviewed;
+- activation needs reviewed live-lab execution for all five operations,
+  externally generated encrypted Ed25519 material and human passphrase entry;
+- Microsoft Graph behavior is proven with sanitized playback in this candidate
+  PR; the post-lab digest is the only digest eligible for production signing;
 - the lifecycle store is local to one tenant/profile process boundary.
 
 ## Decisions
@@ -112,6 +115,10 @@ authority unchanged.
   production signature is packaged.
 - Session revocation records provider acceptance and bounded observation; it
   never claims immediate token invalidation as a verified postcondition.
+- Microsoft supports scoped Group owners for membership operations. This
+  candidate deliberately requires Groups Administrator until the runtime can
+  bind the authenticated token subject to exact group ownership, revalidate
+  that ownership at TOCTOU and prove the path in reviewed live-lab tests.
 
 ## Discoveries
 
@@ -131,8 +138,9 @@ authority unchanged.
 
 ## Remaining external boundary
 
-Generate and custody one encrypted Ed25519 signer outside the repository,
-inspect its public fingerprint, and perform the atomic direct-cutover ceremony
-against the exact candidate digest in `contract-candidates/signing-request.json`.
-No code, tests, Graph operation design or policy decision remains behind that
-boundary.
+Merge PR #5 with candidates inactive, execute and review all five live-lab
+operations, and apply any correction before treating a digest as final. Then
+generate and custody one encrypted Ed25519 signer outside the repository,
+inspect its public fingerprint, sign that exact post-lab digest and deliver the
+atomic cutover in a separate activation PR. No candidate tool registers before
+that PR.

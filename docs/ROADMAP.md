@@ -6,11 +6,17 @@
 that observes, diagnoses, plans, executes, verifies and documents bounded
 administrative operations through fixed Microsoft Graph contracts**.
 
-Three pillars have equal product weight:
+Five pillars have permanent and equal roadmap weight:
 
 1. **Observe and diagnose.**
 2. **Operate and automate.**
 3. **Assure and provide evidence.**
+4. **Experience and evaluation.**
+5. **Community and verifiable distribution.**
+
+The first three are the core operational functions. The last two make those
+functions usable, testable, reviewable and adoptable; they are not optional
+afterthoughts and cannot be displaced by catalog growth.
 
 The project is not a generic Graph proxy, an autonomous tenant administrator,
 a primarily read-only product or a compliance summarizer. The administrator,
@@ -87,7 +93,9 @@ is retained as architectural history and detailed acceptance context.
 
 1. **Contract Signing Lifecycle and Identity Slice** — implemented as five
    schema-2.0 `candidate`/`preview` contracts plus an independent trust
-   lifecycle; awaiting external production authority custody and signature.
+   lifecycle. The candidate PR may merge inactive; reviewed live-lab execution
+   of all five operations must precede the external signature and a separate
+   activation PR.
 2. **Operational Playbooks v1** — Compromised Account Containment, Bounded
    Employee Onboarding and Preserve-Data Employee Offboarding. Unsupported
    capabilities remain explicit manual handoffs.
@@ -113,8 +121,8 @@ indefinite catalog growth. Tool count is never an acceptance metric.
 
 ### Secure Operations 0 — Contract Effect Model
 
-Status: implemented on the Secure Operations foundation branch; not part of
-the active runtime until reviewed and merged.
+Status: merged and canonical. It changed compiler semantics but added no
+production Graph operation, permission or runtime tool.
 
 Introduce a closed semantic vocabulary:
 
@@ -180,11 +188,13 @@ Five separately reviewed operations now compile as unsigned candidates:
 4. `entra.group.user_membership.remove`
 5. `entra.user.direct_license.set`
 
-All are T2/`explicit_plan`. Exact endpoints, least-privilege permissions,
-roles, fences, exclusions, verification and compensation are recorded from
-current Microsoft Graph v1.0 documentation. They remain unavailable until the
-independent external contract authority signs the exact candidate digest and
-the direct cutover is reviewed.
+All are T2/`explicit_plan`. Exact endpoints, categorized permissions,
+Microsoft-supported roles, the project's operational role, fences, exclusions,
+verification and compensation are recorded from current Microsoft Graph
+v1.0 documentation. They remain unavailable through this candidate PR.
+Activation requires reviewed live-lab execution of all five operations, any
+resulting corrections and digest regeneration, an external signature over
+that final digest, and a separate small activation PR.
 
 Acceptance:
 
@@ -227,7 +237,9 @@ collection updates require precondition digests and fail closed on drift.
 
 ### Secure Operations 5 — Operational Playbooks
 
-Implement complete signed workflows only after Secure Operations 1–4:
+This historical heading is retained for traceability, but the canonical
+program **Operational Playbooks v1 starts immediately after Identity Slice**.
+It does not wait for Endpoint/Intune or Defender:
 
 1. compromised-account containment;
 2. bounded onboarding;
@@ -238,6 +250,10 @@ lists completed, pending and ambiguous nodes. An ambiguous effect pauses the
 entire DAG. No playbook creates users, passwords, Temporary Access Passes,
 roles, consent grants, application credentials, deletes tenant objects or
 removes workload data.
+
+Capabilities not yet implemented are explicit manual handoffs. Later
+Endpoint/Intune and Defender slices enrich the same workflows; they do not
+postpone or displace Evaluation and Release Readiness or Community Adoption.
 
 ### Reduced Posture runtime
 

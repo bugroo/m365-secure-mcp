@@ -37,14 +37,27 @@ registry and never prints private bytes.
 
 ## Direct cutover
 
-The first reviewed cutover is atomic:
+The candidate implementation PR may merge with all schema-2.0 operations
+inactive. Before the first reviewed cutover:
+
+1. execute and review live-lab scenarios for all five Identity operations;
+2. apply any resulting correction and regenerate every candidate artifact;
+3. review the final manifest and artifact digests;
+4. sign only that final post-lab manifest digest.
+
+Any candidate correction, including one derived from live-lab evidence,
+invalidates the earlier digest and signing request. Signing a pre-lab digest is
+prohibited. Activation is delivered in a separate, small PR; no candidate is
+registered as a tool before that PR.
+
+The activation cutover is atomic:
 
 1. Preserve the public key for `profile-debt-2026-07`.
 2. Mark it `retired` and pin only
    `sha256:1a33a244371405402df75a125fe6c18a9d6d0af0d2b692f5a831cde82248f5ba`.
 3. Add one new immutable `m365-contracts-YYYY-MM` production authority as
    `current`, using public metadata obtained from the external signer.
-4. Sign the exact reviewed schema-2.0 candidate manifest.
+4. Sign the exact reviewed post-live-lab schema-2.0 candidate manifest.
 5. Add the trust metadata, signature, activated manifest, generated artifacts,
    and passing current/historical tests in the same reviewed change.
 

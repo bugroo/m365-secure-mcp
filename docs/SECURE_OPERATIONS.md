@@ -6,7 +6,7 @@
 that observes, diagnoses, plans, executes, verifies and documents bounded
 administrative operations through fixed Microsoft Graph contracts**.
 
-Three product pillars have equal weight:
+Five product pillars have permanent and equal roadmap weight:
 
 1. **Observe and diagnose** — bounded inventory, preflight and operational
    evidence.
@@ -14,6 +14,14 @@ Three product pillars have equal weight:
    verified effects and resumable workflows.
 3. **Assure and provide evidence** — deterministic findings, receipts, change
    records and drift evidence.
+4. **Experience and evaluation** — reliable exposure, diagnostics and
+   reproducible agent-facing evaluation.
+5. **Community and verifiable distribution** — reviewable contributions,
+   installation and attestable public artifacts.
+
+The first three are core operational functions. The last two keep those
+functions usable, measurable and adoptable and cannot be displaced by catalog
+growth.
 
 The project is neither a generic Microsoft Graph proxy, an autonomous tenant
 administrator, a primarily read-only product, nor a compliance summarizer.
@@ -130,9 +138,12 @@ substitute for a future signed v2 contract manifest.
 All five schema-2.0 contracts now compile as `candidate`/`preview`, with fixed
 Graph v1.0 calls, Governance v3 bindings, closed providers, protected-object
 checks, recorded playback and deterministic evaluations. They are not active
-MCP tools and cannot execute Graph until an independent production contract
-authority signs the exact reviewed manifest and the atomic cutover activates
-its artifacts. Administrator consent remains manual.
+MCP tools and cannot execute Graph. The candidate PR may merge inactive.
+Reviewed live-lab execution of all five operations must occur before an
+independent production contract authority signs the final post-lab manifest
+digest. Any correction invalidates the earlier digest. A separate small
+activation PR performs the atomic cutover; no candidate registers as a tool
+before that PR. Administrator consent remains manual.
 
 ## Operational playbook direction
 
@@ -148,10 +159,14 @@ The first effectful playbooks will be:
    remove selected relationships and direct licenses, preserve workload data,
    record manual ownership-transfer tasks and verify.
 
-No effectful playbook may run until T2 exact plans, real dual control,
-asynchronous result handling and resumable checkpoints exist. An ambiguous
-write pauses the complete DAG. A signed playbook may define only an explicitly
-reviewed safe continuation; it can never reinterpret ambiguity as success.
+Operator Foundation already supplies T2 exact plans, real dual control,
+asynchronous result handling and resumable checkpoints. Operational Playbooks
+v1 therefore begins after Identity Slice. Capabilities not yet implemented
+remain explicit manual handoffs. Intune and Defender later enrich the same
+workflows without displacing Evaluation and Release Readiness or Community
+Adoption. An ambiguous write pauses the complete DAG. A signed playbook may
+define only an explicitly reviewed safe continuation; it can never reinterpret
+ambiguity as success.
 
 Email, tickets, documents, incidents, Graph content and findings are untrusted
 data. They may contribute evidence but cannot authorize a write. Posture may

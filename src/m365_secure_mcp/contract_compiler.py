@@ -141,14 +141,11 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
         "",
         (
             "| Contract | Lifecycle | Effect | Graph call | Tier | Authorization | "
-            "Role | Delegated scopes | Verification | License prerequisites | "
-            "Official references |"
+            "Verification | License prerequisites | Official references |"
         ),
-        "|---|---|---|---|---|---|---|---|---|---|---|",
+        "|---|---|---|---|---|---|---|---|---|",
     ]
     for item in manifest.contracts:
-        scopes = "<br>".join(f"`{scope}`" for scope in item.permissions.delegated_scopes)
-        roles = "<br>".join(f"`{role}`" for role in item.permissions.operator_roles)
         licenses = "<br>".join(item.license_prerequisites)
         references = "<br>".join(
             f"[Microsoft]({reference})" for reference in item.official_references
@@ -156,16 +153,56 @@ def _candidate_matrix(manifest: ContractManifestV2) -> str:
         lines.append(
             f"| `{item.id}` | `{item.lifecycle_state.value}` | `{item.effect.value}` | "
             f"`{item.graph.method} {item.graph.endpoint}` | `{item.risk_tier.value}` | "
-            f"`{item.authorization_mode.value}` | {roles} | {scopes} | "
-            f"`{item.verification.value}` | {licenses} | "
+            f"`{item.authorization_mode.value}` | `{item.verification.value}` | "
+            f"{licenses} | "
             f"{references}<br>verified `{item.verified_on}` |"
         )
     lines.extend(
         [
             "",
-            "Activation requires the external contract-signing direct cutover, a",
-            "current production authority, and the signature plus generated active",
-            "artifacts in one reviewed change. Test keys cannot activate candidates.",
+            "## Permission and role separation",
+            "",
+            (
+                "The aggregate delegated-scope closure is shown separately from "
+                "the reason each permission is needed. Scope categories can overlap."
+            ),
+            "",
+            (
+                "| Contract | Effect permissions | Preflight permissions | "
+                "Readback permissions | Protected-object evidence permissions | "
+                "Microsoft-supported least-privileged roles | "
+                "Project-required operational role | Project rationale |"
+            ),
+            "|---|---|---|---|---|---|---|---|",
+        ]
+    )
+    for item in manifest.contracts:
+        permissions = item.permissions
+
+        def values(items: list[str]) -> str:
+            return "<br>".join(f"`{value}`" for value in items) or "None"
+
+        lines.append(
+            f"| `{item.id}` | {values(permissions.effect_delegated_scopes)} | "
+            f"{values(permissions.preflight_delegated_scopes)} | "
+            f"{values(permissions.readback_delegated_scopes)} | "
+            f"{values(permissions.protected_object_evidence_delegated_scopes)} | "
+            f"{values(permissions.microsoft_supported_roles)} | "
+            f"`{permissions.project_required_role}` | "
+            f"{permissions.project_role_rationale} |"
+        )
+    lines.extend(
+        [
+            "",
+            "## Activation gate",
+            "",
+            "This candidate PR may merge while every contract remains inactive.",
+            "All five operations require reviewed live-lab execution before signing.",
+            "Any live-lab correction changes and invalidates the candidate digest.",
+            "The external signer signs only the resulting final reviewed digest.",
+            "A separate, small activation PR performs the direct cutover and adds the",
+            "production signature and active artifacts. No candidate is registered as",
+            "an MCP tool before that activation PR. Test keys cannot activate candidates.",
             "",
         ]
     )
@@ -234,6 +271,23 @@ def compile_identity_candidate_outputs(
                 "verification_contract_id": item.verification_contract_id.value,
                 "delegated_scopes": item.permissions.delegated_scopes,
                 "operator_roles": item.permissions.operator_roles,
+                "effect_delegated_scopes": (
+                    item.permissions.effect_delegated_scopes
+                ),
+                "preflight_delegated_scopes": (
+                    item.permissions.preflight_delegated_scopes
+                ),
+                "readback_delegated_scopes": (
+                    item.permissions.readback_delegated_scopes
+                ),
+                "protected_object_evidence_delegated_scopes": (
+                    item.permissions.protected_object_evidence_delegated_scopes
+                ),
+                "microsoft_supported_roles": (
+                    item.permissions.microsoft_supported_roles
+                ),
+                "project_required_role": item.permissions.project_required_role,
+                "project_role_rationale": item.permissions.project_role_rationale,
             }
             for item in manifest.contracts
         },
@@ -264,6 +318,8 @@ def compile_identity_candidate_outputs(
         "effect_model_digest": model_digest,
         "signature_present": False,
         "runtime_tool_generation": False,
+        "live_lab_review_status": "required-before-signing",
+        "signing_eligible": False,
         "active_manifest_digest": active_digest,
         "registry_digest": sha256_digest(registry),
         "surface_diff_digest": sha256_digest(surface_diff),
@@ -281,10 +337,12 @@ def compile_identity_candidate_outputs(
             ).hexdigest()
         ),
         "release_attestation_status": "external-required",
+        "signing_eligible": False,
     }
     signing_request = {
         "schema_version": "1.0",
-        "status": "awaiting_external_contract_authority",
+        "status": "awaiting_reviewed_live_lab",
+        "signing_eligible": False,
         "manifest_digest": candidate_digest,
         "effect_model_digest": model_digest,
         "intended_key_id": "m365-contracts-2026-07",
@@ -301,8 +359,18 @@ def compile_identity_candidate_outputs(
             "candidate-activation-denial",
             "governance-v1-v2-v3-compatibility",
             "identity-recorded-playback",
+            "reviewed-live-lab-all-five-operations",
             "privacy-and-secret-scan",
         ],
+        "activation_sequence": [
+            "merge-inactive-candidate-pr",
+            "execute-and-review-live-lab-for-all-five-operations",
+            "apply-corrections-and-regenerate-candidate-digest-if-needed",
+            "sign-final-reviewed-digest-with-external-production-authority",
+            "merge-separate-small-activation-pr",
+        ],
+        "candidate_tool_registration": False,
+        "digest_invalidated_by_candidate_change": True,
         "graph_surface_diff": surface_diff,
         "review_reference": "pull-request-required-before-signing",
         "contains_private_material": False,

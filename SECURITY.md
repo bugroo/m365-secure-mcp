@@ -13,10 +13,13 @@ the blast radius of:
 - confused-deputy behavior between an MCP client and Microsoft identity;
 - accidental or repeated writes.
 
-The security objective supports three equal capabilities: observe/diagnose,
-operate/automate and assure/provide evidence. The server is neither a generic
-Graph proxy nor an autonomous administrator, but it is intentionally capable
-of bounded administrative effects under signed authority.
+The security objective preserves five permanent pillars: observe/diagnose,
+operate/automate, assure/provide evidence, experience/evaluation, and
+community/verifiable distribution. The first three are core operational
+functions; the latter two ensure they remain usable and demonstrable. The
+server is neither a generic Graph proxy nor an autonomous administrator, but
+it is intentionally capable of bounded administrative effects under signed
+authority.
 
 ## Trust boundaries
 

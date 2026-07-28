@@ -3,73 +3,149 @@
   "contracts": {
     "entra.group.user_membership.add": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:7ac4164b939e7a3a9951bef14fd39d613a5c38af87e42ab71f408d119610694f",
+      "contract_digest": "sha256:c34ef98d5fdfee286c3321bfe4b120ef7442264b8f47a5c2c3780fc86919b957",
       "delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "RoleManagement.Read.Directory",
         "User.Read.All"
       ],
       "effect": "relationship_add",
+      "effect_delegated_scopes": [
+        "GroupMember.ReadWrite.All"
+      ],
       "endpoint": "/groups/{group_id}/members/$ref",
       "executor_id": "identity.group_user_membership_add.v1",
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "POST",
+      "microsoft_supported_roles": [
+        "Directory Writers",
+        "Exchange Administrator (Microsoft 365 groups only)",
+        "Group owners",
+        "Groups Administrator",
+        "Identity Governance Administrator",
+        "Intune Administrator (security groups only)",
+        "SharePoint Administrator (Microsoft 365 groups only)",
+        "Teams Administrator (Microsoft 365 groups only)",
+        "User Administrator",
+        "Yammer Administrator (Microsoft 365 groups only)"
+      ],
       "operator_roles": [
         "Groups Administrator"
       ],
+      "preflight_delegated_scopes": [
+        "GroupMember.ReadWrite.All",
+        "User.Read.All"
+      ],
+      "project_required_role": "Groups Administrator",
+      "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
+      "protected_object_evidence_delegated_scopes": [
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
       "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
+      "readback_delegated_scopes": [
+        "GroupMember.ReadWrite.All"
+      ],
       "resource_fence_id": "identity.allowlisted_user_and_group.v1",
       "risk_tier": "T2",
       "verification_contract_id": "identity.group_membership_readback.v1"
     },
     "entra.group.user_membership.remove": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:b3c646e2ea923a4807925e14ef85e31c563ec0d6660fb18c641c14098826abef",
+      "contract_digest": "sha256:869483342b0bea3fce090cfeaaf5b650da41642e3cda62bdce2e3ad5c9e68fd1",
       "delegated_scopes": [
         "GroupMember.ReadWrite.All",
         "RoleManagement.Read.Directory",
         "User.Read.All"
       ],
       "effect": "relationship_remove",
+      "effect_delegated_scopes": [
+        "GroupMember.ReadWrite.All"
+      ],
       "endpoint": "/groups/{group_id}/members/{user_id}/$ref",
       "executor_id": "identity.group_user_membership_remove.v1",
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "DELETE",
+      "microsoft_supported_roles": [
+        "Directory Writers",
+        "Exchange Administrator (Microsoft 365 groups only)",
+        "Group owners",
+        "Groups Administrator",
+        "Identity Governance Administrator",
+        "Intune Administrator (security groups only)",
+        "SharePoint Administrator (Microsoft 365 groups only)",
+        "Teams Administrator (Microsoft 365 groups only)",
+        "User Administrator",
+        "Yammer Administrator (Microsoft 365 groups only)"
+      ],
       "operator_roles": [
         "Groups Administrator"
       ],
+      "preflight_delegated_scopes": [
+        "GroupMember.ReadWrite.All",
+        "User.Read.All"
+      ],
+      "project_required_role": "Groups Administrator",
+      "project_role_rationale": "Microsoft supports Group owners, but this candidate deliberately requires Groups Administrator until token-subject ownership of the exact group is bound, revalidated at TOCTOU, and covered by live-lab tests.",
+      "protected_object_evidence_delegated_scopes": [
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
       "protected_object_policy_id": "identity.non_privileged_member_user_static_group.v1",
+      "readback_delegated_scopes": [
+        "GroupMember.ReadWrite.All"
+      ],
       "resource_fence_id": "identity.allowlisted_user_and_group.v1",
       "risk_tier": "T2",
       "verification_contract_id": "identity.group_membership_readback.v1"
     },
     "entra.user.account_state.set": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:6ebc73b1b7ec5f5dc222cd12c27916a9a17f20f2395dccd76dab3c8f3745a862",
+      "contract_digest": "sha256:649348b7ca773747290bd387384afdc6d3ba17415ef08babda5f0e6fd38217ff",
       "delegated_scopes": [
         "RoleManagement.Read.Directory",
         "User.EnableDisableAccount.All",
         "User.Read.All"
       ],
       "effect": "state_transition",
+      "effect_delegated_scopes": [
+        "User.EnableDisableAccount.All",
+        "User.Read.All"
+      ],
       "endpoint": "/users/{user_id}",
       "executor_id": "identity.user_account_state_set.v1",
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "PATCH",
+      "microsoft_supported_roles": [
+        "Authentication Administrator",
+        "User Administrator"
+      ],
       "operator_roles": [
         "User Administrator"
       ],
+      "preflight_delegated_scopes": [
+        "User.Read.All"
+      ],
+      "project_required_role": "User Administrator",
+      "project_role_rationale": "The project selects User Administrator for non-administrator member accounts and rejects every protected or privileged target before the effect.",
+      "protected_object_evidence_delegated_scopes": [
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
       "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "readback_delegated_scopes": [
+        "User.Read.All"
+      ],
       "resource_fence_id": "identity.allowlisted_user.v1",
       "risk_tier": "T2",
       "verification_contract_id": "identity.user_account_state_readback.v1"
     },
     "entra.user.direct_license.set": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:4948e2d6387def4f651940ad6c02a25e8f6aa666cabb2fe440bf32321700c448",
+      "contract_digest": "sha256:faa38d7f7ab8e5d89a2c49dbdb5ec8b2d653bebc313ff7d245289cc8ae94bd7f",
       "delegated_scopes": [
         "LicenseAssignment.Read.All",
         "LicenseAssignment.ReadWrite.All",
@@ -77,44 +153,81 @@
         "User.Read.All"
       ],
       "effect": "state_transition",
+      "effect_delegated_scopes": [
+        "LicenseAssignment.ReadWrite.All"
+      ],
       "endpoint": "/users/{user_id}/assignLicense",
       "executor_id": "identity.user_direct_license_set.v1",
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "POST",
+      "microsoft_supported_roles": [
+        "Directory Writers",
+        "License Administrator",
+        "User Administrator"
+      ],
       "operator_roles": [
         "License Administrator"
       ],
+      "preflight_delegated_scopes": [
+        "LicenseAssignment.Read.All",
+        "User.Read.All"
+      ],
+      "project_required_role": "License Administrator",
+      "project_role_rationale": "The project requires the Microsoft-supported License Administrator role because the contract changes only direct licensing and excludes broader user administration.",
+      "protected_object_evidence_delegated_scopes": [
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
       "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "readback_delegated_scopes": [
+        "User.Read.All"
+      ],
       "resource_fence_id": "identity.allowlisted_user_and_sku.v1",
       "risk_tier": "T2",
       "verification_contract_id": "identity.direct_license_readback.v1"
     },
     "entra.user.sessions.revoke": {
       "authorization_mode": "explicit_plan",
-      "contract_digest": "sha256:1a63fd831491fa4face8f7f094705f7e08965ec12d36fff4d624066b46e90089",
+      "contract_digest": "sha256:93ce415444e1625674d2379a88d7faf92003ae2d968522715679766ee6fb7640",
       "delegated_scopes": [
         "RoleManagement.Read.Directory",
         "User.Read.All",
         "User.RevokeSessions.All"
       ],
       "effect": "invoke_action",
+      "effect_delegated_scopes": [
+        "User.RevokeSessions.All"
+      ],
       "endpoint": "/users/{user_id}/revokeSignInSessions",
       "executor_id": "identity.user_sessions_revoke.v1",
       "lifecycle_state": "candidate",
       "maturity": "preview",
       "method": "POST",
+      "microsoft_supported_roles": [
+        "Helpdesk Administrator"
+      ],
       "operator_roles": [
         "Helpdesk Administrator"
       ],
+      "preflight_delegated_scopes": [
+        "User.Read.All"
+      ],
+      "project_required_role": "Helpdesk Administrator",
+      "project_role_rationale": "The project requires Helpdesk Administrator because its Microsoft-supported refresh-token revocation task matches this bounded non-protected-user operation.",
+      "protected_object_evidence_delegated_scopes": [
+        "RoleManagement.Read.Directory",
+        "User.Read.All"
+      ],
       "protected_object_policy_id": "identity.non_privileged_member_user.v1",
+      "readback_delegated_scopes": [],
       "resource_fence_id": "identity.allowlisted_user.v1",
       "risk_tier": "T2",
       "verification_contract_id": "identity.session_revocation_acceptance.v1"
     }
   },
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
-  "manifest_digest": "sha256:1e7d065531d8d638960e15f9908e81f4fb73a0c40ba61d1cc377b3ab786f6d56",
+  "manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
   "manifest_schema_version": "2.0",
   "schema_version": "1.0"
 }

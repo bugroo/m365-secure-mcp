@@ -291,6 +291,50 @@ class ContractPermissions(StrictModel):
         return value
 
 
+class ContractPermissionsV2(ContractPermissions):
+    """Categorized schema-2.0 permission and operational-role metadata."""
+
+    effect_delegated_scopes: list[str] = Field(default_factory=list)
+    preflight_delegated_scopes: list[str] = Field(default_factory=list)
+    readback_delegated_scopes: list[str] = Field(default_factory=list)
+    protected_object_evidence_delegated_scopes: list[str] = Field(
+        default_factory=list
+    )
+    microsoft_supported_roles: list[str] = Field(default_factory=list)
+    project_required_role: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=120,
+    )
+    project_role_rationale: str | None = Field(
+        default=None,
+        min_length=20,
+        max_length=500,
+    )
+
+    @field_validator(
+        "effect_delegated_scopes",
+        "preflight_delegated_scopes",
+        "readback_delegated_scopes",
+        "protected_object_evidence_delegated_scopes",
+    )
+    @classmethod
+    def unique_categorized_scopes(cls, value: list[str]) -> list[str]:
+        if value != sorted(set(value)):
+            raise ValueError("categorized delegated scopes must be unique and sorted")
+        forbidden = {"Directory.ReadWrite.All", "Directory.AccessAsUser.All"}
+        if forbidden & set(value):
+            raise ValueError("contract requests a prohibited directory scope")
+        return value
+
+    @field_validator("microsoft_supported_roles")
+    @classmethod
+    def unique_supported_roles(cls, value: list[str]) -> list[str]:
+        if value != sorted(set(value)):
+            raise ValueError("Microsoft-supported roles must be unique and sorted")
+        return value
+
+
 class IdempotencyContract(StrictModel):
     key_required: bool
     retry: Literal[
@@ -389,7 +433,7 @@ class ContractSpecV2(StrictModel):
     )
     input_schema: dict[str, Any]
     output_fields: list[str] = Field(min_length=1)
-    permissions: ContractPermissions
+    permissions: ContractPermissionsV2
     risk_tier: RiskTier
     authorization_mode: AuthorizationMode
     resource_fences: list[str] = Field(min_length=1)
@@ -423,6 +467,20 @@ class ContractSpecV2(StrictModel):
         default=None,
         pattern=r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
     )
+
+    @field_validator("permissions", mode="before")
+    @classmethod
+    def accept_legacy_synthetic_permissions(
+        cls,
+        value: Any,
+    ) -> Any:
+        """Preserve schema-2.0 synthetic fixtures without changing schema 1.0."""
+        if isinstance(value, ContractPermissions) and not isinstance(
+            value,
+            ContractPermissionsV2,
+        ):
+            return value.model_dump(mode="json")
+        return value
 
     @model_validator(mode="after")
     def validate_explicit_effect(self) -> ContractSpecV2:
@@ -510,6 +568,45 @@ class ContractSpecV2(StrictModel):
             raise ValueError(
                 "reviewed workload contracts require explicit executor and references"
             )
+        if self.module != "synthetic":
+            permissions = self.permissions
+            categorized_scopes = sorted(
+                {
+                    *permissions.effect_delegated_scopes,
+                    *permissions.preflight_delegated_scopes,
+                    *permissions.readback_delegated_scopes,
+                    *permissions.protected_object_evidence_delegated_scopes,
+                }
+            )
+            if not permissions.effect_delegated_scopes:
+                raise ValueError(
+                    "reviewed workload contracts require effect permissions"
+                )
+            if categorized_scopes != permissions.delegated_scopes:
+                raise ValueError(
+                    "categorized permission closure must equal delegated scopes"
+                )
+            if (
+                not permissions.microsoft_supported_roles
+                or permissions.project_required_role is None
+                or permissions.project_role_rationale is None
+            ):
+                raise ValueError(
+                    "reviewed workload contracts require supported and project roles"
+                )
+            if (
+                permissions.project_required_role
+                not in permissions.microsoft_supported_roles
+            ):
+                raise ValueError(
+                    "project-required role must be Microsoft-supported"
+                )
+            if permissions.operator_roles != [
+                permissions.project_required_role
+            ]:
+                raise ValueError(
+                    "legacy operator-role closure must equal project-required role"
+                )
         return self
 
 

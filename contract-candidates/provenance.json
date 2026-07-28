@@ -6,11 +6,13 @@
   "compiler_version": "1.6",
   "distribution_status": "not-a-release",
   "effect_model_digest": "sha256:ab249d54df004a70d5333c39d6894880d67985000b52ad847ddf043a2a7aba60",
-  "manifest_digest": "sha256:1e7d065531d8d638960e15f9908e81f4fb73a0c40ba61d1cc377b3ab786f6d56",
-  "registry_digest": "sha256:5004ccedac30e6e95b70d7aefd0b9d76c3646d9ec0e648f77387a3e618b7690c",
+  "live_lab_review_status": "required-before-signing",
+  "manifest_digest": "sha256:ffb663385285dc44d0756e87e9cc1e4ed72b129637fe6d02337c2244aa540399",
+  "registry_digest": "sha256:e780771bc1e58cd1d9c6f70b1bd200f059aa9be403787f800a5d8fe1fb2b0952",
   "release_attestation_status": "external-required",
   "runtime_tool_generation": false,
   "schema_version": "1.0",
   "signature_present": false,
-  "surface_diff_digest": "sha256:11c809f33e1a24fdf099a3fd660c7a9a4b91464fad74c522d75047bffeca2c2d"
+  "signing_eligible": false,
+  "surface_diff_digest": "sha256:75def38b4025c7d93f9591c90750a1096d9d634d7e2c20a62984fe923bcfe7ea"
 }
