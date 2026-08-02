@@ -82,6 +82,16 @@ def test_license_endpoints_do_not_send_unsupported_top_parameter() -> None:
         assert spec.supports_top is False
 
 
+def test_presence_and_todo_avoid_rejected_graph_query_options() -> None:
+    presence = _spec("m365_get_my_presence")
+    assert presence.select is None
+    assert presence.supports_top is False
+
+    todo_lists = _spec("m365_list_todo_lists")
+    assert todo_lists.select is None
+    assert todo_lists.supports_top is True
+
+
 def test_compliance_reads_fail_closed_and_avoid_unsupported_query_parameters() -> None:
     services = _services()
     _apply_policies(

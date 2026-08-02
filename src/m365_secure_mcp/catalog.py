@@ -153,7 +153,7 @@ SPECS: tuple[ReadSpec, ...] = (
         "M365 To Do Lists",
         "List Microsoft To Do list metadata for the signed-in user.",
         "/me/todo/lists",
-        "id,displayName,isOwner,isShared,wellknownListName",
+        None,
     ),
     ReadSpec(
         "m365_get_todo_task",
@@ -384,8 +384,9 @@ SPECS: tuple[ReadSpec, ...] = (
         "My M365 Presence",
         "Get the signed-in user's current Teams presence.",
         "/me/presence",
-        "id,availability,activity,outOfOfficeSettings,statusMessage",
+        None,
         collection=False,
+        supports_top=False,
     ),
     ReadSpec(
         "m365_list_security_incidents",
