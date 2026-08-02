@@ -180,6 +180,32 @@ def test_privileged_modules_require_second_gate() -> None:
     assert "SecurityIncident.Read.All" in settings.scopes
 
 
+def test_service_communications_use_endpoint_specific_scopes() -> None:
+    health = make_settings(
+        modules="profile,service_health",
+        enabled_tools="m365_list_service_health,m365_list_service_issues",
+        privileged_modules_enabled=True,
+    )
+    assert health.scopes == ("ServiceHealth.Read.All", "User.Read")
+
+    messages = make_settings(
+        modules="profile,service_health",
+        enabled_tools="m365_list_service_messages",
+        privileged_modules_enabled=True,
+    )
+    assert messages.scopes == ("ServiceMessage.Read.All", "User.Read")
+
+    complete = make_settings(
+        modules="profile,service_health",
+        privileged_modules_enabled=True,
+    )
+    assert complete.scopes == (
+        "ServiceHealth.Read.All",
+        "ServiceMessage.Read.All",
+        "User.Read",
+    )
+
+
 def test_assurance_requires_signed_governance_and_exact_read_scopes() -> None:
     with pytest.raises(ValidationError, match="M365_GOVERNANCE_POLICY_PATH"):
         make_settings(

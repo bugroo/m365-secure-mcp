@@ -331,8 +331,13 @@ _register(
     tools=(
         "m365_list_service_health",
         "m365_list_service_issues",
-        "m365_list_service_messages",
     ),
+)
+_register(
+    _permissions,
+    module="service_health",
+    scopes=frozenset({"ServiceMessage.Read.All"}),
+    tools=("m365_list_service_messages",),
 )
 _register(
     _permissions,
