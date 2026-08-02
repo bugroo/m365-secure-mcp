@@ -12,6 +12,7 @@ from m365_secure_mcp.catalog import (
 )
 from m365_secure_mcp.config import Settings
 from m365_secure_mcp.models import CatalogReadInput
+from m365_secure_mcp.permissions import READ_TOOL_PERMISSIONS
 from m365_secure_mcp.security import SecurityError, SecurityPolicy
 
 from .conftest import CLIENT_ID, TENANT_ID
@@ -90,6 +91,29 @@ def test_presence_and_todo_avoid_rejected_graph_query_options() -> None:
     todo_lists = _spec("m365_list_todo_lists")
     assert todo_lists.select is None
     assert todo_lists.supports_top is True
+
+
+def test_directory_role_reads_avoid_rejected_graph_query_options() -> None:
+    definitions = _spec("m365_list_directory_role_definitions")
+    assert definitions.supports_top is False
+
+    assignments = _spec("m365_list_directory_role_assignments")
+    assert assignments.select == (
+        "id,principalId,roleDefinitionId,directoryScopeId"
+    )
+    assert "appScopeId" not in assignments.select
+
+
+def test_service_communications_use_distinct_least_privileged_scopes() -> None:
+    assert READ_TOOL_PERMISSIONS["m365_list_service_health"].scopes == frozenset(
+        {"ServiceHealth.Read.All"}
+    )
+    assert READ_TOOL_PERMISSIONS["m365_list_service_issues"].scopes == frozenset(
+        {"ServiceHealth.Read.All"}
+    )
+    assert READ_TOOL_PERMISSIONS["m365_list_service_messages"].scopes == frozenset(
+        {"ServiceMessage.Read.All"}
+    )
 
 
 def test_compliance_reads_fail_closed_and_avoid_unsupported_query_parameters() -> None:

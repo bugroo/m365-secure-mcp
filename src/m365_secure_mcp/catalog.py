@@ -614,6 +614,7 @@ SPECS: tuple[ReadSpec, ...] = (
             "id,displayName,description,isBuiltIn,isEnabled,"
             "templateId,version,rolePermissions"
         ),
+        supports_top=False,
     ),
     ReadSpec(
         "m365_list_directory_role_assignments",
@@ -621,7 +622,7 @@ SPECS: tuple[ReadSpec, ...] = (
         "Microsoft Entra Role Assignments",
         "List active directory role assignments without expanding principal profiles.",
         "/roleManagement/directory/roleAssignments",
-        "id,principalId,roleDefinitionId,directoryScopeId,appScopeId",
+        "id,principalId,roleDefinitionId,directoryScopeId",
     ),
     ReadSpec(
         "m365_list_access_review_definitions",

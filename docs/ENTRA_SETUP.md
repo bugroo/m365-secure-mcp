@@ -56,6 +56,7 @@ Start with `User.Read`. Add modules independently:
 | Windows 365 inventory | `CloudPC.Read.All` |
 | Windows 365 reboot | `CloudPC.ReadWrite.All` |
 | Microsoft 365 service health | `ServiceHealth.Read.All` |
+| Microsoft 365 service messages | `ServiceMessage.Read.All` |
 | Entra applications/service principals | `Application.Read.All` |
 | Service-principal delegated grants | `Directory.Read.All` |
 | Conditional Access read | `Policy.Read.All` |
