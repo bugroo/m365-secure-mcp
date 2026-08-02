@@ -108,3 +108,57 @@ async def test_assurance_scope_view_exposes_names_but_not_ambient_claims(
     scopes = await provider.get_delegated_scope_claims()
 
     assert scopes == frozenset({"Mail.Read", "User.Read"})
+
+
+@pytest.mark.asyncio
+async def test_stale_cached_scope_token_is_refreshed_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = TokenProvider(_settings())
+    calls: list[bool] = []
+
+    def acquire(force_refresh: bool) -> dict[str, str]:
+        calls.append(force_refresh)
+        credential = _jwt(scp="User.Read") if not force_refresh else _jwt()
+        return {"access_token": credential}
+
+    monkeypatch.setattr(provider, "_acquire_token", acquire)
+
+    assert await provider.get_access_token() == _jwt()
+    assert calls == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_scope_refresh_remains_fail_closed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = TokenProvider(_settings())
+    calls: list[bool] = []
+
+    def acquire(force_refresh: bool) -> dict[str, str]:
+        calls.append(force_refresh)
+        return {"access_token": _jwt(scp="User.Read")}
+
+    monkeypatch.setattr(provider, "_acquire_token", acquire)
+
+    with pytest.raises(AuthenticationError, match="missing"):
+        await provider.get_access_token()
+    assert calls == [False, True]
+
+
+@pytest.mark.asyncio
+async def test_identity_validation_failure_never_triggers_scope_refresh(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provider = TokenProvider(_settings())
+    calls: list[bool] = []
+
+    def acquire(force_refresh: bool) -> dict[str, str]:
+        calls.append(force_refresh)
+        return {"access_token": _jwt(tid=CLIENT_ID)}
+
+    monkeypatch.setattr(provider, "_acquire_token", acquire)
+
+    with pytest.raises(AuthenticationError, match="tenant"):
+        await provider.get_access_token()
+    assert calls == [False]

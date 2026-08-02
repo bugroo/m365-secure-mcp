@@ -46,6 +46,10 @@ class AuthenticationError(RuntimeError):
     """Authentication failed without exposing token or provider internals."""
 
 
+class _StaleScopeTokenError(AuthenticationError):
+    """A cached token predates the exact admin-preconsented scope closure."""
+
+
 class TokenProvider:
     """Acquire and validate delegated tokens for one tenant-bound resource."""
 
@@ -141,16 +145,32 @@ class TokenProvider:
 
         async with self._lock:
             result = await asyncio.to_thread(self._acquire_token, force_refresh)
-            token = result.get("access_token")
-            if not isinstance(token, str) or not token:
-                code = str(result.get("error", "authentication_failed"))
-                correlation = str(result.get("correlation_id", "unavailable"))
-                raise AuthenticationError(
-                    f"Microsoft authentication failed ({code}); correlation ID: {correlation}"
-                )
-            self._validate_access_token(token)
+            credential = self._credential_from_result(result)
+            try:
+                self._validate_access_token(credential)
+            except _StaleScopeTokenError:
+                if force_refresh:
+                    raise
+                # MSAL can retain an otherwise-valid access token issued before
+                # an administrator expanded this App Registration's exact
+                # delegated permission set. Refresh once, then validate against
+                # the same fail-closed tenant/profile contract.
+                result = await asyncio.to_thread(self._acquire_token, True)
+                credential = self._credential_from_result(result)
+                self._validate_access_token(credential)
             self._save_cache()
-            return token
+            return credential
+
+    @staticmethod
+    def _credential_from_result(result: dict[str, Any]) -> str:
+        credential = result.get("access_token")
+        if not isinstance(credential, str) or not credential:
+            code = str(result.get("error", "authentication_failed"))
+            correlation = str(result.get("correlation_id", "unavailable"))
+            raise AuthenticationError(
+                f"Microsoft authentication failed ({code}); correlation ID: {correlation}"
+            )
+        return credential
 
     async def get_delegated_scope_claims(self) -> frozenset[str]:
         """Return only validated, non-ambient delegated scope names.
@@ -324,7 +344,7 @@ class TokenProvider:
         }
         missing = expected_scopes - actual_scopes
         if missing:
-            raise AuthenticationError(
+            raise _StaleScopeTokenError(
                 "Microsoft token is missing admin-preconsented delegated scopes"
             )
         unexpected = actual_scopes - expected_scopes - AMBIENT_SCOPES
